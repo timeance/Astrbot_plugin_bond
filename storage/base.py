@@ -2,14 +2,10 @@
 
 上层（services）只依赖本接口；实现类负责并发安全与事务性。
 
-**原子性契约（承重假设）**：FavorService 的「每日限幅读 → apply_delta 写 →
-当日额度记账」三步，以及 set_favor / apply_undo（单事务撤销）的内部序列，
-均依赖实现类的这些方法体内不含真实挂起点（同步代码的 async 方法在事件
-循环里原子执行）。**只读路径（ranking/list_favor/distinct_groups/
-query_logs）例外（X9）**：经 asyncio.to_thread 执行、会真实让出——它们
-不参与上述读-改-写序列，线程与事件循环经实现类同一把 threading.Lock
-互斥。若引入真异步后端（aiosqlite/Redis 等），必须把全部读-改-写序列
-收进同一把锁/事务内，否则每日限幅与撤销都会被并发绕过。
+数值变动、管理员设值与撤销分别由 apply_favor_change、
+set_value_with_log 与 apply_undo 负责事务。只读路径可在线程池执行，
+实现类须通过同一把锁协调读写。新后端必须保持事务边界，不能依赖
+async 方法在当前事件循环中没有挂起点来代替原子提交。
 """
 
 from __future__ import annotations
@@ -60,6 +56,7 @@ class StorageBackend(ABC):
         min_favor: float = -100.0,
         decay: tuple[float, float, float, float] | None = None,
         default_favor: float = 0.0,
+        effective=None,
     ) -> tuple[FavorRecord, float]:
         """原子地增减好感度（锁内读-改-写），封顶 min_favor..max_favor。
 
@@ -67,6 +64,8 @@ class StorageBackend(ABC):
             存量按指数遗忘曲线衰减到当下（锁定时间衰减）；delta>0 时半衰期
             按巩固规则增长并回写。为 None 时不衰减不巩固。
         default_favor: 无记录时的起始基数（与新成员初始好感配置一致）。
+        effective: 可选的有效值计算函数，含服务层配置的衰减地板。
+            在锁内读取存量后调用，不传则使用标准指数衰减。
         Returns:
             (更新后的记录, 实际生效的变化量)。越界截断时实际变化量小于 delta。
             delta 与返回值精度均为一位小数。
@@ -89,6 +88,7 @@ class StorageBackend(ABC):
         cooldown_key: str | None = None,
         daily_cap_up: float | None = None,
         daily_cap_down: float | None = None,
+        effective=None,
     ) -> tuple[FavorRecord, float, float, bool]:
         """主写路径：每日限幅 + 数值变动 + 当日额度 + 流水（+ 冷却）。
 
@@ -125,6 +125,7 @@ class StorageBackend(ABC):
             min_favor=min_favor,
             decay=decay,
             default_favor=default_favor,
+            effective=effective,
         )
         if real:
             if day:
@@ -147,6 +148,24 @@ class StorageBackend(ABC):
     @abstractmethod
     async def set_value(self, group_id: str, user_id: str, value: float) -> FavorRecord:
         """直接设定好感度数值（精度一位小数）。"""
+
+    @abstractmethod
+    async def set_value_with_log(
+        self,
+        group_id: str,
+        user_id: str,
+        value: float,
+        *,
+        reason: str,
+        source: str,
+        default_favor: float = 0.0,
+        effective=None,
+    ) -> FavorRecord:
+        """管理员设值及非零变动流水原子提交，失败整体回滚。
+
+        effective(stored, updated_at, half_life) 在事务内计算流水基线，
+        与读取及撤销使用相同的衰减策略；不消耗当日评估额度。
+        """
 
     @abstractmethod
     async def set_relationship(
@@ -181,7 +200,7 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
-        """群内好感度排行（降序）。"""
+        """群内存量好感度排行（降序）；limit=-1 返回全部供有效值重排。"""
 
     @abstractmethod
     async def list_favor(

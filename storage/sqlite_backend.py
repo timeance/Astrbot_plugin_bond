@@ -85,6 +85,7 @@ class SQLiteBackend(StorageBackend):
         decay,
         default_favor: float,
         now: float,
+        effective=None,
     ) -> tuple[float, float, float]:
         """锁内计算一次好感写入的新值（须在 self._lock 内、事务中调用）。
 
@@ -107,12 +108,12 @@ class SQLiteBackend(StorageBackend):
         # 时间衰减（指数遗忘曲线）：落库前先把存量衰减到当下（锁定），再叠加本次增减
         if decay:
             base, growth, h_max, baseline = decay
-            current = effective_favor(
-                current,
-                last_ts,
-                now,
-                half_life=half_life,
-                baseline=baseline,
+            current = (
+                effective(current, last_ts, half_life)
+                if effective is not None
+                else effective_favor(
+                    current, last_ts, now, half_life=half_life, baseline=baseline
+                )
             )
             # 正向互动巩固半衰期（SM-2 式），新 h 随本次写库落列
             new_h = consolidate_half_life(
@@ -138,6 +139,7 @@ class SQLiteBackend(StorageBackend):
         min_favor: float = -100.0,
         decay: tuple[float, float, float, float] | None = None,
         default_favor: float = 0.0,
+        effective=None,
     ) -> tuple[FavorRecord, float]:
         """只动数值的增减（数值语义见 base.py）。主写路径走
         apply_favor_change（同事务带额度/流水/冷却）；本方法保留给
@@ -155,6 +157,7 @@ class SQLiteBackend(StorageBackend):
                 decay,
                 default_favor,
                 now,
+                effective,
             )
             conn.execute(
                 "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
@@ -185,6 +188,7 @@ class SQLiteBackend(StorageBackend):
         cooldown_key: str | None = None,
         daily_cap_up: float | None = None,
         daily_cap_down: float | None = None,
+        effective=None,
     ) -> tuple[FavorRecord, float, float, bool]:
         """主写路径单事务：每日限幅 + 数值变动 + 当日额度 + 流水 (+ 冷却)。
 
@@ -243,6 +247,7 @@ class SQLiteBackend(StorageBackend):
                     decay,
                     default_favor,
                     now,
+                    effective,
                 )
                 conn.execute(
                     "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
@@ -324,6 +329,61 @@ class SQLiteBackend(StorageBackend):
             self._upsert(group_id, user_id, {"favor": value}, touch=True)
         return FavorRecord(group_id, user_id, value, time.time())
 
+    async def set_value_with_log(
+        self,
+        group_id: str,
+        user_id: str,
+        value: float,
+        *,
+        reason: str,
+        source: str,
+        default_favor: float = 0.0,
+        effective=None,
+    ) -> FavorRecord:
+        value = round1(value)
+        now = time.time()
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN")
+                row = conn.execute(
+                    "SELECT favor, updated_at, half_life FROM favor "
+                    "WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ).fetchone()
+                if row:
+                    stored, ts, h = float(row[0]), row[1], float(row[2] or 10.0)
+                else:
+                    stored, ts, h = float(default_favor or 0.0), 0.0, 10.0
+                before = effective(stored, ts, h) if effective else round1(stored)
+                conn.execute(
+                    "INSERT INTO favor(group_id, user_id, favor, updated_at) VALUES(?,?,?,?) "
+                    "ON CONFLICT(group_id, user_id) DO UPDATE SET "
+                    "favor=excluded.favor, updated_at=excluded.updated_at",
+                    (group_id, user_id, value, now),
+                )
+                delta = round1(value - before)
+                if delta != 0:
+                    conn.execute(
+                        "INSERT INTO favor_log(group_id, user_id, delta, favor_before, "
+                        "favor_after, reason, source, ts) VALUES(?,?,?,?,?,?,?,?)",
+                        (
+                            group_id,
+                            user_id,
+                            delta,
+                            before,
+                            value,
+                            (reason or "")[:200],
+                            source,
+                            now,
+                        ),
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return FavorRecord(group_id, user_id, value, now, half_life=h)
+
     async def set_relationship(
         self, group_id: str, user_id: str, relationship: str
     ) -> None:
@@ -391,13 +451,18 @@ class SQLiteBackend(StorageBackend):
             rows = (
                 self._c()
                 .execute(
-                    "SELECT user_id, favor, updated_at FROM favor "
+                    "SELECT user_id, favor, updated_at, half_life FROM favor "
                     "WHERE group_id=? ORDER BY favor DESC, updated_at ASC LIMIT ?",
                     (group_id, limit),
                 )
                 .fetchall()
             )
-        return [FavorRecord(group_id, r[0], float(r[1]), r[2]) for r in rows]
+        return [
+            FavorRecord(
+                group_id, r[0], float(r[1]), r[2], half_life=float(r[3] or 10.0)
+            )
+            for r in rows
+        ]
 
     async def list_favor(
         self, group_id: str | None = None, limit: int = 500

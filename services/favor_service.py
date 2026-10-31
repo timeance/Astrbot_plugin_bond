@@ -157,13 +157,14 @@ class FavorService:
         return rec
 
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
-        rows = await self._storage.ranking(group_id, limit)
+        # 衰减后排序可能改变候选集，必须先按有效值重排再取前 N 名。
+        rows = await self._storage.ranking(group_id, -1 if self._decay else limit)
         for r in rows:
             r.favor = self._effective(
                 r.favor, r.updated_at, getattr(r, "half_life", 10.0)
             )
         rows.sort(key=lambda r: r.favor, reverse=True)
-        return rows
+        return rows[:limit] if limit >= 0 else rows
 
     async def standings(
         self, group_id: str | None = None, limit: int = 500
@@ -492,6 +493,7 @@ class FavorService:
             max_favor=self.max_favor,
             min_favor=self.min_favor,
             decay=self._decay,
+            effective=(self._effective if self._decay is not None else None),
             default_favor=self.default_favor,
             day=self._today().isoformat(),
             reason=reason,
@@ -531,27 +533,17 @@ class FavorService:
         source: str = "admin",
         reason: str = "set",
     ) -> FavorRecord:
-        """直接设定好感度（管理员/撤销用，绕过每日限幅，硬钳到值域）。
-
-        读 before → 写 value 的序列依赖存储后端无真实挂起点（见
-        base.py 原子性契约）；换真异步后端时须与 _apply_one 一并收进事务。
-        """
-        before = await self.get(group_id, user_id)
+        """管理员直接设值：绕过每日限幅，数值与流水单事务提交。"""
         value = round1(max(self.min_favor, min(self.max_favor, float(value))))
-        rec = await self._storage.set_value(group_id, user_id, value)
-        delta = round1(value - before.favor)
-        if delta != 0:
-            await self._storage.add_log(
-                group_id,
-                user_id,
-                delta,
-                before.favor,
-                value,
-                reason,
-                source,
-                time.time(),
-            )
-        return rec
+        return await self._storage.set_value_with_log(
+            group_id,
+            user_id,
+            value,
+            reason=reason,
+            source=source,
+            default_favor=self.default_favor,
+            effective=(self._effective if self._decay is not None else None),
+        )
 
     async def undo_preview(self, log_id: int) -> dict:
         """预览撤销某条变动的结果（不写库）：返回当前好感与撤销后好感等。"""
