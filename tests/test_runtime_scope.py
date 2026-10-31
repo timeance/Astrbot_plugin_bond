@@ -135,3 +135,21 @@ def test_nonfinite_values_never_reach_storage(tmp_path, value):
         await storage.close()
 
     asyncio.run(run())
+
+
+def test_restore_invalidates_nickname_cache(tmp_path):
+    async def run():
+        router = BotScopeStorageRouter(tmp_path)
+        runtime = RuntimeService(router, Config(), factory)
+        bundle = await runtime.select("10001")
+        backup = await router.backup("10001", "per_group")
+        await bundle.favor.touch_nickname("123", "456", "测试")
+        assert await bundle.favor.standings("123")
+        await runtime.restore("10001", "per_group", backup.name)
+        assert not await bundle.favor.standings("123")
+        await bundle.favor.touch_nickname("123", "456", "测试")
+        assert (await bundle.favor.get("123", "456")).nickname == "测试"
+        assert await bundle.favor.standings("123")
+        await router.close()
+
+    asyncio.run(run())

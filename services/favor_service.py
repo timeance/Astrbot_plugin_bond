@@ -90,6 +90,10 @@ class FavorService:
 
     # ---------- 查询 ----------
 
+    def invalidate_cache(self):
+        """恢复数据库后重新核对成员是否存在及昵称。"""
+        self._nick_cache.clear()
+
     def _today(self, now: float | None = None) -> date:
         """配置时区下的"今天"（每日限幅/同日衰减的边界）。"""
         t = time.time() if now is None else now

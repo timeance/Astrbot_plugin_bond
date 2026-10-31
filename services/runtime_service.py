@@ -63,6 +63,14 @@ class RuntimeService:
                 self._config["bot_scope_modes"] = previous
                 raise
 
+    async def restore(self, bot_id, mode, backup_name):
+        bot_id, mode = account_id(bot_id), scope_mode(mode)
+        async with self._lock:
+            await self.storage.restore(bot_id, mode, backup_name)
+            bundle = self._bundles.get((bot_id, mode))
+            if bundle is not None:
+                bundle.favor.invalidate_cache()
+
     async def describe(self) -> list[dict]:
         return [
             {"bot_id": bot_id, "scope_mode": self.current_mode(bot_id)}
