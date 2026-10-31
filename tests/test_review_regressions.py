@@ -315,3 +315,33 @@ def test_deep_relationship_uses_scaled_repair_factor(backend):
         assert change.delta == round(2 * expected, 1)
 
     asyncio.run(run())
+
+
+def test_tags_preserve_configured_initial_score(backend):
+    from astrbot_plugin_bond.services.impression_service import ImpressionService
+
+    svc = service(backend, default_favor=10)
+
+    async def run():
+        assert (await svc.get("g", "u")).favor == 10
+        await ImpressionService(backend).set_tags("g", "u", ["友善"])
+        assert (await svc.get("g", "u")).favor == 10
+        await svc.set_favor("g", "u", 30)
+        await ImpressionService(backend).set_tags("g", "u", ["熟人"])
+        assert (await svc.get("g", "u")).favor == 30
+
+    asyncio.run(run())
+
+
+def test_reversed_positive_judgment_does_not_reduce_next_gain(backend):
+    from astrbot_plugin_bond.core.level_economy import EconomyConfig
+
+    svc = service(backend, economy=EconomyConfig(noise_floor=0, level_mult={}))
+
+    async def run():
+        await svc.apply_judge("g", "u", 2)
+        log = (await svc.query_logs("g", "u"))[0]
+        await svc.undo_log(log["id"])
+        assert (await svc.apply_judge("g", "u", 2)).delta == 2
+
+    asyncio.run(run())
