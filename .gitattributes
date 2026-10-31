@@ -1,0 +1,5 @@
+tests/ export-ignore
+.github/ export-ignore
+scripts/ export-ignore
+requirements-dev.txt export-ignore
+AGENTS.md export-ignore

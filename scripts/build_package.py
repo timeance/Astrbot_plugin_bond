@@ -1,0 +1,96 @@
+"""从已提交的 HEAD 构建并验证发布包；可选校验已合并的 annotated tag。"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import re
+import subprocess
+import zipfile
+from pathlib import Path, PurePosixPath
+
+from check_project import ROOT, check_project
+
+
+def git(*args: str) -> str:
+    return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True).strip()
+
+
+def validate_tag(tag: str, version: str) -> None:
+    if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?", tag):
+        raise ValueError("tag 格式须为 v主版本.次版本.修订版，可附预发布后缀")
+    if tag != f"v{version}":
+        raise ValueError("tag 与插件版本不一致")
+    ref = f"refs/tags/{tag}"
+    if git("cat-file", "-t", ref) != "tag":
+        raise ValueError("发布须使用带说明的 annotated tag")
+    if git("rev-parse", f"{ref}^{{commit}}") != git("rev-parse", "HEAD"):
+        raise ValueError("tag 与当前检查的代码不一致")
+    subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", "HEAD", "origin/main"],
+        check=True,
+    )
+
+
+def validate_archive(archive: Path) -> None:
+    with zipfile.ZipFile(archive) as package:
+        if package.testzip() is not None:
+            raise ValueError("ZIP 校验失败")
+        names = set(package.namelist())
+        required = {
+            "LICENSE",
+            "NOTICE",
+            "README.md",
+            "metadata.yaml",
+            "main.py",
+            "_conf_schema.json",
+            "pages/dashboard/index.html",
+            "resources/prompts/judge_prompt.txt",
+            "resources/prompts/inject_template.txt",
+        }
+        missing = required - names
+        if missing:
+            raise ValueError(f"发布包缺少文件: {sorted(missing)}")
+        for name in names:
+            path = PurePosixPath(name)
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError(f"不安全归档路径: {name}")
+            if any(
+                part
+                in {
+                    "tests",
+                    ".github",
+                    "scripts",
+                    "data",
+                    "__pycache__",
+                    ".pytest_cache",
+                }
+                for part in path.parts
+            ) or re.search(r"\.(db|sqlite|sqlite3)(-wal|-shm)?$|\.pyc$|\.log$", name):
+                raise ValueError(f"发布包混入开发或运行数据: {name}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--tag")
+    args = parser.parse_args()
+    version = check_project()
+    if args.tag:
+        validate_tag(args.tag, version)
+    output = args.output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "-C", str(ROOT), "archive", "--format=zip", "-o", str(output), "HEAD"],
+        check=True,
+    )
+    validate_archive(output)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    output.with_suffix(output.suffix + ".sha256").write_text(
+        f"{digest}  {output.name}\n", encoding="utf-8"
+    )
+    print(f"PASS 发布包与源码许可文件: {output.name}, sha256={digest}")
+
+
+if __name__ == "__main__":
+    main()
