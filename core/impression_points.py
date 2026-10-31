@@ -57,11 +57,12 @@ def merge_points(
             None,
         )
         if hit is not None:
+            hit["ts"] = max(float(hit.get("ts") or 0), float(p.get("ts") or 0))
             hit["weight"] = max(1, min(99, int(hit.get("weight") or 1) + weight))
             if len(text) > len(str(hit.get("point") or "")):
                 hit["point"] = text
         else:
-            out.append({"point": text, "weight": weight})
+            out.append({"point": text, "weight": weight, "ts": float(p.get("ts") or 0)})
     return out
 
 

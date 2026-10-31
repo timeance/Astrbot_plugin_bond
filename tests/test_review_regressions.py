@@ -240,3 +240,40 @@ def test_impression_commit_rejects_concurrent_undo_and_retries(backend):
         )
 
     asyncio.run(run())
+
+
+def test_new_and_merged_impression_points_keep_latest_timestamp():
+    from astrbot_plugin_bond.core.impression_points import merge_points
+
+    assert merge_points([], [dict(point="同一事实", weight=2, ts=100)])[0]["ts"] == 100
+    merged = merge_points(
+        [dict(point="同一事实", weight=2, ts=100)],
+        [dict(point="同一事实", weight=2, ts=200)],
+    )
+    assert merged[0]["ts"] == 200 and merged[0]["weight"] == 4
+    assert (
+        merge_points(merged, [dict(point="同一事实", weight=1, ts=50)])[0]["ts"] == 200
+    )
+
+
+def test_exhausted_allowance_returns_effective_score_without_writes(
+    backend, monkeypatch
+):
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now)
+    svc = service(backend, decay_enabled=True)
+    asyncio.run(backend.set_value("g", "u", 80))
+    backend._c().execute("UPDATE favor SET updated_at=?", (now - 10 * 86400,))
+    backend._c().commit()
+    asyncio.run(backend.add_daily_gain("g", "u", svc._today().isoformat(), 100))
+    before = asyncio.run(svc.get("g", "u"))
+    stored = backend._c().execute("SELECT favor,updated_at FROM favor").fetchone()
+    result = asyncio.run(svc.change("g", "u", 1))
+    assert (
+        result.delta == 0
+        and result.favor_after == result.favor_before == before.favor == 40
+    )
+    assert (
+        backend._c().execute("SELECT favor,updated_at FROM favor").fetchone() == stored
+    )
+    assert asyncio.run(svc.query_logs("g", "u")) == []
