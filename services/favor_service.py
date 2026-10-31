@@ -191,8 +191,16 @@ class FavorService:
         )
 
     async def relation_title(self, group_id, user_id):
+        from ..core.relation_policy import RelationState
+
+        rec = await self.get(group_id, user_id)
+        # 旧标量范围可超出新维度边界；只在称谓分类时饱和，不改原始数值。
         return self._relation_resolver.resolve(
-            await self.get_relation(group_id, user_id)
+            RelationState(
+                familiarity=rec.familiarity,
+                affinity=max(-100, min(100, rec.favor)),
+                trust=rec.trust,
+            )
         )
 
     @staticmethod
@@ -237,7 +245,9 @@ class FavorService:
                 self._economy,
                 repair=await self._repair_window(group_id, user_id),
             )
-            deltas = dict(deltas, affinity=eco.delta)
+            deltas = self._relation_policy.limit_deltas(
+                event_type, dict(deltas, affinity=eco.delta)
+            )
         return await self._storage.apply_relation_change(
             self.group_key(group_id),
             user_id,
@@ -718,7 +728,7 @@ class FavorService:
             raise ValueError("该变动已撤销")
         group_id, user_id = log["group_id"], log["user_id"]
         cur = (await self.get(group_id, user_id)).favor
-        state = await self.get_relation(group_id, user_id)
+        state = await self.get(group_id, user_id)
         vector = log.get("relation_delta") or {}
         relation_after = dict(
             familiarity=round1(

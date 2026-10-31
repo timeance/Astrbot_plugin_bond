@@ -163,3 +163,34 @@ def test_invalid_admin_relation_leaves_no_rows(tmp_path, value):
         await db.close()
 
     asyncio.run(run())
+
+
+def test_legacy_extended_range_keeps_preview_and_title_readable(tmp_path):
+    async def run():
+        db = SQLiteBackend(tmp_path / "x.db")
+        await db.init()
+        service = svc(db, max_favor=200)
+        await service.set_favor("g", "u", 150)
+        log = (await service.query_logs("g", "u"))[0]
+        assert (await service.get("g", "u")).favor == 150
+        assert await service.relation_title("g", "u")
+        assert (await service.undo_preview(log["id"]))["after"] == 0
+        assert (await db.get("g", "u")).favor == 150
+        await db.close()
+
+    asyncio.run(run())
+
+
+def test_economy_cannot_exceed_single_event_cap(tmp_path):
+    from astrbot_plugin_bond.core.level_economy import EconomyConfig
+
+    async def run():
+        db = SQLiteBackend(tmp_path / "x.db")
+        await db.init()
+        result = await svc(db, economy=EconomyConfig()).apply_relation_event(
+            "g", "u", "insult", intensity=10, event_id="insult"
+        )
+        assert result["delta"]["affinity"] == -2
+        await db.close()
+
+    asyncio.run(run())

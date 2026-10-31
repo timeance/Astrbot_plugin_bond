@@ -165,6 +165,19 @@ class RelationPolicy:
                     dimension: cap for dimension in RELATION_DIMENSIONS
                 }
 
+    def limit_deltas(self, event_type, deltas):
+        """经济规则调整后再次执行同一单事件上限。"""
+        event = _event_name(event_type)
+        return {
+            key: round1(
+                max(
+                    -self._event_caps[event][key],
+                    min(self._event_caps[event][key], _number(deltas[key], key)),
+                )
+            )
+            for key in RELATION_DIMENSIONS
+        }
+
     def deltas(self, event_type: str, intensity: float = 1) -> dict[str, float]:
         """返回事件的三维增量；不接受用户指定总分。"""
         event = _event_name(event_type)
