@@ -194,3 +194,29 @@ def test_economy_cannot_exceed_single_event_cap(tmp_path):
         await db.close()
 
     asyncio.run(run())
+
+
+def test_three_dimensional_events_preserve_out_of_range_legacy_score(tmp_path):
+    async def run():
+        db = SQLiteBackend(tmp_path / "x.db")
+        await db.init()
+        service = svc(db, max_favor=200)
+        await service.set_favor("g", "u", 150)
+        with pytest.raises(ValueError, match="历史亲近度"):
+            await service.apply_relation_event("g", "u", "thanks", event_id="new")
+        assert (await db.get("g", "u")).favor == 150
+        await db.close()
+
+    asyncio.run(run())
+
+
+def test_three_dimensional_new_member_uses_configured_half_life(tmp_path):
+    async def run():
+        db = SQLiteBackend(tmp_path / "x.db")
+        await db.init()
+        service = svc(db, decay_enabled=True, half_life_base=5)
+        await service.apply_relation_event("g", "u", "thanks", event_id="new")
+        assert (await db.get("g", "u")).half_life == 6.5
+        await db.close()
+
+    asyncio.run(run())

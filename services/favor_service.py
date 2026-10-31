@@ -238,13 +238,15 @@ class FavorService:
         deltas = self._relation_policy.deltas(event_type, intensity)
         # 沿用上游经济规则，仅作用于亲近度；另两维独立限幅。
         if self._economy is not None and deltas["affinity"]:
+            repair_factor = await self._repair_factor(group_id, user_id)
             rec = await self.get(group_id, user_id)
             eco = apply_economy(
                 deltas["affinity"],
                 self.level_of(rec.favor).name,
                 await self._positive_judge_today(group_id, user_id),
                 self._economy,
-                repair=await self._repair_window(group_id, user_id),
+                repair=repair_factor is not None,
+                repair_factor=repair_factor,
             )
             deltas = self._relation_policy.limit_deltas(
                 event_type, dict(deltas, affinity=eco.delta)

@@ -467,9 +467,15 @@ class SQLiteBackend(StorageBackend):
                     "SELECT favor,updated_at,half_life,familiarity,trust FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 ).fetchone()
-                stored, ts, h, f, t = row if row else (default_favor, 0, 10, 0, 0)
+                stored, ts, h, f, t = (
+                    row if row else (default_favor, 0, self._initial_half_life, 0, 0)
+                )
                 a = effective(stored, ts, h) if effective else round1(stored)
                 before = dict(familiarity=float(f), affinity=a, trust=float(t))
+                if values is None and not -100 <= a <= 100:
+                    raise ValueError(
+                        "历史亲近度超出三维范围，须由管理员确认调整后再启用事件评估"
+                    )
                 duplicate = conn.execute(
                     "SELECT 1 FROM favor_log WHERE group_id=? AND user_id=? AND event_id=?",
                     (group_id, user_id, event_id),
