@@ -33,6 +33,8 @@ async def tool_query_ranking(
 ) -> str:
     """查询本群好感度排行。"""
     group_id = event.get_group_id()
+    if not group_id:
+        return "请在群聊中查询本群排行。"
     rows = await svc.ranking(group_id, limit)
     if not rows:
         return "本群还没有好感度记录。"

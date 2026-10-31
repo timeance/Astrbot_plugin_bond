@@ -345,3 +345,30 @@ def test_reversed_positive_judgment_does_not_reduce_next_gain(backend):
         assert (await svc.apply_judge("g", "u", 2)).delta == 2
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("group_id", ["", None])
+def test_private_ranking_never_queries_group_data(monkeypatch, group_id):
+    from types import ModuleType, SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    event_module = ModuleType("astrbot.api.event")
+    event_module.AstrMessageEvent = object
+    monkeypatch.setitem(sys.modules, "astrbot.api.event", event_module)
+    from astrbot_plugin_bond.api import commands, llm_tools
+
+    svc = SimpleNamespace(standings=AsyncMock(), ranking=AsyncMock())
+    event = SimpleNamespace(get_group_id=lambda: group_id)
+
+    async def run():
+        assert await commands.rank_reply(svc, event) == (
+            "text",
+            "请在群聊中查询本群排行。",
+        )
+        assert (
+            await llm_tools.tool_query_ranking(svc, event) == "请在群聊中查询本群排行。"
+        )
+        svc.standings.assert_not_awaited()
+        svc.ranking.assert_not_awaited()
+
+    asyncio.run(run())
