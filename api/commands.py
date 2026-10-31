@@ -134,6 +134,8 @@ async def rank_reply(
     """排行回复统一入口：优先图片（需 Pillow），未安装时降级文字排行。
 
     返回 ("image", 图片路径) 或 ("text", 文本正文)。"""
+    if not event.get_group_id():
+        return "text", "请在群聊中查询本群排行。"
     try:
         from . import rank_image  # noqa: F401  探测 Pillow 可用性
     except ImportError:

@@ -238,6 +238,7 @@ createApp({
         }
         groups.value = (groupData && groupData.groups) || [];
         users.value = (userData && userData.users) || [];
+        if (tab.value === "logs") await fetchLogs();
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) {
           errorMsg.value = String(e);
