@@ -199,6 +199,24 @@ class StorageBackend(ABC):
         """写入成员印象与标签（不改好感数值）。tags 为展示顺序已定的标签列表。"""
 
     @abstractmethod
+    async def impression_logs(
+        self, group_id: str, user_id: str, limit: int
+    ) -> list[dict]:
+        """读取尚未成功汇总、且未撤销的评审。"""
+
+    @abstractmethod
+    async def commit_impression(
+        self,
+        group_id: str,
+        user_id: str,
+        impression: str,
+        tags: list[str],
+        log_ids: list[int],
+        points=None,
+    ) -> bool:
+        """校验证据仍有效，原子保存档案和处理进度；证据失效时不写入。"""
+
+    @abstractmethod
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
         """群内存量好感度排行（降序）；limit=-1 返回全部供有效值重排。"""
 

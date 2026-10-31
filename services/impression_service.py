@@ -39,6 +39,8 @@ class ImpressionService:
         self._timeout_sec = max(0.0, float(timeout_sec))
         # X10：后台任务经 TaskRegistry 发起（无注册表时本地集合兜底）
         self._registry = registry
+        self._pending = set()
+        self._tasks = set()
 
     async def _call_llm(self, provider, prompt: str):
         """带超时的 text_chat（X3）；超时抛 TimeoutError 由调用方降级。"""
@@ -55,23 +57,37 @@ class ImpressionService:
         """每次有效评审后调用：每 interval 次触发一次后台印象刷新（不阻塞、失败静默）。
 
         umo: 会话标识（用于解析当前人格名）；后台任务持引用防 GC。
-        触发条件＝最近 interval 条流水全部是评审行（拿流水当计数器，免加
-        计数列）；中间插进的管理员操作会顺延一次刷新，可接受。
+        仅累计上次成功汇总之后的有效评审；同一成员最多运行一个汇总任务。
         """
-        if self._summarizer is None or self._interval <= 0:
+        if self._summarizer is None:
             return
+        key = (group_id, user_id)
+        if key in self._pending:
+            return
+        self._pending.add(key)
         try:
-            logs = await self._storage.query_logs(
-                group_id, user_id, limit=self._interval
+            logs = await self._storage.impression_logs(
+                group_id, user_id, self._interval
             )
-            hit = sum(1 for r in logs if r.get("source") == "judge")
-            if hit and hit % self._interval == 0:
-                coro = self._refresh_inner(group_id, user_id, umo)
-                if self._registry is not None:
-                    self._registry.spawn(coro, name=f"impression:{group_id}/{user_id}")
-                else:
-                    task = asyncio.create_task(coro)  # 测试兜底：本例无后续引用需求
+            if len(logs) < self._interval:
+                self._pending.discard(key)
+                return
+
+            async def run():
+                try:
+                    await self._refresh_inner(group_id, user_id, umo)
+                finally:
+                    self._pending.discard(key)
+
+            coro = run()
+            if self._registry is not None:
+                self._registry.spawn(coro, name=f"impression:{group_id}/{user_id}")
+            else:
+                task = asyncio.create_task(coro)
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
         except Exception as e:
+            self._pending.discard(key)
             # 印象是增值功能，任何失败都不影响主链路——但触发调度失败
             # 连 spawn 都没发生，运维必须可见（2026-09-11 审查：原为纯 pass）
             from astrbot.api import logger as _logger
@@ -84,7 +100,14 @@ class ImpressionService:
         """立即刷新印象（指令/WebUI 手动触发），返回 (是否成功, 一句话结果)。"""
         if self._summarizer is None:
             return False, "印象功能未启用"
-        return await self._refresh_inner(group_id, user_id, umo)
+        key = (group_id, user_id)
+        if key in self._pending:
+            return False, "印象正在刷新，请稍后再试"
+        self._pending.add(key)
+        try:
+            return await self._refresh_inner(group_id, user_id, umo)
+        finally:
+            self._pending.discard(key)
 
     async def _refresh_inner(
         self, group_id: str, user_id: str, umo: str = ""
@@ -96,8 +119,10 @@ class ImpressionService:
             rec = await self._storage.get(group_id, user_id)
             nickname = (rec.nickname if rec else "") or user_id
             old_impression = (rec.impression if rec else "") or ""
-            logs = await self._storage.query_logs(group_id, user_id, limit=20)
-            judged = [r for r in logs if r.get("source") == "judge"]
+            logs = await self._storage.impression_logs(group_id, user_id, 20)
+            judged = [
+                r for r in logs if r.get("source") == "judge" and not r.get("reversed")
+            ]
             if not judged:
                 return False, "暂无评估记录，无法生成印象"
             samples = [
@@ -134,7 +159,10 @@ class ImpressionService:
             # LLM 标签优先，确定性统计标签补充（去重、上限内）
             extra = [t for t in stats_tags(logs) if t not in llm_tags]
             tags = (llm_tags + extra)[:3]
-            await self._storage.set_impression(group_id, user_id, impression, tags)
+            if not await self._storage.commit_impression(
+                group_id, user_id, impression, tags, [r["id"] for r in judged]
+            ):
+                return False, "评审已撤销，保留原印象"
             logger.info(f"[心弦] {group_id}/{user_id} 印象已刷新: {impression}")
             msg = f"已生成印象：{impression}" + (
                 f"（标签：{'、'.join(tags)}）" if tags else ""
@@ -221,9 +249,10 @@ class ImpressionService:
                 impression = (prefix + impression + tail)[:200]
             # 原子档案更新：点集/印象/标签一次写入（失败即整体不生效，可安全重试）
             old_tags = rec.parsed_tags() if rec else []
-            await self._storage.set_profile(
-                group_id, user_id, impression, old_tags, kept
-            )
+            if not await self._storage.commit_impression(
+                group_id, user_id, impression, old_tags, [r["id"] for r in judged], kept
+            ):
+                return False, "评审已撤销，保留原印象"
             logger.info(
                 f"[心弦] {group_id}/{user_id} 印象点已刷新: "
                 f"{len(kept)} 点（挤出 {len(dropped)}）"

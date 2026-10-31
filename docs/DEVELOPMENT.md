@@ -2,7 +2,7 @@
 
 ## 本地检查
 
-使用 Python 3.12，仓库目录命名为 `astrbot_plugin_bond`。离线测试只使用框架日志桩，不需要安装 AstrBot 或调用模型。
+使用 Python 3.12，Windows 请设置 `PYTHONUTF8=1`。仓库目录命名为 `astrbot_plugin_bond`。离线测试只使用框架日志桩，不需要安装 AstrBot 或调用模型。
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -47,3 +47,7 @@ python scripts/smoke_astrbot.py
 发布仅接受 main 历史中的提交，tag 版本须与两个元数据入口一致。工作流先完成检查，再生成归档、校验文件及 SHA-256 校验和，最后创建 GitHub Release。普通 PR 和分支推送只做验证，不发版。
 
 首次启用工作流后，应以远程 Actions 结果为准。本地检查通过不等于 GitHub 托管运行已成功；CodeQL 也不能替代人工审查和运行时安全测试。
+
+## 印象汇总进度
+
+Schema 11 将成功汇总的流水 ID 保存在本地，并与印象、标签和点集原子提交。失败不推进进度；提交前再次检查评审是否被撤销。版本 10 保留 PR-1 已使用的群成员索引结构，避免同一版本号出现两种数据库结构。升级与回滚前均须备份整个数据目录。

@@ -556,7 +556,9 @@ class FavorService:
         cur = (await self.get(group_id, user_id)).favor
         return {
             "current": cur,
-            "after": round1(cur - float(log["delta"])),
+            "after": round1(
+                max(self.min_favor, min(self.max_favor, cur - float(log["delta"])))
+            ),
             "delta": float(log["delta"]),
             "reason": log.get("reason") or "",
             "message": log.get("message") or "",

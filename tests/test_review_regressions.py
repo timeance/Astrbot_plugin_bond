@@ -138,3 +138,105 @@ def test_standings_applies_limit_after_effective_sort(
     result = asyncio.run(svc.standings("group", limit=1))
     assert len(result) == 1 and result[0]["user_id"] == "older_high"
     assert result[0]["favor"] == asyncio.run(svc.get("group", "older_high")).favor
+
+
+@pytest.mark.parametrize("delta,current,expected", [(-10, 99, 100), (10, -99, -100)])
+def test_undo_preview_matches_clamped_result(backend, delta, current, expected):
+    svc = service(backend)
+    asyncio.run(svc.change("g", "u", delta))
+    log = asyncio.run(backend.query_logs("g", "u"))[0]
+    asyncio.run(svc.set_favor("g", "u", current))
+    assert asyncio.run(svc.undo_preview(log["id"]))["after"] == expected
+    assert asyncio.run(svc.undo_log(log["id"])).favor == expected
+
+
+def test_impression_counts_new_evaluations_and_survives_restart(backend):
+    from types import SimpleNamespace
+    from astrbot_plugin_bond.services.impression_service import ImpressionService
+
+    class Judge:
+        calls = 0
+
+        async def resolve_display_name(self, umo):
+            return "测试"
+
+        async def resolve_summary_provider(self):
+            return self
+
+        async def text_chat(self, **kw):
+            self.calls += 1
+            return SimpleNamespace(completion_text="印象:测试印象\n标签:无")
+
+    async def run():
+        judge = Judge()
+        svc = ImpressionService(backend, summarizer=judge, interval=8)
+        for i in range(16):
+            await backend.add_log("g", "u", 1, 0, 1, "理由", "judge", i, message="样本")
+            await svc.maybe_refresh("g", "u")
+            if svc._tasks:
+                await asyncio.gather(*svc._tasks)
+            if i == 7:
+                svc = ImpressionService(backend, summarizer=judge, interval=8)
+        assert judge.calls == 2
+        assert await backend.impression_logs("g", "u", 20) == []
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("points_mode", [False, True])
+def test_reversed_impression_evidence_never_reaches_model(backend, points_mode):
+    from types import SimpleNamespace
+    from astrbot_plugin_bond.services.impression_service import ImpressionService
+    from astrbot_plugin_bond.core.impression import stats_tags
+
+    class Judge:
+        async def resolve_display_name(self, umo):
+            return "测试"
+
+        async def resolve_summary_provider(self):
+            return self
+
+        async def text_chat(self, prompt):
+            assert "已撤销内容" not in prompt
+            assert "有效内容" in prompt
+            return SimpleNamespace(
+                completion_text=(
+                    '[{"point":"友善","weight":3}]'
+                    if points_mode
+                    else "印象:友善\n标签:无"
+                )
+            )
+
+    async def run():
+        await backend.add_log(
+            "g", "u", 1, 0, 1, "理由", "judge", 1, message="已撤销内容"
+        )
+        row = (await backend.query_logs("g", "u"))[0]
+        await service(backend).undo_log(row["id"])
+        await backend.add_log("g", "u", 1, 0, 1, "理由", "judge", 2, message="有效内容")
+        ok, _ = await ImpressionService(
+            backend, summarizer=Judge(), points_mode=points_mode
+        ).refresh_now("g", "u")
+        assert ok
+        assert stats_tags([dict(source="judge", delta=-1, reversed=1)] * 10) == []
+
+    asyncio.run(run())
+
+
+def test_impression_commit_rejects_concurrent_undo_and_retries(backend):
+    async def run():
+        await backend.add_log("g", "u", 1, 0, 1, "r", "judge", 1)
+        row = (await backend.impression_logs("g", "u", 20))[0]
+        await service(backend).undo_log(row["id"])
+        assert not await backend.commit_impression(
+            "g", "u", "错误印象", [], [row["id"]]
+        )
+        assert (await backend.get("g", "u")).impression == ""
+        assert (
+            backend._c()
+            .execute("SELECT COUNT(*) FROM impression_progress")
+            .fetchone()[0]
+            == 0
+        )
+
+    asyncio.run(run())
