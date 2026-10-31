@@ -71,6 +71,7 @@ class FavorService:
         self._decay = (
             (base, growth, h_max, float(decay_baseline)) if decay_enabled else None
         )
+        self._storage.configure_initial_half_life(base if decay_enabled else 10.0)
         self._relationships = relationships
         self._economy = economy
         self._nick_cache: dict[tuple[str, str], str] = {}
@@ -398,9 +399,14 @@ class FavorService:
             rec0 = await self.get(group_id, user_id)
             level_name = self.level_of(rec0.favor).name
             pos_today = await self._positive_judge_today(group_id, user_id)
-            repair = await self._repair_window(group_id, user_id)
+            repair_factor = await self._repair_factor(group_id, user_id)
             eco = apply_economy(
-                delta, level_name, pos_today, self._economy, repair=repair
+                delta,
+                level_name,
+                pos_today,
+                self._economy,
+                repair=repair_factor is not None,
+                repair_factor=repair_factor,
             )
             if eco.delta == 0:
                 return FavorChange(
@@ -440,7 +446,7 @@ class FavorService:
         except Exception:
             return 0
 
-    async def _repair_window(self, group_id: str, user_id: str) -> bool:
+    async def _repair_factor(self, group_id: str, user_id: str) -> float | None:
         """是否处于信任修复期（等级调制版）。
 
         重大得罪（≤ -repair_threshold、未撤销）按**冒犯时的等级**决定修复
@@ -450,7 +456,7 @@ class FavorService:
         group_id = self.group_key(group_id)
         eco = self._economy
         if eco is None or eco.repair_threshold <= 0 or eco.repair_hours <= 0:
-            return False
+            return None
         try:
             now = time.time()
             logs = await self._storage.query_logs(group_id, user_id, limit=50)
@@ -463,12 +469,15 @@ class FavorService:
                     # 冒犯时的等级（用流水里的 before 值反查，无 schema 变化）
                     before = float(r.get("favor_before") or 0)
                     lvl = self.level_of(before).name
-                    hours, _f = repair_params_for_level(lvl, eco)
+                    hours, factor = repair_params_for_level(lvl, eco)
                     if float(r.get("ts") or 0) >= now - hours * 3600:
-                        return True
-            return False
+                        return factor
+            return None
         except Exception:
-            return False
+            return None
+
+    async def _repair_window(self, group_id: str, user_id: str) -> bool:
+        return await self._repair_factor(group_id, user_id) is not None
 
     async def change(
         self,

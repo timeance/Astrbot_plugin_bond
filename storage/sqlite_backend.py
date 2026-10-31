@@ -32,6 +32,10 @@ class SQLiteBackend(StorageBackend):
         self._db_path = Path(db_path)
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
+        self._initial_half_life = 10.0
+
+    def configure_initial_half_life(self, value):
+        self._initial_half_life = float(value)
 
     async def init(self) -> None:
         with self._lock:
@@ -236,7 +240,11 @@ class SQLiteBackend(StorageBackend):
             )
         else:
             # 无记录以 default_favor 为基数（updated_at=0 表示从未互动，不吃衰减）
-            current, last_ts, half_life = float(default_favor or 0.0), 0.0, 10.0
+            current, last_ts, half_life = (
+                float(default_favor or 0.0),
+                0.0,
+                self._initial_half_life,
+            )
         # 时间衰减（指数遗忘曲线）：落库前先把存量衰减到当下（锁定），再叠加本次增减
         if decay:
             base, growth, h_max, baseline = decay
@@ -451,10 +459,10 @@ class SQLiteBackend(StorageBackend):
         if touch:
             update_sql += ", updated_at=excluded.updated_at"
         self._c().execute(
-            f"INSERT INTO favor(group_id, user_id, updated_at, {col_sql}) "
-            f"VALUES(?,?,?,{ph}) "
+            f"INSERT INTO favor(group_id, user_id, updated_at, half_life, {col_sql}) "
+            f"VALUES(?,?,?,?,{ph}) "
             f"ON CONFLICT(group_id, user_id) DO UPDATE SET {update_sql}",
-            (group_id, user_id, now, *cols.values()),
+            (group_id, user_id, now, self._initial_half_life, *cols.values()),
         )
         self._c().commit()
 
@@ -489,13 +497,17 @@ class SQLiteBackend(StorageBackend):
                 if row:
                     stored, ts, h = float(row[0]), row[1], float(row[2] or 10.0)
                 else:
-                    stored, ts, h = float(default_favor or 0.0), 0.0, 10.0
+                    stored, ts, h = (
+                        float(default_favor or 0.0),
+                        0.0,
+                        self._initial_half_life,
+                    )
                 before = effective(stored, ts, h) if effective else round1(stored)
                 conn.execute(
-                    "INSERT INTO favor(group_id, user_id, favor, updated_at) VALUES(?,?,?,?) "
+                    "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
                     "ON CONFLICT(group_id, user_id) DO UPDATE SET "
                     "favor=excluded.favor, updated_at=excluded.updated_at",
-                    (group_id, user_id, value, now),
+                    (group_id, user_id, value, now, h),
                 )
                 delta = round1(value - before)
                 if delta != 0:
@@ -642,8 +654,8 @@ class SQLiteBackend(StorageBackend):
                         return False
                 now = time.time()
                 conn.execute(
-                    "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points) "
-                    "VALUES(?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
+                    "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points,half_life) "
+                    "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
                     "impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,"
                     "points=COALESCE(?,favor.points)",
                     (
@@ -658,6 +670,7 @@ class SQLiteBackend(StorageBackend):
                             if points is not None
                             else "[]"
                         ),
+                        self._initial_half_life,
                         (
                             json.dumps(points, ensure_ascii=False)
                             if points is not None
@@ -1084,15 +1097,19 @@ class SQLiteBackend(StorageBackend):
                 if frow:
                     stored, ts, h = float(frow[0]), frow[1], float(frow[2] or 10.0)
                 else:
-                    stored, ts, h = float(default_favor or 0.0), 0.0, 10.0
+                    stored, ts, h = (
+                        float(default_favor or 0.0),
+                        0.0,
+                        self._initial_half_life,
+                    )
                 cur = effective(stored, ts, h) if effective else round1(stored)
                 target = round1(max(min_favor, min(max_favor, round1(cur - delta))))
                 real = round1(target - cur)
                 conn.execute(
-                    "INSERT INTO favor(group_id, user_id, favor, updated_at) VALUES(?,?,?,?) "
+                    "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
                     "ON CONFLICT(group_id, user_id) DO UPDATE SET "
                     "favor=excluded.favor, updated_at=excluded.updated_at",
-                    (group_id, user_id, target, now),
+                    (group_id, user_id, target, now, h),
                 )
                 if real != 0:
                     conn.execute(
