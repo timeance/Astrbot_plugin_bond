@@ -39,7 +39,7 @@ class StorageBackend(ABC):
     """好感度存储后端接口。"""
 
     @abstractmethod
-    def configure_initial_half_life(self, value: float) -> None:
+    def configure_initial_values(self, value: float, default_favor: float = 0) -> None:
         """指定新成员的半衰期，不修改现有成员。"""
 
     @abstractmethod
