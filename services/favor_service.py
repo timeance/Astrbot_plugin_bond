@@ -47,7 +47,28 @@ class FavorService:
         tz_name: str = "",
         decay_floor_enabled: bool = False,
         scope_mode: str = "per_group",
+        relation_policy=None,
+        relation_resolver=None,
+        relation_caps=None,
     ) -> None:
+        from ..core.relation_policy import RelationPolicy, RelationResolver
+
+        self._relation_policy = relation_policy or RelationPolicy()
+        self._relation_resolver = relation_resolver or RelationResolver()
+        self._relation_caps = relation_caps or dict(
+            familiarity=(2, 0), affinity=(3, 6), trust=(1, 4)
+        )
+        if set(self._relation_caps) != {"familiarity", "affinity", "trust"}:
+            raise ValueError("三维每日限幅配置不完整")
+        for pair in self._relation_caps.values():
+            if len(pair) != 2 or any(
+                isinstance(x, bool)
+                or not isinstance(x, (int, float))
+                or not math.isfinite(x)
+                or x < 0
+                for x in pair
+            ):
+                raise ValueError("每日限幅必须是有限非负数")
         self._storage = storage
         self.scope_mode = validate_scope(scope_mode)
         self._levels = levels
@@ -160,6 +181,110 @@ class FavorService:
         else:
             rec.favor = self._effective(rec.favor, rec.updated_at, rec.half_life)
         return rec
+
+    async def get_relation(self, group_id, user_id):
+        from ..core.relation_policy import RelationState
+
+        rec = await self.get(group_id, user_id)
+        return RelationState(
+            familiarity=rec.familiarity, affinity=rec.favor, trust=rec.trust
+        )
+
+    async def relation_title(self, group_id, user_id):
+        return self._relation_resolver.resolve(
+            await self.get_relation(group_id, user_id)
+        )
+
+    @staticmethod
+    def _validate_event_id(event_id):
+        if (
+            not isinstance(event_id, str)
+            or not event_id
+            or len(event_id) > 200
+            or any(ord(c) < 32 for c in event_id)
+        ):
+            raise ValueError("需要可信事件的稳定 ID")
+
+    async def apply_relation_event(
+        self,
+        group_id,
+        user_id,
+        event_type,
+        *,
+        event_id,
+        intensity=1,
+        reason="关系事件",
+        message="",
+        cooldown_sec=120,
+    ):
+        """供可信评估服务调用；身份与事件分类在平台边界核验后传入。"""
+        self._validate_event_id(event_id)
+        if (
+            isinstance(cooldown_sec, bool)
+            or not isinstance(cooldown_sec, (int, float))
+            or not math.isfinite(cooldown_sec)
+            or cooldown_sec < 0
+        ):
+            raise ValueError("冷却时间无效")
+        deltas = self._relation_policy.deltas(event_type, intensity)
+        # 沿用上游经济规则，仅作用于亲近度；另两维独立限幅。
+        if self._economy is not None and deltas["affinity"]:
+            rec = await self.get(group_id, user_id)
+            eco = apply_economy(
+                deltas["affinity"],
+                self.level_of(rec.favor).name,
+                await self._positive_judge_today(group_id, user_id),
+                self._economy,
+                repair=await self._repair_window(group_id, user_id),
+            )
+            deltas = dict(deltas, affinity=eco.delta)
+        return await self._storage.apply_relation_change(
+            self.group_key(group_id),
+            user_id,
+            deltas,
+            event_id=event_id,
+            day=self._today().isoformat(),
+            caps=self._relation_caps,
+            cooldown_sec=cooldown_sec,
+            reason=reason,
+            message=message,
+            effective=self._effective,
+            decay=self._decay,
+            default_favor=self.default_favor,
+        )
+
+    async def set_relation(
+        self,
+        group_id,
+        user_id,
+        *,
+        familiarity,
+        affinity,
+        trust,
+        event_id,
+        reason="管理员调整",
+    ):
+        """管理入口须先执行宿主权限检查；本服务校验数值并保留审计流水。"""
+        from dataclasses import asdict
+        from ..core.relation_policy import RelationState
+
+        self._validate_event_id(event_id)
+        values = asdict(
+            RelationState(familiarity=familiarity, affinity=affinity, trust=trust)
+        )
+        return await self._storage.apply_relation_change(
+            self.group_key(group_id),
+            user_id,
+            dict.fromkeys(values, 0),
+            event_id=event_id,
+            day=self._today().isoformat(),
+            caps=self._relation_caps,
+            source="admin",
+            reason=reason,
+            values=values,
+            effective=self._effective,
+            default_favor=self.default_favor,
+        )
 
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
         # 衰减后排序可能改变候选集，必须先按有效值重排再取前 N 名。
@@ -593,7 +718,19 @@ class FavorService:
             raise ValueError("该变动已撤销")
         group_id, user_id = log["group_id"], log["user_id"]
         cur = (await self.get(group_id, user_id)).favor
+        state = await self.get_relation(group_id, user_id)
+        vector = log.get("relation_delta") or {}
+        relation_after = dict(
+            familiarity=round1(
+                max(0, min(100, state.familiarity - vector.get("familiarity", 0)))
+            ),
+            affinity=round1(
+                max(self.min_favor, min(self.max_favor, cur - float(log["delta"])))
+            ),
+            trust=round1(max(-100, min(100, state.trust - vector.get("trust", 0)))),
+        )
         return {
+            "relation_after": relation_after,
             "current": cur,
             "after": round1(
                 max(self.min_favor, min(self.max_favor, cur - float(log["delta"])))

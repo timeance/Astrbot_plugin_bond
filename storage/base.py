@@ -146,6 +146,10 @@ class StorageBackend(ABC):
         return rec, real, allowed, capped
 
     @abstractmethod
+    async def apply_relation_change(self, group_id, user_id, deltas, **options):
+        """三维变动、限幅、去重、冷却及流水在同一事务内提交。"""
+
+    @abstractmethod
     async def set_value(self, group_id: str, user_id: str, value: float) -> FavorRecord:
         """直接设定好感度数值（精度一位小数）。"""
 

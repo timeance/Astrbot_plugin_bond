@@ -969,14 +969,12 @@ CREATE TABLE cooldown(group_id TEXT,user_id TEXT,key TEXT,last_ts REAL,
         import sqlite3
 
         conn = sqlite3.connect(str(tmp_path / "old.db"))
+        from astrbot_plugin_bond.storage.migrations import MIGRATIONS
+
+        for version in range(1, 7):
+            for statement in MIGRATIONS[version]:
+                conn.execute(statement)
         conn.execute("PRAGMA user_version(6)")
-        # 构造 v6 结构的最小表（仅 favor）——真实库由 v1..v6 迁移生成
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS favor ("
-            "group_id TEXT NOT NULL, user_id TEXT NOT NULL, favor REAL NOT NULL DEFAULT 0,"
-            "updated_at REAL NOT NULL, relationship TEXT NOT NULL DEFAULT '',"
-            "nickname TEXT NOT NULL DEFAULT '', PRIMARY KEY (group_id, user_id))"
-        )
         conn.execute(
             "INSERT INTO favor(group_id, user_id, favor, updated_at) VALUES('g','u',5.5,1)"
         )
@@ -1299,13 +1297,12 @@ class TestImpressionPoints:
 
         db = tmp_path / "old.db"
         conn = sqlite3.connect(db)
+        from astrbot_plugin_bond.storage.migrations import MIGRATIONS
+
+        for version in range(1, 9):
+            for statement in MIGRATIONS[version]:
+                conn.execute(statement)
         conn.execute("PRAGMA user_version(8)")
-        conn.execute("""CREATE TABLE favor (
-            group_id TEXT NOT NULL, user_id TEXT NOT NULL, favor REAL NOT NULL,
-            updated_at REAL NOT NULL, relationship TEXT NOT NULL DEFAULT '',
-            nickname TEXT NOT NULL DEFAULT '', impression TEXT NOT NULL DEFAULT '',
-            tags TEXT NOT NULL DEFAULT '', impression_at REAL NOT NULL DEFAULT 0,
-            half_life REAL NOT NULL DEFAULT 10, PRIMARY KEY (group_id, user_id))""")
         conn.execute(
             "INSERT INTO favor(group_id,user_id,favor,updated_at) VALUES('g','u',5.5,1)"
         )

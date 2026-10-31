@@ -32,6 +32,14 @@ class FavorRecord:
     half_life: float = 10.0  # 遗忘曲线半衰期（天）；正互动巩固增长
     points: str = "[]"  # P-C 印象带权点模型（JSON 数组字符串）
 
+    familiarity: float = 0.0
+    trust: float = 0.0
+
+    @property
+    def affinity(self) -> float:
+        """亲近度沿用 favor 存储，避免维护两份数值。"""
+        return self.favor
+
     def parsed_points(self) -> list[dict]:
         """points JSON 字符串 → 印象点列表；损坏/空返回 []。"""
         if not self.points:
