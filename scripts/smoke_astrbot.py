@@ -39,11 +39,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         plugin = BondPlugin(context, cfg)
         await plugin.initialize()
         try:
+            from astrbot_plugin_bond.storage.migrations import SCHEMA_VERSION
+
             data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
             assert data_dir == runtime_dir / "data/plugin_data/astrbot_plugin_bond"
             assert (data_dir / "bond.db").is_file()
             assert (
-                plugin._storage._c().execute("PRAGMA user_version").fetchone()[0] == 9
+                plugin._storage._c().execute("PRAGMA user_version").fetchone()[0]
+                == SCHEMA_VERSION
             )
             assert not plugin._judge._enabled
             assert not plugin._judge._follow_maisoul
@@ -72,7 +75,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert plugin._storage._conn is None
     print(
         f"PASS AstrBot {astrbot.__version__}: 元数据装配、完整/部分配置安全默认、"
-        "独立数据目录、v9 迁移、6 个页面 API 注册、空库查询、卸载关闭连接。"
+        "独立数据目录、版本迁移、6 个页面 API 注册、空库查询、卸载关闭连接。"
     )
     print("LIMIT: 未启动完整宿主/登录页面，未连接真实 Bot/Provider/Angel Heart。")
 
