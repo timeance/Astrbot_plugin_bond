@@ -39,6 +39,10 @@ class StorageBackend(ABC):
     """好感度存储后端接口。"""
 
     @abstractmethod
+    def configure_initial_half_life(self, value: float) -> None:
+        """指定新成员的半衰期，不修改现有成员。"""
+
+    @abstractmethod
     async def init(self) -> None:
         """初始化存储（建库、迁移）。"""
 

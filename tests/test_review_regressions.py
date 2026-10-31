@@ -277,3 +277,41 @@ def test_exhausted_allowance_returns_effective_score_without_writes(
         backend._c().execute("SELECT favor,updated_at FROM favor").fetchone() == stored
     )
     assert asyncio.run(svc.query_logs("g", "u")) == []
+
+
+@pytest.mark.parametrize("path", ["change", "nickname", "admin", "impression"])
+def test_new_member_uses_configured_half_life(backend, path):
+    svc = service(backend, decay_enabled=True, half_life_base=5)
+
+    async def run():
+        if path == "nickname":
+            await svc.touch_nickname("g", "u", "测试")
+        if path == "admin":
+            await svc.set_favor("g", "u", 1)
+        if path == "impression":
+            await backend.set_impression("g", "u", "测试", [])
+        result = await svc.change("g", "u", 1)
+        assert result.delta == 1
+        assert (await backend.get("g", "u")).half_life == 6.5
+
+    asyncio.run(run())
+
+
+def test_deep_relationship_uses_scaled_repair_factor(backend):
+    from astrbot_plugin_bond.core.level_economy import (
+        EconomyConfig,
+        repair_params_for_level,
+    )
+
+    cfg = EconomyConfig(noise_floor=0, level_mult={}, same_day_decay=0)
+    svc = service(backend, economy=cfg)
+
+    async def run():
+        await svc.set_favor("g", "u", 70)
+        await svc.apply_judge("g", "u", -3)
+        expected = repair_params_for_level("亲密", cfg)[1]
+        assert await svc._repair_factor("g", "u") == expected
+        change = await svc.apply_judge("g", "u", 2)
+        assert change.delta == round(2 * expected, 1)
+
+    asyncio.run(run())

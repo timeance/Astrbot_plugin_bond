@@ -168,6 +168,7 @@ def apply(
     positive_today: int = 0,
     cfg: EconomyConfig | None = None,
     repair: bool = False,
+    repair_factor: float | None = None,
 ) -> EconomyResult:
     """对评审分值跑完整经济学管线。
 
@@ -207,8 +208,9 @@ def apply(
             res.decayed = True
 
     # 4. 信任修复期：重大得罪后的时间窗内，正分只算半效（摧毁快、修复慢）
-    if d > 0 and repair and cfg.repair_factor != 1:
-        d = round1(d * cfg.repair_factor)
+    factor = cfg.repair_factor if repair_factor is None else repair_factor
+    if d > 0 and repair and factor != 1:
+        d = round1(d * factor)
         res.repairing = True
 
     res.delta = d
