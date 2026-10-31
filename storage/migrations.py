@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -113,6 +113,17 @@ MIGRATIONS: dict[int, list[str]] = {
     9: [
         "ALTER TABLE favor ADD COLUMN points TEXT NOT NULL DEFAULT '[]'",
     ],
+    # v10：记录成员在原始群出现过的关系，用于 global 模式下的本群排行筛选
+    10: [
+        """CREATE TABLE IF NOT EXISTS observed_members (
+            group_id     TEXT NOT NULL,
+            user_id      TEXT NOT NULL,
+            last_seen_at REAL NOT NULL,
+            PRIMARY KEY (group_id, user_id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_observed_members_group_seen "
+        "ON observed_members(group_id, last_seen_at DESC)",
+    ],
 }
 
 
@@ -123,7 +134,9 @@ def migrate(conn: sqlite3.Connection) -> None:
     显式 BEGIN 是必需的——默认隔离级别只对 DML 隐式开事务，
     而 v2 首句是 DDL（CREATE），若不在事务内会自动提交、回滚救不回。
     """
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version > SCHEMA_VERSION:
+        raise ValueError(f"不支持的未来 schema 版本: {version}")
     while version < SCHEMA_VERSION:
         version += 1
         try:

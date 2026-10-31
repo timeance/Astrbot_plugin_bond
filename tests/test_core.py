@@ -1378,17 +1378,29 @@ class TestSanitizeAndFacade:
         )
 
     def test_facade_profile(self, tmp_path):
-        # P-H：跨插件画像（facade additive 方法）
-        from astrbot_plugin_bond.api.facade import XinxianFacade
+        from types import SimpleNamespace
+        from astrbot_plugin_bond.api.facade import BondFacade
 
         svc = _make_service(tmp_path, daily_cap_up=200)
-        asyncio.run(svc.change("g", "u", 30, source="api"))  # 友好档
-        fac = XinxianFacade(svc)
-        prof = asyncio.run(fac.get_profile("g", "u"))
-        assert prof["favor"] == 30 and prof["level"] == "友好"
-        assert (
-            prof["guidance"] and prof["impression"] == "" and prof["is_master"] is False
+        asyncio.run(svc.change("123456789", "123456780", 30, source="api"))
+
+        async def select(bot_id, mode):
+            assert (bot_id, mode) == ("10000001", "per_group")
+            return SimpleNamespace(favor=svc)
+
+        runtime = SimpleNamespace(
+            select=select,
+            storage=SimpleNamespace(known_bot_ids=lambda: ["10000001"]),
         )
+        fac = BondFacade(runtime)
+        prof = asyncio.run(
+            fac.get_profile("10000001", "per_group", "123456789", "123456780")
+        )
+        assert prof["level"] == "友好" and prof["bot_id"] == "10000001"
+        assert not {"favor", "impression", "guidance"}.intersection(prof)
+        assert not hasattr(fac, "set_favor")
+        with pytest.raises(ValueError):
+            asyncio.run(fac.get_profile("20000002", "global", "123456789", "123456780"))
 
 
 class TestTaskRegistry:

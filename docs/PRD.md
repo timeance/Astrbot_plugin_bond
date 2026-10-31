@@ -4,7 +4,7 @@
 > 版本：v1.1 · 2026-10-31
 > 状态：开发依据；尚未实施
 > 项目/插件：`astrbot_plugin_bond`
-> GitHub 仓库：`Timeance/astrbot_plugin_bond`（<https://github.com/timeance/Astrbot_plugin_bond>）
+> GitHub 仓库：`Timeance/astrbot_plugin_bond`（<https://github.com/Timeance/astrbot_plugin_bond>）
 > 定位：面向 AstrBot 社区的通用插件，不绑定特定组织、人格或部署。
 > 上游参考：<https://github.com/yiwuerxin/astrbot_plugin_xinxian>
 > 审阅基线：上游 `main` commit `c727e861472f7901ce1f87c1e27686f6655a96ec`（2026-09-11）

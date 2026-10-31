@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover
 
 from .api import commands as cmd
 from .api import llm_tools as tools
-from .api.facade import XinxianFacade
+from .api.facade import BondFacade
 from .api.listeners import Deps, on_group_message, on_llm_request
 from .core.config_migrations import migrate_saved_defaults
 from .core.identity import parse_master_ids
@@ -37,7 +37,8 @@ from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
 from .services.inject_service import InjectService
 from .services.judge_service import JudgeService
-from .storage.sqlite_backend import SQLiteBackend
+from .storage.router import BotScopeStorageRouter
+from .services.runtime_service import RuntimeService
 
 _PLUGIN_DIR = Path(__file__).resolve().parent
 
@@ -57,7 +58,7 @@ def _split_phrases(raw: str) -> set[str]:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系系统开发基线",
-    "0.1.0-dev",
+    "0.2.0-dev",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -79,12 +80,36 @@ class BondPlugin(Star):
 
         data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
 
+        self._registry = TaskRegistry()
+        self._storage = BotScopeStorageRouter(data_dir)
+        self._runtime = RuntimeService(self._storage, config, self._build_deps)
+        self._relationships = None
+        cmd_cfg = config.get("command") or {}
+        self._ranking_limit = int(cmd_cfg.get("ranking_limit", 10))
+        self._text_wake_enabled = bool(cmd_cfg.get("text_wake_enabled", False))
+        self._text_wake_ranking = _split_phrases(
+            cmd_cfg.get("text_wake_ranking", "好感排行,好感榜单,好感排名")
+        )
+        render_cfg = config.get("render") or {}
+        self._render_font = (render_cfg.get("font_path") or "").strip()
+        self._render_rows = int(render_cfg.get("rows_per_col", 12))
+
+        # 跨插件 API：context.get_registered_star("astrbot_plugin_bond").star_cls.api
+        self.api = BondFacade(self._runtime)
+
+        # 原生 dashboard 页面 API（框架支持时注册，内嵌于主面板，无独立端口/鉴权）
+        from .api.page_api import PageApi
+
+        self._page_api = PageApi(self._runtime)
+        self._page_api.register(context)
+
+    def _build_deps(self, storage, scope_mode):
+        config, context = self.config, self.context
         max_favor = float(config.get("max_favor", 100))
         min_favor = float(config.get("min_favor", -100))
         levels = LevelTable.from_config(config)
         master_ids = parse_master_ids(config.get("master_ids", ""))
 
-        self._storage = SQLiteBackend(data_dir / "bond.db")
         decay_cfg = config.get("decay") or {}
         rel_cfg = config.get("relationship") or {}
         economy_cfg = config.get("economy") or {}
@@ -97,8 +122,8 @@ class BondPlugin(Star):
         self._relationships = relationships
         # 防通胀经济学层（拼音配置键→中文等级名的映射在 from_config 内处理）
         eco = EconomyConfig.from_config(economy_cfg)
-        self._favor = FavorService(
-            self._storage,
+        favor = FavorService(
+            storage,
             levels,
             max_favor=max_favor,
             min_favor=min_favor,
@@ -115,6 +140,7 @@ class BondPlugin(Star):
             relationships=relationships,
             economy=eco,
             tz_name=str(config.get("timezone", "") or ""),
+            scope_mode=scope_mode,
         )
 
         judge_cfg = config.get("judge") or {}
@@ -143,7 +169,7 @@ class BondPlugin(Star):
             if anchor_enabled
             else ""
         )
-        self._inject = InjectService(
+        inject = InjectService(
             levels,
             template,
             master_title=inject_cfg.get("master_title", "主人"),
@@ -153,9 +179,9 @@ class BondPlugin(Star):
             master_prompt=(inject_cfg.get("master_prompt") or "").strip(),
             anti_injection=bool(inject_cfg.get("anti_injection", True)),
         )
-        self._judge = JudgeService(
+        judge = JudgeService(
             context,
-            self._storage,
+            storage,
             enabled=bool(judge_cfg.get("enabled", False)),
             provider_id=(judge_cfg.get("provider_id") or "").strip() or None,
             cooldown_sec=int(judge_cfg.get("cooldown_sec", 120)),
@@ -167,35 +193,41 @@ class BondPlugin(Star):
                 else "resources/prompts/judge_prompt.txt"
             ),
             force_session_model=bool(judge_cfg.get("narrative_reason", False)),
-            context_window=int(judge_cfg.get("context_window", 0)),
+            context_window=(
+                int(judge_cfg.get("context_window", 0))
+                if scope_mode == "per_group"
+                else 0
+            ),
             follow_persona=bool(judge_cfg.get("follow_persona", True)),
             bot_name=(judge_cfg.get("bot_name") or "").strip() or "当前助手",
             attitude_deltas=attitude_deltas,
             roster=(judge_cfg.get("roster") or "").strip(),
             timeout_sec=float(judge_cfg.get("timeout_sec", 60)),
             follow_maisoul=bool(judge_cfg.get("follow_maisoul_replyer", False)),
+            scope_mode=scope_mode,
         )
 
         # 后台任务注册表（X10）：评审/印象/延迟清理统一持引用，卸载时
         # cancel_and_wait_all 后再关存储
-        self._registry = TaskRegistry()
         # 印象服务独立于好感度门面（借 JudgeService 的 provider/人格解析做汇总）
-        self._impressions = ImpressionService(
-            self._storage,
+        impressions = ImpressionService(
+            storage,
             interval=int(impression_cfg.get("interval", 8)),
             timeout_sec=float(judge_cfg.get("timeout_sec", 60)),
             registry=self._registry,
             points_mode=bool(impression_cfg.get("points_mode", False)),
+            scope_mode=scope_mode,
         )
-        self._impressions.bind_summarizer(self._judge)
+        impressions.bind_summarizer(judge)
 
-        self._deps = Deps(
-            favor=self._favor,
-            judge=self._judge,
-            inject=self._inject,
-            impressions=self._impressions,
+        return Deps(
+            favor=favor,
+            judge=judge,
+            inject=inject,
+            impressions=impressions,
             registry=self._registry,
-            inject_enabled=bool(inject_cfg.get("enabled", False)),
+            inject_enabled=bool(inject_cfg.get("enabled", False))
+            and scope_mode == "per_group",
             memory_count=int(inject_cfg.get("memory_count", 3)),
             memory_days=int(inject_cfg.get("memory_days", 7)),
             memory_sig_threshold=float(inject_cfg.get("memory_sig_threshold", 1.0)),
@@ -204,27 +236,9 @@ class BondPlugin(Star):
             context=context,
             emotion_coupling=bool((config.get("coupling") or {}).get("enabled", False)),
         )
-        cmd_cfg = config.get("command") or {}
-        self._ranking_limit = int(cmd_cfg.get("ranking_limit", 10))
-        self._text_wake_enabled = bool(cmd_cfg.get("text_wake_enabled", False))
-        self._text_wake_ranking = _split_phrases(
-            cmd_cfg.get("text_wake_ranking", "好感排行,好感榜单,好感排名")
-        )
-        render_cfg = config.get("render") or {}
-        self._render_font = (render_cfg.get("font_path") or "").strip()
-        self._render_rows = int(render_cfg.get("rows_per_col", 12))
-
-        # 跨插件 API：context.get_registered_star("astrbot_plugin_bond").star_cls.api
-        self.api = XinxianFacade(self._favor)
-
-        # 原生 dashboard 页面 API（框架支持时注册，内嵌于主面板，无独立端口/鉴权）
-        from .api.page_api import PageApi
-
-        self._page_api = PageApi(self._favor, self._impressions)
-        self._page_api.register(context)
 
     async def initialize(self) -> None:
-        await self._storage.init()
+        self._runtime.modes()
         logger.info("[心弦] 好感度插件已加载")
 
     async def terminate(self) -> None:
@@ -247,38 +261,61 @@ class BondPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE, priority=1000)
     async def _on_group_msg(self, event: AstrMessageEvent):
         # 文字唤醒：群里直接发文字（不用 /）触发查询指令；与 / 指令一致，之后照常跑评估引擎
-        if self._text_wake_enabled and not getattr(event, "_bond_cmd_done", False):
-            reply = await cmd.try_text_wake(
-                self._favor,
-                event,
-                self._text_wake_ranking,
-                self._render_font,
-                self._render_rows,
-                text_limit=self._ranking_limit,
-            )
-            if reply is not None:
-                kind, payload = reply
-                if kind == "image":
-                    try:
-                        yield event.image_result(payload)
-                    finally:
-                        self._schedule_tmp_cleanup(payload)
-                else:  # 未安装 Pillow：降级文字排行
-                    yield event.plain_result(payload)
-        await on_group_message(self._deps, event)
+        try:
+            sender = str(event.get_sender_id() or "")
+            ignored = {str(x) for x in (self.config.get("ignored_bot_ids") or [])}
+            ignored.update(self._storage.known_bot_ids())
+            ignored.add(str(event.get_self_id() or ""))
+            if sender in ignored:
+                return
+            deps = await self._runtime.for_event(event)
+        except Exception:
+            logger.warning("[Bond] 数据路由不可用，本次跳过关系观察")
+            return
+        try:
+            if self._text_wake_enabled and not getattr(event, "_bond_cmd_done", False):
+                reply = await cmd.try_text_wake(
+                    deps.favor,
+                    event,
+                    self._text_wake_ranking,
+                    self._render_font,
+                    self._render_rows,
+                    text_limit=self._ranking_limit,
+                )
+                if reply is not None:
+                    kind, payload = reply
+                    if kind == "image":
+                        try:
+                            yield event.image_result(payload)
+                        finally:
+                            self._schedule_tmp_cleanup(payload)
+                    else:  # 未安装 Pillow：降级文字排行
+                        yield event.plain_result(payload)
+        except Exception:
+            logger.warning("[Bond] 文字查询失败，继续正常对话")
+        try:
+            await on_group_message(deps, event)
+        except Exception:
+            logger.warning("[Bond] 关系观察失败，本次跳过，不影响对话")
 
     @filter.on_llm_request()
     async def _on_llm_req(self, event: AstrMessageEvent, req: ProviderRequest):
-        await on_llm_request(self._deps, event, req)
+        try:
+            deps = await self._runtime.for_event(event)
+        except Exception:
+            logger.warning("[Bond] 数据路由不可用，本次跳过关系注入")
+            return
+        await on_llm_request(deps, event, req)
 
     # ---------------- 指令 ----------------
 
     @filter.command("好感排行")
     async def _cmd_rank(self, event: AstrMessageEvent):
         """查看本群对小千的好感度排行（图片；未安装 Pillow 时降级文字）"""
+        deps = await self._runtime.for_event(event)
         event._bond_cmd_done = True
         kind, payload = await cmd.rank_reply(
-            self._favor,
+            deps.favor,
             event,
             font_path=self._render_font,
             rows_per_col=self._render_rows,
@@ -311,15 +348,15 @@ class BondPlugin(Star):
         self, event: AstrMessageEvent, target: str = "", value: float = 0.0
     ):
         """设置某成员好感度（管理员，支持一位小数与负值）。用法：/好感设置 QQ号 数值"""
-        yield event.plain_result(
-            await cmd.handle_set(self._favor, event, target, value)
-        )
+        deps = await self._runtime.for_event(event)
+        yield event.plain_result(await cmd.handle_set(deps.favor, event, target, value))
 
     @filter.command("好感重置")
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def _cmd_reset(self, event: AstrMessageEvent, target: str = ""):
         """重置好感度（管理员）。用法：/好感重置 [QQ号]，不带参数清空整群"""
-        yield event.plain_result(await cmd.handle_reset(self._favor, event, target))
+        deps = await self._runtime.for_event(event)
+        yield event.plain_result(await cmd.handle_reset(deps.favor, event, target))
 
     @filter.command("关系设置")
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -327,9 +364,10 @@ class BondPlugin(Star):
         self, event: AstrMessageEvent, target: str = "", key: str = ""
     ):
         """设置某成员与小千的关系（管理员）。用法：/关系设置 QQ号 类型"""
+        deps = await self._runtime.for_event(event)
         yield event.plain_result(
             await cmd.handle_set_relationship(
-                self._favor, self._relationships, event, target, key
+                deps.favor, self._relationships, event, target, key
             )
         )
 
@@ -339,16 +377,18 @@ class BondPlugin(Star):
         self, event: AstrMessageEvent, target: str = "", tags: str = ""
     ):
         """设置成员标签（管理员）。用法：/印象设置 QQ号 标签1,标签2"""
+        deps = await self._runtime.for_event(event)
         yield event.plain_result(
-            await cmd.handle_set_tags(self._impressions, event, target, tags)
+            await cmd.handle_set_tags(deps.impressions, event, target, tags)
         )
 
     @filter.command("印象刷新")
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def _cmd_refresh_imp(self, event: AstrMessageEvent, target: str = ""):
         """立即刷新成员印象（管理员）。用法：/印象刷新 QQ号"""
+        deps = await self._runtime.for_event(event)
         yield event.plain_result(
-            await cmd.handle_refresh_impression(self._impressions, event, target)
+            await cmd.handle_refresh_impression(deps.impressions, event, target)
         )
 
     # ---------------- LLM 工具 ----------------
@@ -360,9 +400,11 @@ class BondPlugin(Star):
         Args:
             target(str): 目标成员的 QQ 号，留空则查询发言人自己
         """
-        return await tools.tool_query_favor(self._favor, event, target)
+        deps = await self._runtime.for_event(event)
+        return await tools.tool_query_favor(deps.favor, event, target)
 
     @filter.llm_tool(name="query_favor_ranking")
     async def _tool_rank(self, event: AstrMessageEvent) -> str:
         """查询本群成员对小千的好感度排行榜"""
-        return await tools.tool_query_ranking(self._favor, event, self._ranking_limit)
+        deps = await self._runtime.for_event(event)
+        return await tools.tool_query_ranking(deps.favor, event, self._ranking_limit)

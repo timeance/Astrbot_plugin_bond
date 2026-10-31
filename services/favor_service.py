@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import time
+import math
 from datetime import date, datetime
 
 from ..core.decay import HALF_LIFE_MIN, effective_favor
@@ -19,6 +20,7 @@ from ..core.level_economy import repair_params_for_level
 from ..core.relationship import RelationshipTable
 from ..core.models import FavorChange, FavorRecord, LevelDef
 from ..storage.base import StorageBackend
+from ..core.scope import group_key, scope_mode as validate_scope
 
 
 class FavorService:
@@ -44,8 +46,10 @@ class FavorService:
         economy: EconomyConfig | None = None,
         tz_name: str = "",
         decay_floor_enabled: bool = False,
+        scope_mode: str = "per_group",
     ) -> None:
         self._storage = storage
+        self.scope_mode = validate_scope(scope_mode)
         self._levels = levels
         self.max_favor = max_favor
         self.min_favor = min_favor
@@ -144,6 +148,7 @@ class FavorService:
 
     async def get(self, group_id: str, user_id: str) -> FavorRecord:
         """读取记录；无记录时返回默认值（不落库）。返回的是有效好感度（含时间衰减）。"""
+        group_id = self.group_key(group_id)
         rec = await self._storage.get(group_id, user_id)
         if rec is None:
             rec = FavorRecord(
@@ -158,19 +163,25 @@ class FavorService:
 
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
         # 衰减后排序可能改变候选集，必须先按有效值重排再取前 N 名。
-        rows = await self._storage.ranking(group_id, -1 if self._decay else limit)
+        if self.scope_mode == "global":
+            rows = await self._storage.ranking_observed(group_id, -1)
+        else:
+            rows = await self._storage.ranking(group_id, -1)
         for r in rows:
             r.favor = self._effective(
                 r.favor, r.updated_at, getattr(r, "half_life", 10.0)
             )
-        rows.sort(key=lambda r: r.favor, reverse=True)
+        rows.sort(key=lambda r: (-r.favor, r.user_id))
         return rows[:limit] if limit >= 0 else rows
 
     async def standings(
         self, group_id: str | None = None, limit: int = 500
     ) -> list[dict]:
         """当前总览：每个成员的有效好感/等级/关系/闲置天数（供 WebUI）。按有效好感降序。"""
-        recs = await self._storage.list_favor(group_id, -1)
+        if self.scope_mode == "global" and group_id is not None:
+            recs = await self._storage.ranking_observed(group_id, -1)
+        else:
+            recs = await self._storage.list_favor(self.group_key(group_id), -1)
         now = time.time()
         out: list[dict] = []
         for r in recs:
@@ -220,6 +231,7 @@ class FavorService:
         self, group_id: str, user_id: str, relationship: str
     ) -> None:
         """设定关系类型标签；无记录时先按默认好感建一条再设（不影响好感数值）。"""
+        group_id = self.group_key(group_id)
         rec = await self._storage.get(group_id, user_id)
         if rec is None:
             await self._storage.set_value(group_id, user_id, self.default_favor)
@@ -232,6 +244,7 @@ class FavorService:
 
         无记录时先按 default_favor 建行（否则 INSERT 落列默认 0，
         配置了非零初始好感的新成员会被顶成 0）。"""
+        group_id = self.group_key(group_id)
         nick = (nickname or "").strip()
         if not nick:
             return
@@ -248,7 +261,24 @@ class FavorService:
 
     async def distinct_groups(self) -> list[dict]:
         """有记录的群列表（面板群筛选用；storage 透传，X7 面板不直拿存储）。"""
+        if self.scope_mode == "global":
+            return await self._storage.observed_groups()
         return await self._storage.distinct_groups()
+
+    def group_key(self, group_id: str | None) -> str | None:
+        # per_group 旧服务单测允许合成字母键；平台/API 边界另行严格校验。
+        if self.scope_mode == "per_group":
+            return group_id
+        return group_key(self.scope_mode, group_id)
+
+    async def observe_member(self, group_id: str, user_id: str) -> None:
+        await self._storage.observe_member(group_id, user_id)
+
+    async def is_observed(self, group_id: str, user_id: str) -> bool:
+        return any(
+            row.user_id == user_id
+            for row in await self._storage.list_observed(group_id)
+        )
 
     async def query_logs(
         self,
@@ -262,7 +292,7 @@ class FavorService:
 
         fuzzy=True 仅供面板搜索（子串匹配）；内部路径一律精确。"""
         return await self._storage.query_logs(
-            group_id, user_id, limit=limit, offset=offset, fuzzy=fuzzy
+            self.group_key(group_id), user_id, limit=limit, offset=offset, fuzzy=fuzzy
         )
 
     async def recent_events(
@@ -363,6 +393,7 @@ class FavorService:
         message: 触发本次评估的用户发言原文（截断 200 字入库，供 WebUI 核对是否误判）。
         印象刷新由调用方（listeners）经 ImpressionService 触发。
         """
+        group_id = self.group_key(group_id)
         if self._economy is not None:
             rec0 = await self.get(group_id, user_id)
             level_name = self.level_of(rec0.favor).name
@@ -395,6 +426,7 @@ class FavorService:
 
     async def _positive_judge_today(self, group_id: str, user_id: str) -> int:
         """当日已生效的正向评审次数（供同日重复衰减）。失败返回 0。"""
+        group_id = self.group_key(group_id)
         try:
             start = self._day_start()
             logs = await self._storage.query_logs(group_id, user_id, limit=50)
@@ -415,6 +447,7 @@ class FavorService:
         难度（Dirks 2011：高信任中的冒犯更难修）：深关系冒犯的窗口 ×
         repair_scale_high、压制更深；浅关系维持基线。任何失败返回 False。
         """
+        group_id = self.group_key(group_id)
         eco = self._economy
         if eco is None or eco.repair_threshold <= 0 or eco.repair_hours <= 0:
             return False
@@ -468,6 +501,9 @@ class FavorService:
         source: str,
         message: str = "",
     ) -> FavorChange:
+        group_id = self.group_key(group_id)
+        if not math.isfinite(float(delta)):
+            raise ValueError("关系变动必须是有限数值")
         now = time.time()
         # 1. 单事件冷却
         if cooldown_key and cooldown_sec > 0:
@@ -534,6 +570,9 @@ class FavorService:
         reason: str = "set",
     ) -> FavorRecord:
         """管理员直接设值：绕过每日限幅，数值与流水单事务提交。"""
+        group_id = self.group_key(group_id)
+        if not math.isfinite(float(value)):
+            raise ValueError("关系数值必须是有限数值")
         value = round1(max(self.min_favor, min(self.max_favor, float(value))))
         return await self._storage.set_value_with_log(
             group_id,
@@ -581,4 +620,5 @@ class FavorService:
         return await self.get(info["group_id"], info["user_id"])
 
     async def reset(self, group_id: str, user_id: str | None = None) -> None:
+        group_id = self.group_key(group_id)
         await self._storage.reset(group_id, user_id)

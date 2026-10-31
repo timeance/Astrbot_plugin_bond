@@ -681,5 +681,17 @@
         "description": "联动开关：方向①评审增益按麦麦连续情绪(pfb)调制（同向最高×2、异向最高÷2）；方向②好感等级跃迁向麦麦注入情绪事件。麦麦侧另有两个总开关（emotion_enable/emotion_feedback_enable），任一关闭本侧自动空转"
       }
     }
+  },
+  "bot_scope_modes": {
+    "description": "各 Bot 当前数据空间（JSON 对象）",
+    "type": "string",
+    "default": "{}",
+    "hint": "真实账号ID映射到 per_group 或 global；优先在关系面板切换，仅选择数据空间，不复制、合并或删除旧数据。"
+  },
+  "ignored_bot_ids": {
+    "description": "忽略的其他机器人账号",
+    "type": "list",
+    "default": [],
+    "hint": "结构化发送者账号命中时跳过关系记录与评估；不按昵称或正文识别。"
   }
 }

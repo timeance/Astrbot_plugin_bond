@@ -25,7 +25,7 @@ def project(tmp_path):
 
 def test_registration_mismatch_is_rejected(project):
     metadata = project / "metadata.yaml"
-    content = yaml.safe_load(metadata.read_text())
+    content = yaml.safe_load(metadata.read_text(encoding="utf-8"))
     content["version"] = "9.9.9"
     metadata.write_text(yaml.safe_dump(content), encoding="utf-8")
     with pytest.raises(ValueError, match="version 不一致"):
@@ -34,7 +34,7 @@ def test_registration_mismatch_is_rejected(project):
 
 def test_unsafe_baseline_default_is_rejected(project):
     path = project / "_conf_schema.json"
-    schema = json.loads(path.read_text())
+    schema = json.loads(path.read_text(encoding="utf-8"))
     schema["judge"]["items"]["enabled"]["default"] = True
     path.write_text(json.dumps(schema), encoding="utf-8")
     with pytest.raises(ValueError, match="judge.enabled 默认关闭"):

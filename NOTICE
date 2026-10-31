@@ -6,8 +6,8 @@ Baseline: c727e861472f7901ce1f87c1e27686f6655a96ec
 Original license declaration: README.md, "AGPL-3.0".
 The original README is retained in docs/upstream/README.xinxian.md.
 Upstream commits remain available at the original source repository.
-The local development checkout retains upstream history; this independent
-GitHub repository imports its source baseline with attribution.
+This independent GitHub repository imports its source baseline with
+attribution; it does not claim a native GitHub fork relationship.
 
 Bond modifications: Timeance and contributors, beginning 2026-10-31.
 Target source repository: https://github.com/timeance/Astrbot_plugin_bond

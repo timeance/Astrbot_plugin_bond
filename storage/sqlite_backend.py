@@ -9,16 +9,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
+import tempfile
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from ..core.decay import consolidate_half_life, effective_favor
 from ..core.decimal import round1
 from ..core.models import FavorRecord
+from ..core.scope import GLOBAL_GROUP
 from .base import StorageBackend, clamp_daily
-from .migrations import migrate
+from .migrations import SCHEMA_VERSION, migrate
 
 
 class SQLiteBackend(StorageBackend):
@@ -27,25 +31,153 @@ class SQLiteBackend(StorageBackend):
     def __init__(self, db_path: Path) -> None:
         self._db_path = Path(db_path)
         self._conn: sqlite3.Connection | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     async def init(self) -> None:
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
-        # 并发三件套：WAL + busy_timeout + synchronous=NORMAL（WAL 模式下
-        # NORMAL 已保证崩溃一致性，FULL 只多付每次提交的 fsync——2026-09-11
-        # 审查发现第三件缺失，补齐）
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=3000")
-        conn.execute("PRAGMA synchronous=NORMAL")
         with self._lock:
+            if self._conn is not None:
+                return
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = self._open_connection()
+
+    def _open_connection(self) -> sqlite3.Connection:
+        """打开并迁移一个连接；失败时不留下半初始化连接。"""
+        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        try:
+            version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+            if version > SCHEMA_VERSION:
+                raise ValueError(f"不支持的未来 schema 版本: {version}")
+            # 并发三件套：WAL + busy_timeout + synchronous=NORMAL（WAL 模式下
+            # NORMAL 已保证崩溃一致性，FULL 只多付每次提交的 fsync——2026-09-11
+            # 审查发现第三件缺失，补齐）
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=3000")
+            conn.execute("PRAGMA synchronous=NORMAL")
             migrate(conn)
-        self._conn = conn
+            return conn
+        except Exception:
+            conn.close()
+            raise
 
     def _c(self) -> sqlite3.Connection:
         if self._conn is None:
             raise RuntimeError("storage 尚未 init()")
         return self._conn
+
+    @staticmethod
+    def _remove_sidecars(db_path: Path) -> None:
+        for suffix in ("-wal", "-shm", "-journal"):
+            Path(f"{db_path}{suffix}").unlink(missing_ok=True)
+
+    async def _backup_to(self, destination: Path) -> None:
+        """用 SQLite backup API 生成一致性快照（仅供 router 调用）。"""
+        destination = Path(destination)
+        with self._lock:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists() or destination.is_symlink():
+                raise FileExistsError(f"备份目标已存在: {destination.name}")
+            target = None
+            error: Exception | None = None
+            try:
+                target = sqlite3.connect(str(destination), check_same_thread=False)
+                self._c().backup(target)
+                target.execute("PRAGMA journal_mode=DELETE")
+                target.commit()
+            except Exception as exc:
+                error = exc
+            finally:
+                if target is not None:
+                    try:
+                        target.close()
+                    except Exception as close_error:
+                        if error is None:
+                            error = close_error
+            if error is not None:
+                try:
+                    self._remove_sidecars(destination)
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise error
+
+    async def _restore_from(self, source: Path) -> None:
+        """原子替换当前数据库，并保持这个 backend 对象继续可用。"""
+        source = Path(source)
+        with self._lock:
+            db_path = self._db_path
+            staged_fd, staged_name = tempfile.mkstemp(
+                prefix=f".{db_path.name}.restore-",
+                suffix=".db",
+                dir=str(db_path.parent),
+            )
+            os.close(staged_fd)
+            staged = Path(staged_name)
+            old = db_path.parent / (
+                f".{db_path.name}.restore-old-{uuid.uuid4().hex}.db"
+            )
+            old_moved = False
+            try:
+                source_conn = sqlite3.connect(str(source), check_same_thread=False)
+                staged_conn = sqlite3.connect(str(staged), check_same_thread=False)
+                try:
+                    source_conn.backup(staged_conn)
+                    staged_conn.execute("PRAGMA journal_mode=DELETE")
+                    staged_conn.commit()
+                finally:
+                    staged_conn.close()
+                    source_conn.close()
+                self._remove_sidecars(staged)
+
+                current = self._c()
+                checkpoint = current.execute(
+                    "PRAGMA wal_checkpoint(TRUNCATE)"
+                ).fetchone()
+                if (
+                    not checkpoint
+                    or int(checkpoint[0]) != 0
+                    or int(checkpoint[1]) != int(checkpoint[2])
+                ):
+                    raise RuntimeError("当前数据库 WAL 仍被占用，拒绝恢复")
+                current.close()
+                self._conn = None
+                self._remove_sidecars(db_path)
+
+                if db_path.exists() or db_path.is_symlink():
+                    os.replace(str(db_path), str(old))
+                    old_moved = True
+                os.replace(str(staged), str(db_path))
+                staged = None
+                try:
+                    self._conn = self._open_connection()
+                except Exception as open_error:
+                    self._remove_sidecars(db_path)
+                    db_path.unlink(missing_ok=True)
+                    if old_moved and old.exists():
+                        os.replace(str(old), str(db_path))
+                        old_moved = False
+                    try:
+                        self._conn = self._open_connection()
+                    except Exception as rollback_error:
+                        raise RuntimeError("恢复失败且回滚失败") from rollback_error
+                    raise open_error
+                if old.exists():
+                    old.unlink(missing_ok=True)
+            except Exception:
+                if self._conn is None:
+                    try:
+                        if old_moved and old.exists() and not db_path.exists():
+                            os.replace(str(old), str(db_path))
+                            old_moved = False
+                        self._conn = self._open_connection()
+                    except Exception as rollback_error:
+                        raise RuntimeError(
+                            "恢复失败且无法恢复原连接"
+                        ) from rollback_error
+                raise
+            finally:
+                if staged is not None:
+                    self._remove_sidecars(staged)
+                    staged.unlink(missing_ok=True)
 
     async def get(self, group_id: str, user_id: str) -> FavorRecord | None:
         with self._lock:
@@ -588,6 +720,72 @@ class SQLiteBackend(StorageBackend):
             )
             self._c().commit()
 
+    async def observe_member(self, group_id: str, user_id: str) -> None:
+        """记录成员最近一次在原始群出现的时间。"""
+        with self._lock:
+            self._c().execute(
+                "INSERT INTO observed_members(group_id, user_id, last_seen_at) "
+                "VALUES(?,?,?) ON CONFLICT(group_id, user_id) DO UPDATE SET "
+                "last_seen_at=excluded.last_seen_at",
+                (group_id, user_id, time.time()),
+            )
+            self._c().commit()
+
+    async def observed_groups(self) -> list[dict]:
+        return await asyncio.to_thread(self._observed_groups_sync)
+
+    def _observed_groups_sync(self) -> list[dict]:
+        with self._lock:
+            rows = (
+                self._c()
+                .execute(
+                    "SELECT group_id, COUNT(*) FROM observed_members "
+                    "GROUP BY group_id ORDER BY group_id"
+                )
+                .fetchall()
+            )
+        return [{"group_id": row[0], "count": row[1]} for row in rows]
+
+    async def ranking_observed(
+        self, group_id: str, limit: int = 10
+    ) -> list[FavorRecord]:
+        return await asyncio.to_thread(self._ranking_observed_sync, group_id, limit)
+
+    def _ranking_observed_sync(self, group_id: str, limit: int) -> list[FavorRecord]:
+        with self._lock:
+            rows = (
+                self._c()
+                .execute(
+                    "SELECT f.user_id, f.favor, f.updated_at, f.relationship, "
+                    "f.nickname, f.impression, f.tags, f.impression_at, "
+                    "f.half_life, f.points FROM favor AS f "
+                    "INNER JOIN observed_members AS o ON o.user_id=f.user_id "
+                    "WHERE f.group_id=? AND o.group_id=? "
+                    "ORDER BY f.favor DESC, f.user_id ASC LIMIT ?",
+                    (GLOBAL_GROUP, group_id, int(limit)),
+                )
+                .fetchall()
+            )
+        return [
+            FavorRecord(
+                GLOBAL_GROUP,
+                row[0],
+                float(row[1]),
+                row[2],
+                row[3] or "",
+                row[4] or "",
+                row[5] or "",
+                row[6] or "",
+                row[7] or 0.0,
+                float(row[8] or 10.0),
+                row[9] or "[]",
+            )
+            for row in rows
+        ]
+
+    async def list_observed(self, group_id: str) -> list[FavorRecord]:
+        return await self.ranking_observed(group_id, -1)
+
     async def reset(self, group_id: str, user_id: str | None = None) -> None:
         # 生产标准：execute 的 SQL 保持全字面量（表名也不插值），值一律 ? 参数化
         if user_id is None:
@@ -596,6 +794,7 @@ class SQLiteBackend(StorageBackend):
                 ("DELETE FROM daily_gain WHERE group_id=?", (group_id,)),
                 ("DELETE FROM cooldown WHERE group_id=?", (group_id,)),
                 ("DELETE FROM favor_log WHERE group_id=?", (group_id,)),
+                ("DELETE FROM observed_members WHERE group_id=?", (group_id,)),
             ]
         else:
             stmts = [
@@ -613,6 +812,10 @@ class SQLiteBackend(StorageBackend):
                 ),
                 (
                     "DELETE FROM favor_log WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ),
+                (
+                    "DELETE FROM observed_members WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 ),
             ]

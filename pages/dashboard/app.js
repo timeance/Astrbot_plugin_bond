@@ -12,6 +12,53 @@ createApp({
     const filterGroup = ref("");
     const filterUser = ref("");
     const filterLimit = ref(300);
+    const bots = ref([]);
+    const selectedBot = ref("");
+    const selectedMode = ref("per_group");
+    const scopeRevision = ref(0);
+    const scopeLoading = ref(false);
+    const modeLoading = ref(false);
+    const backupLoading = ref(false);
+    const restoreName = ref("");
+    const latestBackup = ref("");
+    const restorePreview = ref(null);
+
+    const selectedBotInfo = computed(() =>
+      bots.value.find((item) => item.bot_id === selectedBot.value) || null
+    );
+    const scopeLabel = computed(() =>
+      selectedMode.value === "global" ? "全局空间" : "按群空间"
+    );
+    const scopeSnapshot = () => {
+      if (!selectedBot.value || !selectedMode.value) return null;
+      return { bot_id: selectedBot.value, scope_mode: selectedMode.value };
+    };
+    const scopedParams = (params = {}, snapshot = scopeSnapshot()) => {
+      if (!snapshot) throw new Error("请先选择 Bot 和数据空间");
+      return { ...snapshot, ...params };
+    };
+    const scopedGet = (endpoint, params = {}, snapshot = scopeSnapshot()) =>
+      bridge.apiGet(endpoint, scopedParams(params, snapshot));
+    const scopedPost = (endpoint, body = {}, snapshot = scopeSnapshot()) =>
+      bridge.apiPost(endpoint, scopedParams(body, snapshot));
+    const isCurrentScope = (snapshot, revision) =>
+      revision === scopeRevision.value &&
+      snapshot &&
+      snapshot.bot_id === selectedBot.value &&
+      snapshot.scope_mode === selectedMode.value;
+    const clearScopeState = () => {
+      scopeRevision.value += 1;
+      logs.value = [];
+      users.value = [];
+      groups.value = [];
+      filterGroup.value = "";
+      selectedLog.value = null;
+      memberDetail.value = null;
+      undoPreview.value = null;
+      restorePreview.value = null;
+      latestBackup.value = "";
+      errorMsg.value = "";
+    };
 
     const pad = (n) => String(n).padStart(2, "0");
     const fmtTime = (ts) => {
@@ -73,26 +120,30 @@ createApp({
 
     const undoPreview = ref(null);
     const openUndo = async (r) => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
       errorMsg.value = "";
       try {
-        const data = await bridge.apiPost("undo", { id: r.id, dry: "1" });
+        const data = await scopedPost("undo", { id: r.id, dry: "1" }, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || "无法撤销";
           return;
         }
-        undoPreview.value = { ...(data.preview || {}), id: r.id };
+        undoPreview.value = { ...(data.preview || {}), id: r.id, snapshot, revision };
       } catch (e) {
-        errorMsg.value = String(e);
+        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
       }
     };
     const closeUndo = () => { undoPreview.value = null; };
     const confirmUndo = async () => {
-      const id = undoPreview.value && undoPreview.value.id;
+      const preview = undoPreview.value;
       undoPreview.value = null;
-      if (id == null) return;
+      if (!preview || !isCurrentScope(preview.snapshot, preview.revision)) return;
       errorMsg.value = "";
       try {
-        const data = await bridge.apiPost("undo", { id });
+        const data = await scopedPost("undo", { id: preview.id }, preview.snapshot);
         if (data && data.success === false) {
           errorMsg.value = data.error || "撤销失败";
         } else {
@@ -111,29 +162,47 @@ createApp({
     const memberDetail = ref(null);
     const memberLoading = ref(false);
     const openMember = async (u) => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
+      const candidate = selectedMode.value === "global" ? filterGroup.value : u.group_id;
+      const groupId = String(candidate || "");
+      if (!/^[1-9][0-9]{0,31}$/.test(groupId)) {
+        errorMsg.value = "全局空间请先选择真实群，再查看成员详情";
+        return;
+      }
+      if (selectedMode.value === "global" && !groups.value.some((g) => g.group_id === groupId)) {
+        errorMsg.value = "请选择当前空间中的真实群";
+        return;
+      }
       errorMsg.value = "";
       memberLoading.value = true;
       try {
-        const data = await bridge.apiGet("member", { group_id: u.group_id, user_id: u.user_id });
+        const data = await scopedGet("member", { group_id: groupId, user_id: u.user_id }, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || "加载成员详情失败";
         } else {
           memberDetail.value = data.member || null;
         }
       } catch (e) {
-        errorMsg.value = String(e);
+        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
       } finally {
-        memberLoading.value = false;
+        if (isCurrentScope(snapshot, revision)) memberLoading.value = false;
       }
     };
     const closeMember = () => { memberDetail.value = null; };
     const refreshImpression = async () => {
       const m = memberDetail.value;
       if (!m) return;
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
       errorMsg.value = "";
       memberLoading.value = true;
       try {
-        const data = await bridge.apiPost("refresh_impression", { group_id: m.group_id, user_id: m.user_id });
+        const data = await scopedPost("refresh_impression", { group_id: m.group_id, user_id: m.user_id }, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || data.message || "刷新失败";
         } else {
@@ -141,22 +210,164 @@ createApp({
           await fetchUsers();
         }
       } catch (e) {
-        errorMsg.value = String(e);
+        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
       } finally {
-        memberLoading.value = false;
+        if (isCurrentScope(snapshot, revision)) memberLoading.value = false;
       }
     };
 
-    const fetchGroups = async () => {
+    const loadScope = async (snapshot = scopeSnapshot()) => {
+      if (!snapshot) return;
+      const revision = scopeRevision.value;
+      scopeLoading.value = true;
       try {
-        const data = await bridge.apiGet("groups");
-        groups.value = (data && data.groups) || [];
+        const [groupData, userData] = await Promise.all([
+          scopedGet("groups", {}, snapshot),
+          scopedGet("users", { limit: 1000 }, snapshot),
+        ]);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (groupData && groupData.success === false) {
+          throw new Error(groupData.error || "加载群列表失败");
+        }
+        if (userData && userData.success === false) {
+          throw new Error(userData.error || "加载成员失败");
+        }
+        groups.value = (groupData && groupData.groups) || [];
+        users.value = (userData && userData.users) || [];
       } catch (e) {
-        /* 非关键 */
+        if (isCurrentScope(snapshot, revision)) {
+          errorMsg.value = String(e);
+          groups.value = [];
+          users.value = [];
+        }
+      } finally {
+        if (isCurrentScope(snapshot, revision)) scopeLoading.value = false;
+      }
+    };
+
+    const fetchBots = async () => {
+      scopeLoading.value = true;
+      errorMsg.value = "";
+      try {
+        const data = await bridge.apiGet("bots");
+        if (data && data.success === false) {
+          throw new Error(data.error || "加载 Bot 列表失败");
+        }
+        bots.value = (data && data.bots) || [];
+        const selected = bots.value.find((item) => item.bot_id === selectedBot.value) || bots.value[0];
+        if (!selected) {
+          selectedBot.value = "";
+          selectedMode.value = "per_group";
+          clearScopeState();
+          return;
+        }
+        const changed = selectedBot.value !== selected.bot_id || selectedMode.value !== selected.scope_mode;
+        selectedBot.value = selected.bot_id;
+        selectedMode.value = selected.scope_mode || "per_group";
+        if (changed) clearScopeState();
+        await loadScope();
+      } catch (e) {
+        errorMsg.value = String(e);
+        bots.value = [];
+        selectedBot.value = "";
+        clearScopeState();
+      } finally {
+        if (!selectedBot.value) scopeLoading.value = false;
+      }
+    };
+
+    const selectBot = async () => {
+      const item = selectedBotInfo.value;
+      if (!item) return;
+      selectedMode.value = item.scope_mode || "per_group";
+      clearScopeState();
+      await loadScope();
+    };
+
+    const applyMode = async () => {
+      const botId = selectedBot.value;
+      const nextMode = selectedMode.value;
+      const item = bots.value.find((entry) => entry.bot_id === botId);
+      const previousMode = (item && item.scope_mode) || "per_group";
+      if (!botId || nextMode === previousMode) {
+        await loadScope();
+        return;
+      }
+      clearScopeState();
+      modeLoading.value = true;
+      try {
+        const data = await bridge.apiPost("mode", { bot_id: botId, scope_mode: nextMode });
+        if (data && data.success === false) {
+          throw new Error(data.error || "切换数据空间失败");
+        }
+        if (item) item.scope_mode = nextMode;
+        await loadScope();
+      } catch (e) {
+        selectedMode.value = previousMode;
+        if (item) item.scope_mode = previousMode;
+        clearScopeState();
+        errorMsg.value = String(e);
+        await loadScope();
+      } finally {
+        modeLoading.value = false;
+      }
+    };
+
+    const backupScope = async () => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
+      backupLoading.value = true;
+      errorMsg.value = "";
+      try {
+        const data = await scopedPost("backup", {}, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (data && data.success === false) {
+          throw new Error(data.error || "备份失败");
+        }
+        latestBackup.value = data.backup_name || "";
+        if (latestBackup.value) restoreName.value = latestBackup.value;
+      } catch (e) {
+        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
+      } finally {
+        if (isCurrentScope(snapshot, revision)) backupLoading.value = false;
+      }
+    };
+
+    const prepareRestore = () => {
+      const snapshot = scopeSnapshot();
+      const name = restoreName.value.trim();
+      if (!snapshot || !name) {
+        errorMsg.value = "请输入备份文件名";
+        return;
+      }
+      restorePreview.value = { backup_name: name, snapshot, revision: scopeRevision.value };
+    };
+    const closeRestore = () => { restorePreview.value = null; };
+    const confirmRestore = async () => {
+      const preview = restorePreview.value;
+      restorePreview.value = null;
+      if (!preview || !isCurrentScope(preview.snapshot, preview.revision)) return;
+      backupLoading.value = true;
+      errorMsg.value = "";
+      try {
+        const data = await scopedPost("restore", { backup_name: preview.backup_name }, preview.snapshot);
+        if (data && data.success === false) {
+          throw new Error(data.error || "恢复失败");
+        }
+        clearScopeState();
+        await loadScope();
+      } catch (e) {
+        if (isCurrentScope(preview.snapshot, preview.revision)) errorMsg.value = String(e);
+      } finally {
+        backupLoading.value = false;
       }
     };
 
     const fetchLogs = async () => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
       loading.value = true;
       errorMsg.value = "";
       try {
@@ -165,7 +376,8 @@ createApp({
         const u = filterUser.value.trim();
         // 搜索框保持子串匹配体验（后端默认精确匹配，仅此处显式开启模糊）
         if (u) { params.user_id = u; params.fuzzy = "1"; }
-        const data = await bridge.apiGet("logs", params);
+        const data = await scopedGet("logs", params, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || "加载失败";
           logs.value = [];
@@ -173,20 +385,26 @@ createApp({
           logs.value = (data && data.logs) || [];
         }
       } catch (e) {
-        errorMsg.value = String(e);
-        logs.value = [];
+        if (isCurrentScope(snapshot, revision)) {
+          errorMsg.value = String(e);
+          logs.value = [];
+        }
       } finally {
-        loading.value = false;
+        if (isCurrentScope(snapshot, revision)) loading.value = false;
       }
     };
 
     const fetchUsers = async () => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
       loading.value = true;
       errorMsg.value = "";
       try {
         const params = { limit: 1000 };
         if (filterGroup.value) params.group_id = filterGroup.value;
-        const data = await bridge.apiGet("users", params);
+        const data = await scopedGet("users", params, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || "加载失败";
           users.value = [];
@@ -194,10 +412,12 @@ createApp({
           users.value = (data && data.users) || [];
         }
       } catch (e) {
-        errorMsg.value = String(e);
-        users.value = [];
+        if (isCurrentScope(snapshot, revision)) {
+          errorMsg.value = String(e);
+          users.value = [];
+        }
       } finally {
-        loading.value = false;
+        if (isCurrentScope(snapshot, revision)) loading.value = false;
       }
     };
 
@@ -220,19 +440,22 @@ createApp({
       } catch (e) {
         /* ignore */
       }
-      await fetchGroups();
-      await fetchUsers();
+      await fetchBots();
     });
 
     return {
       tab, loading, errorMsg, logs, users, visibleUsers, groups,
       filterGroup, filterUser, filterLimit,
+      bots, selectedBot, selectedMode, selectedBotInfo, scopeLabel,
+      scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
       fmtTime, fmtNum, fmtDelta, fmtIdle, fmtUser, sourceLabel,
       levelColor, levelChipStyle, barStyle,
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, showDetail, closeDetail,
       memberDetail, memberLoading, openMember, closeMember, refreshImpression,
-      fetchLogs, fetchUsers, refresh, switchTab,
+      fetchBots, selectBot, applyMode, backupScope, prepareRestore,
+      closeRestore, confirmRestore, fetchLogs, fetchUsers, refresh, switchTab,
+      restorePreview,
     };
   },
   template: `
@@ -248,6 +471,37 @@ createApp({
         </nav>
       </header>
       <div class="xx-string"></div>
+
+      <section class="xx-scope-bar">
+        <div class="xx-scope-field">
+          <label for="xx-bot-select">Bot</label>
+          <select id="xx-bot-select" v-model="selectedBot" @change="selectBot" :disabled="scopeLoading || modeLoading">
+            <option value="">选择 Bot</option>
+            <option v-for="b in bots" :key="b.bot_id" :value="b.bot_id">{{ b.bot_id }}</option>
+          </select>
+        </div>
+        <div class="xx-scope-field">
+          <label for="xx-mode-select">数据空间</label>
+          <select id="xx-mode-select" v-model="selectedMode" @change="applyMode" :disabled="!selectedBot || scopeLoading || modeLoading">
+            <option value="per_group">按群空间</option>
+            <option value="global">全局空间</option>
+          </select>
+        </div>
+        <div class="xx-scope-current">
+          <span>当前模式</span>
+          <strong>{{ selectedBot ? scopeLabel : "未选择" }}</strong>
+        </div>
+        <div class="xx-scope-actions">
+          <button class="xx-btn xx-btn-mini" @click="backupScope" :disabled="!selectedBot || backupLoading || scopeLoading">
+            {{ backupLoading ? "处理中…" : "备份当前空间" }}
+          </button>
+          <input class="xx-input xx-backup-name" v-model="restoreName" placeholder="备份文件名">
+          <button class="xx-btn xx-btn-danger xx-btn-mini" @click="prepareRestore" :disabled="!selectedBot || backupLoading || !restoreName.trim()">
+            恢复
+          </button>
+        </div>
+        <span v-if="latestBackup" class="xx-scope-note">最近备份：<code>{{ latestBackup }}</code></span>
+      </section>
 
       <div class="xx-filters">
         <select v-model="filterGroup" @change="refresh">
@@ -311,7 +565,7 @@ createApp({
                 </div>
               </td>
               <td class="xx-actions">
-                <button class="xx-btn xx-btn-mini" @click="openMember(u)">详情</button>
+                <button class="xx-btn xx-btn-mini" @click="openMember(u)" :disabled="selectedMode === 'global' && !filterGroup" :title="selectedMode === 'global' && !filterGroup ? '请先选择真实群' : '查看成员详情'">详情</button>
               </td>
             </tr>
           </tbody>
@@ -443,6 +697,28 @@ createApp({
           <div class="xx-modal-actions">
             <button class="xx-btn xx-btn-mini" @click="closeUndo">取消</button>
             <button class="xx-btn xx-btn-danger" @click="confirmUndo">确认撤销</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 恢复确认弹窗：恢复前要求确认当前 Bot/空间与备份名 -->
+      <div v-if="restorePreview" class="xx-modal" @click.self="closeRestore">
+        <div class="xx-modal-box">
+          <header class="xx-modal-header">
+            <span>确认恢复数据空间？</span>
+            <button class="xx-modal-close" @click="closeRestore">×</button>
+          </header>
+          <section class="xx-modal-section">
+            <p class="xx-modal-text">
+              将恢复 Bot <b class="xx-mono">{{ restorePreview.snapshot.bot_id }}</b> 的
+              <b>{{ restorePreview.snapshot.scope_mode === 'global' ? '全局空间' : '按群空间' }}</b>。
+            </p>
+            <p class="xx-modal-text xx-muted-text">备份：{{ restorePreview.backup_name }}</p>
+            <p class="xx-modal-text xx-muted-text">当前空间会被备份后替换，确认后再读取。</p>
+          </section>
+          <div class="xx-modal-actions">
+            <button class="xx-btn xx-btn-mini" @click="closeRestore">取消</button>
+            <button class="xx-btn xx-btn-danger" @click="confirmRestore">确认恢复</button>
           </div>
         </div>
       </div>
