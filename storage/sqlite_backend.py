@@ -356,14 +356,17 @@ class SQLiteBackend(StorageBackend):
                         # 当日额度耗尽：不动任何表（与历史行为一致——
                         # 旧实现在 service 层提前 return，不写不摸）
                         conn.rollback()
-                        frow = conn.execute(
-                            "SELECT favor FROM favor WHERE group_id=? AND user_id=?",
-                            (group_id, user_id),
-                        ).fetchone()
-                        cur = (
-                            round1(float(frow[0]))
-                            if frow
-                            else round1(float(default_favor or 0.0))
+                        cur, _, _ = self._compute_favor_write(
+                            conn,
+                            group_id,
+                            user_id,
+                            0,
+                            max_favor,
+                            min_favor,
+                            decay,
+                            default_favor,
+                            now,
+                            effective,
                         )
                         return (
                             FavorRecord(group_id, user_id, cur, now),
