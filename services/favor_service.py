@@ -170,7 +170,7 @@ class FavorService:
         self, group_id: str | None = None, limit: int = 500
     ) -> list[dict]:
         """当前总览：每个成员的有效好感/等级/关系/闲置天数（供 WebUI）。按有效好感降序。"""
-        recs = await self._storage.list_favor(group_id, limit)
+        recs = await self._storage.list_favor(group_id, -1)
         now = time.time()
         out: list[dict] = []
         for r in recs:
@@ -198,7 +198,7 @@ class FavorService:
                 }
             )
         out.sort(key=lambda x: x["favor"], reverse=True)
-        return out
+        return out[:limit] if limit >= 0 else out
 
     def level_of(self, favor: float) -> LevelDef:
         return self._levels.level_of(favor)

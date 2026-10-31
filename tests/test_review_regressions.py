@@ -118,3 +118,23 @@ def test_admin_log_uses_effective_score_and_preserves_profile(backend, monkeypat
     stored = asyncio.run(backend.get("group", "member"))
     assert stored.half_life == 20 and stored.nickname == "测试成员"
     assert asyncio.run(svc.undo_log(logs[0]["id"])).favor == 55
+
+
+@pytest.mark.parametrize("decay_enabled", [False, True])
+def test_standings_applies_limit_after_effective_sort(
+    backend, monkeypatch, decay_enabled
+):
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now)
+    svc = service(backend, decay_enabled=decay_enabled)
+    asyncio.run(backend.set_value("group", "older_high", 99))
+    backend._c().execute(
+        "UPDATE favor SET updated_at=?, half_life=? WHERE group_id=? AND user_id=?",
+        (now - 10 * 86400, 60, "group", "older_high"),
+    )
+    backend._c().commit()
+    asyncio.run(backend.set_value("group", "new_low", 1))
+    asyncio.run(backend.set_value("other_group", "outsider", 100))
+    result = asyncio.run(svc.standings("group", limit=1))
+    assert len(result) == 1 and result[0]["user_id"] == "older_high"
+    assert result[0]["favor"] == asyncio.run(svc.get("group", "older_high")).favor
