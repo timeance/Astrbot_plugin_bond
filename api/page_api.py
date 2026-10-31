@@ -259,8 +259,18 @@ class PageApi:
             params = await self._params()
             _bot_id, _mode, deps = await self._deps(params)
             group_id = self._optional_account(params, "group_id")
-            user_id = self._optional_account(params, "user_id")
             fuzzy = str(params.get("fuzzy") or "").strip() == "1"
+            user_id = params.get("user_id") or None
+            if fuzzy and user_id is not None:
+                if not (
+                    isinstance(user_id, str)
+                    and user_id.isascii()
+                    and user_id.isdigit()
+                    and len(user_id) <= 32
+                ):
+                    raise _PageRequestError
+            else:
+                user_id = self._optional_account(params, "user_id")
             logs = await deps.favor.query_logs(
                 group_id,
                 user_id,

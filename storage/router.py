@@ -44,6 +44,7 @@ _REQUIRED_COLUMNS = {
         "message",
         "reversed",
     },
+    "impression_progress": {"group_id", "user_id", "log_id"},
     "observed_members": {"group_id", "user_id", "last_seen_at"},
 }
 _TABLE_INFO_SQL = {
@@ -51,6 +52,7 @@ _TABLE_INFO_SQL = {
     "daily_gain": "PRAGMA table_info(daily_gain)",
     "cooldown": "PRAGMA table_info(cooldown)",
     "favor_log": "PRAGMA table_info(favor_log)",
+    "impression_progress": "PRAGMA table_info(impression_progress)",
     "observed_members": "PRAGMA table_info(observed_members)",
 }
 

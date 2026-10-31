@@ -246,6 +246,26 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         )
         assert status == 400 and body["error"] == "请求参数无效"
 
+        await global_deps.favor.set_favor(OLD_GROUP, "7000123", 10)
+        from urllib.parse import quote
+
+        for fragment, fuzzy, expected in (
+            ("000", 1, 200),
+            ("001", 1, 200),
+            ("000", 0, 400),
+            ("１２", 1, 400),
+            ("%", 1, 400),
+            ("1" * 33, 1, 400),
+        ):
+            status, body = await call(
+                page.handle_logs,
+                f"/astrbot_plugin_bond/logs?bot_id={BOT_IDS[0]}&scope_mode=global&user_id={quote(fragment)}&fuzzy={fuzzy}",
+                username="dashboard-admin",
+            )
+            assert status == expected, (fragment, status, body)
+            if fragment == "001":
+                assert any(r["user_id"] == "7000123" for r in body["logs"])
+
         # 备份/恢复走页面 API，且目标始终显式携带 Bot 与 scope。
         await old_deps.favor.set_favor(OLD_GROUP, OLD_USER, 12)
         status, body = await call(

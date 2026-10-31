@@ -25,7 +25,9 @@ def stats_tags(logs: list[dict]) -> list[str]:
     规则：常客（≥10 条）、夜猫子（30% 互动在 0-6 点）、
     热情（正评占比 >70% 且 ≥3 条）、毒舌（负评占比 >40% 且 ≥3 条）。
     """
-    judged = [r for r in (logs or []) if r.get("source") == "judge"]
+    judged = [
+        r for r in (logs or []) if r.get("source") == "judge" and not r.get("reversed")
+    ]
     if not judged:
         return []
     tags: list[str] = []

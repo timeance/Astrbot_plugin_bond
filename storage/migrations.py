@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -123,6 +123,10 @@ MIGRATIONS: dict[int, list[str]] = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_observed_members_group_seen "
         "ON observed_members(group_id, last_seen_at DESC)",
+    ],
+    # v11：印象汇总进度，与档案一起提交，避免重复汇总同一批评审。
+    11: [
+        "CREATE TABLE impression_progress (group_id TEXT NOT NULL, user_id TEXT NOT NULL, log_id INTEGER NOT NULL, PRIMARY KEY(group_id,user_id))"
     ],
 }
 

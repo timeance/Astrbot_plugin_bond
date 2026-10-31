@@ -266,7 +266,7 @@ def test_future_schema_is_rejected_for_init_and_restore(tmp_path):
         future_db = init_root / "bots" / "100" / "group.db"
         future_db.parent.mkdir(parents=True)
         with sqlite3.connect(future_db) as conn:
-            conn.execute("PRAGMA user_version(11)")
+            conn.execute("PRAGMA user_version(99)")
 
         init_router = BotScopeStorageRouter(init_root)
         try:
@@ -283,7 +283,7 @@ def test_future_schema_is_rejected_for_init_and_restore(tmp_path):
             backup_dir.mkdir(parents=True)
             future_backup = backup_dir / ("per_group-1-" + "0" * 32 + ".db")
             with sqlite3.connect(future_backup) as conn:
-                conn.execute("PRAGMA user_version(11)")
+                conn.execute("PRAGMA user_version(99)")
             with pytest.raises(ValueError, match="未来 schema"):
                 await router.restore("100", "per_group", future_backup.name)
             assert (await backend.get("123", "900")).favor == 10

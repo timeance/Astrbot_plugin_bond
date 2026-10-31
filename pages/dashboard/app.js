@@ -48,6 +48,10 @@ createApp({
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
       scopeRevision.value += 1;
+      loading.value = false;
+      memberLoading.value = false;
+      backupLoading.value = false;
+      restoreName.value = "";
       logs.value = [];
       users.value = [];
       groups.value = [];
@@ -352,6 +356,7 @@ createApp({
       errorMsg.value = "";
       try {
         const data = await scopedPost("restore", { backup_name: preview.backup_name }, preview.snapshot);
+        if (!isCurrentScope(preview.snapshot, preview.revision)) return;
         if (data && data.success === false) {
           throw new Error(data.error || "恢复失败");
         }
@@ -360,7 +365,7 @@ createApp({
       } catch (e) {
         if (isCurrentScope(preview.snapshot, preview.revision)) errorMsg.value = String(e);
       } finally {
-        backupLoading.value = false;
+        if (isCurrentScope(preview.snapshot, preview.revision)) backupLoading.value = false;
       }
     };
 

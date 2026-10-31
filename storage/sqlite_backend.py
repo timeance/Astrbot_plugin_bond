@@ -574,6 +574,105 @@ class SQLiteBackend(StorageBackend):
                 },
             )
 
+    async def impression_logs(self, group_id, user_id, limit):
+        with self._lock:
+            cursor = (
+                self._c()
+                .execute(
+                    "SELECT log_id FROM impression_progress WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                )
+                .fetchone()
+            )
+            rows = (
+                self._c()
+                .execute(
+                    "SELECT id, delta, message, reason, source, ts, reversed FROM favor_log "
+                    "WHERE group_id=? AND user_id=? AND source='judge' AND reversed=0 "
+                    "AND id>? ORDER BY id ASC LIMIT ?",
+                    (group_id, user_id, cursor[0] if cursor else 0, limit),
+                )
+                .fetchall()
+            )
+            return [
+                dict(
+                    zip(
+                        (
+                            "id",
+                            "delta",
+                            "message",
+                            "reason",
+                            "source",
+                            "ts",
+                            "reversed",
+                        ),
+                        r,
+                    )
+                )
+                for r in reversed(rows)
+            ]
+
+    async def commit_impression(
+        self, group_id, user_id, impression, tags, log_ids, points=None
+    ):
+        if not log_ids:
+            return False
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN")
+                progress = conn.execute(
+                    "SELECT log_id FROM impression_progress WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ).fetchone()
+                if progress and min(log_ids) <= progress[0]:
+                    conn.rollback()
+                    return False
+                for log_id in log_ids:
+                    valid = conn.execute(
+                        "SELECT 1 FROM favor_log WHERE id=? AND group_id=? AND user_id=? "
+                        "AND source='judge' AND reversed=0",
+                        (log_id, group_id, user_id),
+                    ).fetchone()
+                    if not valid:
+                        conn.rollback()
+                        return False
+                now = time.time()
+                conn.execute(
+                    "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points) "
+                    "VALUES(?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
+                    "impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,"
+                    "points=COALESCE(?,favor.points)",
+                    (
+                        group_id,
+                        user_id,
+                        now,
+                        impression,
+                        json.dumps(tags, ensure_ascii=False),
+                        now,
+                        (
+                            json.dumps(points, ensure_ascii=False)
+                            if points is not None
+                            else "[]"
+                        ),
+                        (
+                            json.dumps(points, ensure_ascii=False)
+                            if points is not None
+                            else None
+                        ),
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO impression_progress VALUES(?,?,?) ON CONFLICT(group_id,user_id) "
+                    "DO UPDATE SET log_id=MAX(log_id,excluded.log_id)",
+                    (group_id, user_id, max(log_ids)),
+                )
+                conn.commit()
+                return True
+            except Exception:
+                conn.rollback()
+                raise
+
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
         # X9：重读走线程池（不再阻塞主线程的回复）
         return await asyncio.to_thread(self._ranking_sync, group_id, limit)
@@ -790,6 +889,7 @@ class SQLiteBackend(StorageBackend):
         # 生产标准：execute 的 SQL 保持全字面量（表名也不插值），值一律 ? 参数化
         if user_id is None:
             stmts = [
+                ("DELETE FROM impression_progress WHERE group_id=?", (group_id,)),
                 ("DELETE FROM favor WHERE group_id=?", (group_id,)),
                 ("DELETE FROM daily_gain WHERE group_id=?", (group_id,)),
                 ("DELETE FROM cooldown WHERE group_id=?", (group_id,)),
@@ -798,6 +898,10 @@ class SQLiteBackend(StorageBackend):
             ]
         else:
             stmts = [
+                (
+                    "DELETE FROM impression_progress WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ),
                 (
                     "DELETE FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
