@@ -92,7 +92,9 @@ class FavorService:
         self._decay = (
             (base, growth, h_max, float(decay_baseline)) if decay_enabled else None
         )
-        self._storage.configure_initial_half_life(base if decay_enabled else 10.0)
+        self._storage.configure_initial_values(
+            base if decay_enabled else 10.0, default_favor=self.default_favor
+        )
         self._relationships = relationships
         self._economy = economy
         self._nick_cache: dict[tuple[str, str], str] = {}
@@ -108,6 +110,10 @@ class FavorService:
             self._tz = None
 
     # ---------- 查询 ----------
+
+    def invalidate_cache(self):
+        """恢复数据库后重新核对成员是否存在及昵称。"""
+        self._nick_cache.clear()
 
     def _today(self, now: float | None = None) -> date:
         """配置时区下的"今天"（每日限幅/同日衰减的边界）。"""
@@ -577,6 +583,7 @@ class FavorService:
                 1
                 for r in logs
                 if r.get("source") == "judge"
+                and not r.get("reversed")
                 and float(r.get("delta") or 0) > 0
                 and float(r.get("ts") or 0) >= start
             )

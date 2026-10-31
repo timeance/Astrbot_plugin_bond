@@ -33,9 +33,11 @@ class SQLiteBackend(StorageBackend):
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
         self._initial_half_life = 10.0
+        self._initial_favor = 0.0
 
-    def configure_initial_half_life(self, value):
+    def configure_initial_values(self, value, default_favor=0):
         self._initial_half_life = float(value)
+        self._initial_favor = float(default_favor)
 
     async def init(self) -> None:
         with self._lock:
@@ -595,8 +597,9 @@ class SQLiteBackend(StorageBackend):
         好感变动，不重置）。列名来自本类固定调用点，无用户输入。
         """
         now = time.time()
-        col_sql = ", ".join(cols)
-        ph = ", ".join("?" for _ in cols)
+        insert_cols = {"favor": self._initial_favor, **cols}
+        col_sql = ", ".join(insert_cols)
+        ph = ", ".join("?" for _ in insert_cols)
         update_sql = ", ".join(f"{c}=excluded.{c}" for c in cols)
         if touch:
             update_sql += ", updated_at=excluded.updated_at"
@@ -604,7 +607,7 @@ class SQLiteBackend(StorageBackend):
             f"INSERT INTO favor(group_id, user_id, updated_at, half_life, {col_sql}) "
             f"VALUES(?,?,?,?,{ph}) "
             f"ON CONFLICT(group_id, user_id) DO UPDATE SET {update_sql}",
-            (group_id, user_id, now, self._initial_half_life, *cols.values()),
+            (group_id, user_id, now, self._initial_half_life, *insert_cols.values()),
         )
         self._c().commit()
 
@@ -796,8 +799,8 @@ class SQLiteBackend(StorageBackend):
                         return False
                 now = time.time()
                 conn.execute(
-                    "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points,half_life) "
-                    "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
+                    "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points,half_life,favor) "
+                    "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
                     "impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,"
                     "points=COALESCE(?,favor.points)",
                     (
@@ -813,6 +816,7 @@ class SQLiteBackend(StorageBackend):
                             else "[]"
                         ),
                         self._initial_half_life,
+                        self._initial_favor,
                         (
                             json.dumps(points, ensure_ascii=False)
                             if points is not None

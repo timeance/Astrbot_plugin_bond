@@ -409,7 +409,7 @@ class PageApi:
             ):
                 raise _PageRequestError
             try:
-                await self._runtime.storage.restore(bot_id, mode, backup_name)
+                await self._runtime.restore(bot_id, mode, backup_name)
             except (FileNotFoundError, ValueError):
                 return self._error(ERROR_BACKUP)
             except Exception as exc:
