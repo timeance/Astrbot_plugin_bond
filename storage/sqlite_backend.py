@@ -323,7 +323,7 @@ class SQLiteBackend(StorageBackend):
         好感变动，不重置）。列名来自本类固定调用点，无用户输入。
         """
         now = time.time()
-        insert_cols = dict(favor=self._initial_favor, **cols)
+        insert_cols = {"favor": self._initial_favor, **cols}
         col_sql = ", ".join(insert_cols)
         ph = ", ".join("?" for _ in insert_cols)
         update_sql = ", ".join(f"{c}=excluded.{c}" for c in cols)
