@@ -1,0 +1,204 @@
+"""Bond 页面可编辑的详细设置；沿用宿主配置，不保存第二份状态。"""
+
+from __future__ import annotations
+import hashlib
+import json
+import math
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+# 仅暴露当前仍使用的详细设置。基础开关、模型和数据空间有各自入口。
+SECTIONS = {
+    "rules": (
+        "关系变化",
+        ["timezone", "decay", "economy"],
+    ),
+    "memory": (
+        "印象与近期事件",
+        ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
+    ),
+    "commands": ("查询与排行", ["command", "render"]),
+}
+LABELS = {
+    "timezone": (
+        "每日限额时区",
+        "决定关系每日限额的换日时间，例如 Asia/Shanghai。复核次数按 UTC 换日。",
+    ),
+    "memory_count": ("近期事件条数", "最多向当前群对话补充多少条事件；0 表示不补充。"),
+    "memory_days": ("近期事件保留天数", "仅补充这个时间范围内的事件。"),
+    "memory_sig_threshold": (
+        "重要事件变化阈值",
+        "达到这个变化幅度的事件使用更长的回顾时间；0 表示关闭。",
+    ),
+    "memory_sig_window_mult": ("重要事件时间倍数", "重要事件的回顾天数乘以这个数。"),
+    "interval": (
+        "印象更新间隔",
+        "每累计多少次有效评估，后台更新一次成员印象。更新会调用模型。",
+    ),
+    "points_mode": (
+        "分别记录印象要点",
+        "开启后合并相近要点并保留权重；关闭时使用一句话印象。",
+    ),
+    "judge.provider_id": (
+        "印象汇总模型（可选）",
+        "留空时使用当前会话模型。只用于汇总印象，不参与三维互动评分。",
+    ),
+    "judge.timeout_sec": (
+        "印象汇总超时（秒）",
+        "超过这个时间停止等待；0 表示不设超时。",
+    ),
+    "ranking_limit": ("内部排行条数", "公开群聊排行仍最多显示前 10 名。"),
+    "text_wake_enabled": ("文字唤醒排行", "允许用下方短语查询本群排行，无需输入斜杠。"),
+    "text_wake_ranking": ("排行唤醒短语", "多个短语用英文逗号分隔，须与整条消息一致。"),
+    "font_path": (
+        "排行图片字体",
+        "填写 AstrBot 所在设备的字体路径。留空自动查找，缺少中文字体时文字可能无法显示。",
+    ),
+    "rows_per_col": ("排行每列行数", "超过这个数量后换到下一列。"),
+    "decay.enabled": ("启用时间衰减", "亲近度随时间向下方基线靠近。"),
+    "baseline": ("亲近度衰减基线", "亲近度随时间靠近的数值。"),
+    "floor_enabled": ("限制衰减后的关系等级", "衰减最多降到原等级下两级的下沿。"),
+    "half_life_base": ("初始半衰期（天）", "亲近度与基线的差距缩小一半所需的时间。"),
+    "half_life_growth": (
+        "正向互动的巩固倍数",
+        "正向互动后，半衰期乘以这个数；1 表示不延长。",
+    ),
+    "half_life_max": ("最长半衰期（天）", "限制互动巩固后的半衰期。"),
+    "economy.enabled": (
+        "启用关系增长规则",
+        "对亲近度变化应用重复衰减、负面权重和修复期规则。",
+    ),
+    "preset": ("增长规则预设", "保留上游预设；下方具体参数优先于预设。"),
+    "noise_floor": (
+        "忽略微小变化",
+        "亲近度变化的绝对值低于这个数时不计入。0 表示关闭。",
+    ),
+    "negative_weight": ("负向变化倍数", "亲近度下降幅度乘以这个数；1 表示不放大。"),
+    "same_day_decay": (
+        "当日重复增长衰减",
+        "同一天正向互动越多，后续增长越少；0 表示关闭。",
+    ),
+    "repair_threshold": (
+        "修复期触发幅度",
+        "单次亲近度下降达到这个幅度后进入修复期；0 表示关闭。",
+    ),
+    "repair_hours": ("修复期时长（小时）", "修复期内降低正向互动带来的亲近度增长。"),
+    "repair_factor": (
+        "修复期增长倍数",
+        "修复期内正向变化乘以这个数，例如 0.5 表示减半。",
+    ),
+    "repair_scale_high": (
+        "亲密关系修复系数",
+        "亲密及以上关系的修复期使用这个系数调整。",
+    ),
+    "repair_scale_low": ("一般关系修复系数", "友好及以下关系的修复期时长乘以这个数。"),
+}
+
+
+def fields():
+    schema = json.loads(
+        (Path(__file__).resolve().parents[1] / "_conf_schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    result = []
+
+    def visit(path, node, group, title):
+        if path == "inject.enabled":
+            return
+        if node["type"] == "object":
+            for key, child in node["items"].items():
+                visit(path + "." + key, child, group, title)
+            return
+        key = path.rsplit(".", 1)[-1]
+        label, hint = LABELS.get(
+            path,
+            LABELS.get(
+                key,
+                (node.get("description", key), "该等级的正向亲近度变化乘以这个数。"),
+            ),
+        )
+        result.append(
+            dict(
+                path=path,
+                group=group,
+                title=title,
+                label=label,
+                hint=hint,
+                type=node["type"],
+                default=node.get("default"),
+                options=node.get("options", []),
+            )
+        )
+
+    for group, (title, paths) in SECTIONS.items():
+        for path in paths:
+            node = schema
+            for part in path.split("."):
+                if "items" in node:
+                    node = node["items"]
+                node = node[part]
+            visit(path, node, group, title)
+    return result
+
+
+def snapshot(config):
+    definitions = fields()
+    values = {}
+    for field in definitions:
+        value = config
+        for part in field["path"].split("."):
+            value = value.get(part, {}) if isinstance(value, dict) else {}
+        values[field["path"]] = field["default"] if value == {} else value
+    revision = hashlib.sha256(
+        json.dumps(values, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+    return dict(fields=definitions, values=values, revision=revision)
+
+
+def validate_patch(values):
+    if not isinstance(values, dict) or not values:
+        raise ValueError("请提交要修改的设置")
+    allowed = {f["path"]: f for f in fields()}
+    for path, value in values.items():
+        if path not in allowed:
+            raise ValueError("不支持的设置")
+        f = allowed[path]
+        typ = f["type"]
+        if typ == "bool":
+            valid = type(value) is bool
+        elif typ == "int":
+            valid = type(value) is int
+        elif typ == "float":
+            valid = type(value) in (int, float) and math.isfinite(value)
+        else:
+            valid = isinstance(value, str) and len(value) <= 4096
+        if not valid:
+            raise ValueError("设置类型无效")
+        if f["options"] and value not in f["options"]:
+            raise ValueError("选项无效")
+        if type(value) in (int, float):
+            minimum = (
+                1
+                if path.endswith(
+                    (
+                        "interval",
+                        "ranking_limit",
+                        "rows_per_col",
+                        "half_life_base",
+                        "half_life_max",
+                    )
+                )
+                else 0
+            )
+            if path == "decay.baseline":
+                minimum = -100
+            if path in {"decay.half_life_growth", "inject.memory_sig_window_mult"}:
+                minimum = 1
+            maximum = 100 if path == "decay.baseline" else 1000000
+            if path in {"economy.repair_factor", "economy.same_day_decay"}:
+                maximum = 1
+            if not minimum <= value <= maximum:
+                raise ValueError("数值超出范围")
+        if path == "timezone":
+            ZoneInfo(value)

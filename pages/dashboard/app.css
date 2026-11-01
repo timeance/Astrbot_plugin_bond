@@ -604,3 +604,16 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   .xx-panel-head .xx-btn { align-self: flex-start; }
   .xx-modal-box { width: min(680px, 94vw); padding: 18px 16px; }
 }
+
+/* 详细设置的说明独立成行，窄屏下输入框移到标签下方。 */
+.xx-detail-row { align-items: flex-start; }
+.xx-detail-row > span { flex: 1; min-width: 0; }
+.xx-detail-row .xx-help { display: block; }
+.xx-detail-row .xx-input { flex: 0 1 280px; }
+.xx-form-card > summary { cursor: pointer; }
+.xx-panel > details.xx-form-card { margin-top: 12px; }
+@media (max-width: 760px) {
+  .xx-detail-row { flex-direction: column; align-items: stretch; }
+  .xx-detail-row .xx-input { flex: none; width: 100%; }
+  .xx-detail-row input[type="checkbox"] { align-self: flex-start; }
+}

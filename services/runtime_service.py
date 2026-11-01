@@ -86,7 +86,9 @@ class RuntimeService:
 
         if not isinstance(values, dict):
             raise ValueError("评估设置须为对象")
-        validated = asdict(AssessmentConfig(**values))
+        current = dict(self._config.get("assessment") or {})
+        current.pop("max_concurrent_assessments", None)
+        validated = asdict(AssessmentConfig(**{**current, **values}))
         AssessmentCapacity(limit)
         async with self._lock:
             previous = self._config.get("assessment")
@@ -111,6 +113,33 @@ class RuntimeService:
                 self._config.save_config()
             except BaseException:
                 self._config["livingmemory"] = previous
+                raise
+
+    def detailed_settings(self):
+        from ..core.settings import snapshot
+
+        return snapshot(self._config)
+
+    async def save_detailed_settings(self, values, revision):
+        from copy import deepcopy
+        from ..core.settings import validate_patch
+
+        validate_patch(values)
+        async with self._lock:
+            if revision != self.detailed_settings()["revision"]:
+                raise ValueError("设置已变更，请刷新后重试")
+            previous = deepcopy(dict(self._config))
+            try:
+                for path, value in values.items():
+                    target = self._config
+                    parts = path.split(".")
+                    for part in parts[:-1]:
+                        target = target.setdefault(part, {})
+                    target[parts[-1]] = value
+                self._config.save_config()
+            except BaseException:
+                self._config.clear()
+                self._config.update(previous)
                 raise
 
     async def describe(self) -> list[dict]:

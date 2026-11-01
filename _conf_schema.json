@@ -2,37 +2,44 @@
   "master_ids": {
     "type": "string",
     "description": "主人 QQ 号（多个用英文逗号分隔）。主人有专属身份标识，但好感度数值照常涨跌",
-    "default": ""
+    "default": "",
+    "invisible": true
   },
   "max_favor": {
     "type": "float",
     "description": "好感度上限",
-    "default": 100
+    "default": 100,
+    "invisible": true
   },
   "min_favor": {
     "type": "float",
     "description": "好感度下限（负值支持，默认与 max_favor 对称；「厌恶」等级下界应与此一致）",
-    "default": -100
+    "default": -100,
+    "invisible": true
   },
   "default_favor": {
     "type": "float",
     "description": "新成员初始好感度",
-    "default": 0
+    "default": 0,
+    "invisible": true
   },
   "timezone": {
     "type": "string",
     "description": "每日限幅与同日衰减的\"一天\"边界时区（IANA 名称，如 Asia/Shanghai、Europe/London）。默认 Asia/Shanghai——容器系统时区多为 UTC，不设默认的话\"一天\"会在北京时间早 8 点才换日",
-    "default": "Asia/Shanghai"
+    "default": "Asia/Shanghai",
+    "invisible": true
   },
   "daily_cap_up": {
     "type": "float",
     "description": "每日好感度上涨上限（规则+评估合计，支持一位小数）。真实关系节奏建议 4：挚友约 2 个月、挚爱 3~4 个月",
-    "default": 4
+    "default": 4,
+    "invisible": true
   },
   "daily_cap_down": {
     "type": "float",
     "description": "每日好感度下降上限（绝对值，支持一位小数）。默认比上涨上限宽（负性偏向：坏事比好事重）",
-    "default": 8
+    "default": 8,
+    "invisible": true
   },
   "judge": {
     "type": "object",
@@ -130,7 +137,8 @@
         "default": false,
         "description": "检测到麦麦插件时，评估模型跟随其 replyer 当前绑定的模型（人格口径一致；未装麦麦/解析失败自动回落：narrative_reason 强制会话模型 > provider_id > 会话主模型）"
       }
-    }
+    },
+    "invisible": true
   },
   "levels": {
     "type": "object",
@@ -325,36 +333,43 @@
           }
         }
       }
-    }
+    },
+    "invisible": true
   },
   "inject": {
     "type": "object",
-    "description": "三维关系注入：尊重当前人格；模板在 Bond 面板管理。全局空间仅注入关系称谓。",
+    "description": "回复中的关系信息",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "开发基线默认关闭；人格中立提示词与无数值注入验收后再启用"
+        "description": "让回复体现当前关系",
+        "invisible": false,
+        "hint": "根据当前关系调整语气，沿用 AstrBot 当前人格。修改后重载插件生效。"
       },
       "memory_count": {
         "type": "int",
         "default": 3,
-        "description": "注入「近期印象」的最近变动条数（从流水取，让当前助手记得具体的事）。0=关闭"
+        "description": "注入「近期印象」的最近变动条数（从流水取，让当前助手记得具体的事）。0=关闭",
+        "invisible": true
       },
       "memory_days": {
         "type": "int",
         "default": 7,
-        "description": "「近期印象」只取最近 N 天内的变动（超出的视为淡忘，不注入）"
+        "description": "「近期印象」只取最近 N 天内的变动（超出的视为淡忘，不注入）",
+        "invisible": true
       },
       "memory_sig_threshold": {
         "type": "float",
         "default": 1.0,
-        "description": "显著性加权：|增减| ≥ 该值的事件视为重要（被重骂/被真诚打动），记忆窗口延长。0=关闭（全部按普通窗口）"
+        "description": "显著性加权：|增减| ≥ 该值的事件视为重要（被重骂/被真诚打动），记忆窗口延长。0=关闭（全部按普通窗口）",
+        "invisible": true
       },
       "memory_sig_window_mult": {
         "type": "float",
         "default": 3.0,
-        "description": "重要事件的记忆窗口倍数（×memory_days）——大事记得久，小寒暄照常淡忘。1=与普通窗口相同"
+        "description": "重要事件的记忆窗口倍数（×memory_days）——大事记得久，小寒暄照常淡忘。1=与普通窗口相同",
+        "invisible": true
       }
     }
   },
@@ -377,7 +392,8 @@
         "default": "好感排行,好感榜单,好感排名",
         "description": "文字唤醒「全群排行」的短语，逗号分隔（精确匹配整条消息）"
       }
-    }
+    },
+    "invisible": true
   },
   "render": {
     "type": "object",
@@ -393,7 +409,8 @@
         "default": 12,
         "description": "每列行数上限；超过则向右新增列（左上最高、向下递减、再第二列）"
       }
-    }
+    },
+    "invisible": true
   },
   "decay": {
     "type": "object",
@@ -429,7 +446,8 @@
         "default": 60,
         "description": "半衰期上限（天）：每天聊的老朋友每天约损 1.1%——连续但极慢，老交情抗衰减"
       }
-    }
+    },
+    "invisible": true
   },
   "economy": {
     "type": "object",
@@ -536,7 +554,8 @@
           }
         }
       }
-    }
+    },
+    "invisible": true
   },
   "impression": {
     "type": "object",
@@ -552,7 +571,8 @@
         "default": false,
         "description": "P-C 带权印象点模式：印象升级为带权点集（相似合并/限量保留/损失厌恶加权/其他群友匿名化），关闭时维持一句话印象（存量数据自动迁移 schema v9，不动旧数据）"
       }
-    }
+    },
+    "invisible": true
   },
   "relationship": {
     "type": "object",
@@ -639,7 +659,8 @@
           }
         }
       }
-    }
+    },
+    "invisible": true
   },
   "coupling": {
     "type": "object",
@@ -650,38 +671,46 @@
         "default": false,
         "description": "联动开关：方向①评审增益按麦麦连续情绪(pfb)调制（同向最高×2、异向最高÷2）；方向②好感等级跃迁向麦麦注入情绪事件。麦麦侧另有两个总开关（emotion_enable/emotion_feedback_enable），任一关闭本侧自动空转"
       }
-    }
+    },
+    "invisible": true
   },
   "bot_scope_modes": {
     "description": "各 Bot 当前数据空间（JSON 对象）",
     "type": "string",
     "default": "{}",
-    "hint": "真实账号ID映射到 per_group 或 global；优先在关系面板切换，仅选择数据空间，不复制、合并或删除旧数据。"
+    "hint": "真实账号ID映射到 per_group 或 global；优先在关系面板切换，仅选择数据空间，不复制、合并或删除旧数据。",
+    "invisible": true
   },
   "ignored_bot_ids": {
-    "description": "忽略的其他机器人账号",
+    "description": "忽略的机器人账号",
     "type": "list",
     "default": [],
-    "hint": "结构化发送者账号命中时跳过关系记录与评估；不按昵称或正文识别。"
+    "hint": "这些账号发送的消息不参与关系记录与评估。填写平台账号 ID，每项一个。"
   },
   "assessment": {
     "type": "object",
-    "description": "三维互动评估",
+    "description": "自动评估",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "启用三维互动评估"
+        "description": "自动评估互动",
+        "invisible": false,
+        "hint": "根据你与 Bot 的互动更新关系，会调用下方选择的模型。"
       },
       "small_provider_id": {
         "type": "string",
         "default": "",
-        "description": "小模型 AstrBot Provider ID"
+        "description": "评估模型",
+        "invisible": false,
+        "hint": "选择 AstrBot 中已配置的 Provider，用于日常互动判断。"
       },
       "large_provider_id": {
         "type": "string",
         "default": "",
-        "description": "复核 Provider ID；留空时不调用复核模型"
+        "description": "复核模型（可选）",
+        "invisible": false,
+        "hint": "用于复核容易误判的互动。留空时不调用复核模型；无法确定的互动不评分。"
       },
       "assessment_mode": {
         "type": "string",
@@ -690,39 +719,47 @@
           "single",
           "tiered"
         ],
-        "description": "评估模式"
+        "description": "评估模式",
+        "invisible": true
       },
       "small_timeout_sec": {
         "type": "float",
         "default": 20,
-        "description": "小模型超时秒数"
+        "description": "小模型超时秒数",
+        "invisible": true
       },
       "large_timeout_sec": {
         "type": "float",
         "default": 30,
-        "description": "复核超时秒数"
+        "description": "复核超时秒数",
+        "invisible": true
       },
       "cooldown_sec": {
         "type": "float",
         "default": 120,
-        "description": "成员评估冷却秒数"
+        "description": "成员评估冷却秒数",
+        "invisible": true
       },
       "per_user_daily_large_cap": {
         "type": "int",
         "default": 2,
-        "description": "当前 Bot 每用户每日复核次数上限（UTC，跨两个空间）"
+        "description": "当前 Bot 每用户每日复核次数上限（UTC，跨两个空间）",
+        "invisible": true
       },
       "per_bot_daily_large_cap": {
         "type": "int",
         "default": 20,
-        "description": "当前 Bot 每日复核次数上限（UTC，跨两个空间）"
+        "description": "当前 Bot 每日复核次数上限（UTC，跨两个空间）",
+        "invisible": true
       },
       "max_concurrent_assessments": {
         "type": "int",
         "default": 2,
-        "description": "所有 Bot 共用的在途评估上限，无等待队列"
+        "description": "所有 Bot 共用的在途评估上限，无等待队列",
+        "invisible": true
       }
-    }
+    },
+    "hint": "详细设置和调用统计请打开 Bond 插件页面。修改后重载插件生效。"
   },
   "livingmemory": {
     "type": "object",
@@ -743,6 +780,7 @@
         "default": false,
         "description": "请求允许写入；还需来源隔离与持久幂等接口可用"
       }
-    }
+    },
+    "invisible": true
   }
 }

@@ -111,18 +111,25 @@ for(const operation of ['switch','restore']) test(`log tab reloads after ${opera
 });
 
 
-test('optional integration save uses its original scope and ignores late completion',async()=>{
+test('optional integration check is read only and ignores an old scope',async()=>{
+ const {ui,pendingGets,reads,pending}=harness();
+ const check=ui.loadIntegration(true);
+ await check;
+ assert.equal(reads.find(x=>x.endpoint==='livingmemory').params.check,'1');
+ assert.equal(pending.length,0);
+ assert.equal(ui.saveIntegration,undefined);
+});
+
+test('detailed settings save sends changed fields only and ignores late completion',async()=>{
  const {ui,pending}=harness();
- ui.integrationConfig.value={enabled:true,read_enabled:true,write_enabled:false};
- const save=ui.saveIntegration();
- assert.equal(pending[0].endpoint,'livingmemory');
- assert.equal(pending[0].params.bot_id,'10001');
+ ui.detailSettings.value={revision:'v1',values:{timezone:'UTC',memory_days:4},fields:[]};
+ ui.detailValues.value={timezone:'UTC',memory_days:5};
+ const save=ui.saveSettings();
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({memory_days:5}));
  ui.selectedBot.value='20002';await ui.selectBot();
- pending[0].resolve({success:true,config:{enabled:true,read_enabled:true,write_enabled:false},state:{status:'unsupported_scope'}});
- await save;
- assert.equal(ui.integrationState.value,null);
- assert.equal(ui.integrationConfig.value.enabled,false);
- assert.equal(ui.integrationLoading.value,false);
+ pending[0].resolve({success:true,revision:'v2',values:{memory_days:5},fields:[]});await save;
+ assert.equal(ui.detailSettings.value,null);
+ assert.equal(ui.detailLoading.value,false);
 });
 
 for(const operation of ['saveRelation','saveProfile','refreshImpression']) test(`closing during ${operation} releases the editor and ignores the old session`,async()=>{
