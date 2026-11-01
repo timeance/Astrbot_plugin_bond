@@ -1,6 +1,6 @@
 # 工程结构
 
-当前实现继承 Xinxian 的单值关系模型。本文描述现有代码；三维关系及数据隔离目标见 [需求文档](docs/PRD.md)，当前缺口见 [工程审查](docs/PR0_AUDIT.md)。
+当前在 Xinxian 服务与事务存储上实现独立三维关系。本文描述现有代码；三维关系及数据隔离目标见 [需求文档](docs/PRD.md)，当前缺口见 [工程审查](docs/PR0_AUDIT.md)。
 
 ## 分层
 
@@ -22,7 +22,7 @@
 
 SQLite 保留 WAL、busy timeout 和版本化迁移。`BotScopeStorageRouter` 为每个真实 Bot 账号维护独立 `group.db` 和 `global.db`。`RuntimeService` 为每个 Bot/空间装配原服务，所有事件、命令、跨插件与页面入口显式选库；后台任务捕获创建时的路由。模式配置由 AstrBot 持久化，仅改变路由，不迁移数据。详见 [分库说明](docs/PR1_ISOLATION.md)。
 
-LLM 评估通过受管理的后台任务进行，异常不进入聊天回复链。当前缺少分级模型、完整证据校验与请求成本管理，不将旧评估默认开启。
+LLM 评估通过受管理的后台任务进行，异常不进入聊天回复链。`AssessmentService` 是自动评分唯一入口，旧 `JudgeService` 保留印象摘要的 Provider 解析能力。模型只返回分类、置信度与原文证据；关系增量由本地规则计算。评估去重、冷却和复核预算在 SQLite 记录，异常停止本次评分。详见 [评估说明](docs/PR3_ASSESSMENT.md)。
 
 ## 身份、页面和注入
 

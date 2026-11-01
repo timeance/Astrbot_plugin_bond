@@ -338,6 +338,36 @@ class StorageBackend(ABC):
             ValueError: 记录不存在 / 该变动已撤销。
         """
 
+    @property
+    def bot_id(self):
+        """后端绑定的真实 Bot 身份。"""
+        raise NotImplementedError
+
+    async def claim_assessment(self, event_id, group_id, user_id, cooldown):
+        """原子保留去重 ID 与评估冷却。"""
+        raise NotImplementedError
+
+    async def finish_assessment(self, event_id, status):
+        raise NotImplementedError
+
+    async def begin_assessment_call(
+        self, event_id, group_id, user_id, tier, provider_id, user_cap, bot_cap
+    ):
+        """原子预留调用额度；耗尽返回 None。"""
+        raise NotImplementedError
+
+    async def finish_assessment_call(self, call_id, status, tokens):
+        raise NotImplementedError
+
+    async def record_assessment_skip(self, interaction, status):
+        raise NotImplementedError
+
+    async def large_call_counts(self, user_id):
+        raise NotImplementedError
+
+    async def assessment_stats(self):
+        raise NotImplementedError
+
     @abstractmethod
     async def close(self) -> None:
         """关闭并释放资源。"""
