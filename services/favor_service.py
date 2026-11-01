@@ -345,8 +345,15 @@ class FavorService:
         else:
             rows = await self._storage.ranking(group_id, -1)
         rows = [await self.get(r.group_id, r.user_id) for r in rows]
+        names = await self._storage.member_names()
         for r in rows:
-            r.nickname = await self.member_name(group_id, r.user_id)
+            r.nickname = names.get((group_id, r.user_id)) or names.get(
+                ("", r.user_id), ""
+            )
+        for r in rows:
+            r.nickname = names.get((group_id, r.user_id)) or names.get(
+                ("", r.user_id), ""
+            )
         rows.sort(key=lambda r: (-r.favor, r.user_id))
         return rows[:limit] if limit >= 0 else rows
 
@@ -374,8 +381,11 @@ class FavorService:
                     "familiarity": r.familiarity,
                     "trust": r.trust,
                     "relation_title": self._relation_title(r.familiarity, eff, r.trust),
-                    "stored_favor": round1(r.favor),
-                    "decayed": round1(r.favor) != eff,
+                    "stored_favor": round1(stored.favor),
+                    "decayed": round1(stored.favor) != eff
+                    and not (await self.temporary_state(r.group_id, r.user_id))[
+                        "active"
+                    ],
                     "level": self.level_of(eff).name,
                     "relationship": (
                         self.relationship_label(r.relationship)
