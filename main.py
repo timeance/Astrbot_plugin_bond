@@ -36,6 +36,7 @@ from .core.taskregistry import TaskRegistry
 from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
 from .services.inject_service import InjectService
+from .services.prompt_service import PromptService
 from .services.assessment_service import (
     AssessmentConfig,
     AssessmentCapacity,
@@ -94,6 +95,7 @@ class BondPlugin(Star):
 
         data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
 
+        self._prompts = PromptService(data_dir / "prompts.json")
         self._registry = TaskRegistry()
         self._assessment_capacity = AssessmentCapacity(
             (config.get("assessment") or {}).get("max_concurrent_assessments", 2)
@@ -170,32 +172,8 @@ class BondPlugin(Star):
             for key, tier in TIER_NAME_BY_KEY.items()
         }
 
-        template = (inject_cfg.get("template") or "").strip() or _read_resource(
-            "resources/prompts/inject_template.txt"
-        )
-        # X2：装配期校验自定义模板——未知占位符会让注入在每次 LLM 请求上
-        # 抛 KeyError（注入是必经路径），发现即报配置错误并回落默认模板
-        tpl_err = InjectService.validate_template(template)
-        if tpl_err:
-            logger.error(f"[心弦] inject.template 非法（{tpl_err}），已回落默认模板")
-            template = _read_resource("resources/prompts/inject_template.txt")
-        anchor_enabled = bool(inject_cfg.get("persona_anchor_enabled", True))
-        anchor_text = (inject_cfg.get("persona_anchor") or "").strip()
-        persona_anchor = (
-            (anchor_text or _read_resource("resources/prompts/persona_anchor.txt"))
-            if anchor_enabled
-            else ""
-        )
-        inject = InjectService(
-            levels,
-            template,
-            master_title=inject_cfg.get("master_title", "主人"),
-            max_favor=max_favor,
-            relationships=relationships,
-            persona_anchor=persona_anchor,
-            master_prompt=(inject_cfg.get("master_prompt") or "").strip(),
-            anti_injection=bool(inject_cfg.get("anti_injection", True)),
-        )
+        # 运行注入只使用三维模板；旧标量提示词不再定义人格或关系身份。
+        inject = InjectService(levels, "")
         judge = JudgeService(
             context,
             storage,
@@ -253,17 +231,19 @@ class BondPlugin(Star):
             AssessmentConfig(**assessment_cfg),
             self._assessment_capacity,
             budget_stores=budget_stores,
+            prompts=self._prompts,
         )
 
         return Deps(
             assessment=assessment,
+            prompts=self._prompts,
+            bot_id=storage.bot_id,
             favor=favor,
             judge=judge,
             inject=inject,
             impressions=impressions,
             registry=self._registry,
-            inject_enabled=bool(inject_cfg.get("enabled", False))
-            and scope_mode == "per_group",
+            inject_enabled=bool(inject_cfg.get("enabled", False)),
             memory_count=int(inject_cfg.get("memory_count", 3)),
             memory_days=int(inject_cfg.get("memory_days", 7)),
             memory_sig_threshold=float(inject_cfg.get("memory_sig_threshold", 1.0)),
@@ -334,7 +314,7 @@ class BondPlugin(Star):
         except Exception:
             logger.warning("[Bond] 关系观察失败，本次跳过，不影响对话")
 
-    @filter.on_llm_request()
+    @filter.on_llm_request(priority=-100)
     async def _on_llm_req(self, event: AstrMessageEvent, req: ProviderRequest):
         try:
             deps = await self._runtime.for_event(event)

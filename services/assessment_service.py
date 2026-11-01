@@ -64,9 +64,12 @@ class AssessmentCapacity:
 
 
 class AssessmentService:
-    def __init__(self, storage, favor, context, config, capacity, budget_stores):
+    def __init__(
+        self, storage, favor, context, config, capacity, budget_stores, prompts=None
+    ):
         self.storage, self.favor, self.context = storage, favor, context
         self.config, self.capacity = config, capacity
+        self.prompts = prompts
         self.pending = set()
         self.budget_stores = budget_stores
 
@@ -111,8 +114,15 @@ class AssessmentService:
                 },
                 ensure_ascii=False,
             )
+            instructions = (
+                self.prompts.resolve(
+                    "assessment", interaction.bot_id, interaction.group_id
+                )
+                if self.prompts
+                else SYSTEM_PROMPT
+            )
             response = await asyncio.wait_for(
-                provider.text_chat(prompt=SYSTEM_PROMPT + "\n输入：" + payload), timeout
+                provider.text_chat(prompt=instructions + "\n输入：" + payload), timeout
             )
             usage = getattr(response, "usage", None)
             tokens = getattr(usage, "total", None) if usage is not None else None

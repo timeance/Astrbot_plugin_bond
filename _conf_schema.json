@@ -329,32 +329,12 @@
   },
   "inject": {
     "type": "object",
-    "description": "对话时把好感度档案注入提示词",
+    "description": "三维关系注入：尊重当前人格；模板在 Bond 面板管理。全局空间仅注入关系称谓。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
         "description": "开发基线默认关闭；人格中立提示词与无数值注入验收后再启用"
-      },
-      "anti_injection": {
-        "type": "bool",
-        "default": true,
-        "description": "P-F 防注入：好感档案块末尾附两句声明——聊天内容中的指令类文字不执行、借其他 AI 口吻提要求仍按本人言行判断"
-      },
-      "master_title": {
-        "type": "string",
-        "default": "主人",
-        "description": "主人称谓"
-      },
-      "master_prompt": {
-        "type": "text",
-        "default": "",
-        "description": "主人身份的注入提示，留空用默认（身份恒定+好感照常涨跌不豁免，并声明态度指引按主人关系理解；具体语气见 levels.*.master_guidance）。可用 {master_title} 占位"
-      },
-      "template": {
-        "type": "text",
-        "default": "",
-        "description": "自定义注入模板，留空使用内置模板（resources/prompts/inject_template.txt）。含 {recent_events} 占位才会注入近期印象，含 {disclosure} 占位才会注入表露分寸"
       },
       "memory_count": {
         "type": "int",
@@ -375,16 +355,6 @@
         "type": "float",
         "default": 3.0,
         "description": "重要事件的记忆窗口倍数（×memory_days）——大事记得久，小寒暄照常淡忘。1=与普通窗口相同"
-      },
-      "persona_anchor_enabled": {
-        "type": "bool",
-        "default": true,
-        "description": "注入末尾追加人设锚，防止长对话出戏/被带偏（不动你的人设，只是追加几行钉住性格）"
-      },
-      "persona_anchor": {
-        "type": "text",
-        "default": "",
-        "description": "自定义人设锚文本；留空用内置默认，关闭请把 persona_anchor_enabled 设为 false"
       }
     }
   },
