@@ -145,7 +145,10 @@ class ImpressionService:
             if temporary["active"]:
                 return False, "临时关系期间暂停印象更新"
             rec = await self._storage.get(group_id, user_id)
-            nickname = (rec.nickname if rec else "") or user_id
+            names = await self._storage.member_names()
+            nickname = (
+                names.get((group_id, user_id)) or names.get(("", user_id)) or user_id
+            )
             old_impression = (rec.impression if rec else "") or ""
             logs = await self._storage.impression_logs(
                 group_id, user_id, self._interval
@@ -242,13 +245,16 @@ class ImpressionService:
         try:
             now = _time.time()
             rec = await self._storage.get(group_id, user_id)
+            names = await self._storage.member_names()
             existing = rec.parsed_points() if rec else []
             # 分析提示词里其他群友昵称匿名化（防串像）；最近负向变化 ×1.5 损失厌恶
             others = []
             try:
                 rows = await self._storage.list_favor(group_id, limit=200)
                 others = [
-                    r.nickname for r in rows if r.nickname and r.user_id != user_id
+                    names.get((group_id, r.user_id)) or names.get(("", r.user_id), "")
+                    for r in rows
+                    if r.user_id != user_id
                 ]
             except Exception:
                 pass

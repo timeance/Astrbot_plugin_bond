@@ -345,6 +345,8 @@ class FavorService:
         else:
             rows = await self._storage.ranking(group_id, -1)
         rows = [await self.get(r.group_id, r.user_id) for r in rows]
+        for r in rows:
+            r.nickname = await self.member_name(group_id, r.user_id)
         rows.sort(key=lambda r: (-r.favor, r.user_id))
         return rows[:limit] if limit >= 0 else rows
 
@@ -454,6 +456,7 @@ class FavorService:
         return group_key(self.scope_mode, group_id)
 
     async def observe_member(self, group_id: str, user_id: str) -> None:
+        await self._storage.ensure_member(self.group_key(group_id), user_id)
         await self._storage.observe_member(group_id, user_id)
 
     async def is_observed(self, group_id: str, user_id: str) -> bool:

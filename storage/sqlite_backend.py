@@ -1689,3 +1689,10 @@ class SQLiteBackend(StorageBackend):
                 dict(actor=a, action=b, ts=c, details=json.loads(d))
                 for a, b, c, d in rows
             ]
+
+    async def ensure_member(self, group_id, user_id):
+        with self._lock, self._c():
+            self._c().execute(
+                "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life) VALUES(?,?,?,?,?) ON CONFLICT(group_id,user_id) DO NOTHING",
+                (group_id, user_id, self._initial_favor, 0, self._initial_half_life),
+            )
