@@ -266,6 +266,24 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             if fragment == "001":
                 assert any(r["user_id"] == "7000123" for r in body["logs"])
 
+        await global_deps.favor.set_relation(
+            OLD_GROUP,
+            "7000124",
+            familiarity=90,
+            affinity=65,
+            trust=-40,
+            event_id="admin:smoke",
+        )
+        state = await global_deps.favor.get_relation(OLD_GROUP, "7000124")
+        assert (state.familiarity, state.affinity, state.trust) == (90, 65, -40)
+        status, body = await call(
+            page.handle_member,
+            f"/astrbot_plugin_bond/member?bot_id={BOT_IDS[0]}&scope_mode=global&group_id={OLD_GROUP}&user_id=7000124",
+            username="dashboard-admin",
+        )
+        assert status == 200 and body["member"]["trust"] == -40
+        assert "戒备" in body["member"]["relation_title"]
+
         # 备份/恢复走页面 API，且目标始终显式携带 Bot 与 scope。
         await old_deps.favor.set_favor(OLD_GROUP, OLD_USER, 12)
         status, body = await call(

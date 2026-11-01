@@ -322,6 +322,12 @@ class PageApi:
                         "user_id": user_id,
                         "nickname": rec.nickname or "",
                         "favor": rec.favor,
+                        "affinity": rec.affinity,
+                        "familiarity": rec.familiarity,
+                        "trust": rec.trust,
+                        "relation_title": await deps.favor.relation_title(
+                            group_id, user_id
+                        ),
                         "level": deps.favor.level_of(rec.favor).name,
                         "relationship": (
                             deps.favor.relationship_label(rec.relationship)

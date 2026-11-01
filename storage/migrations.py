@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -127,6 +127,15 @@ MIGRATIONS: dict[int, list[str]] = {
     # v11：印象汇总进度，与档案一起提交，避免重复汇总同一批评审。
     11: [
         "CREATE TABLE impression_progress (group_id TEXT NOT NULL, user_id TEXT NOT NULL, log_id INTEGER NOT NULL, PRIMARY KEY(group_id,user_id))"
+    ],
+    12: [
+        "ALTER TABLE favor ADD COLUMN familiarity REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE favor ADD COLUMN trust REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN familiarity_gain REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN trust_gain REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE favor_log ADD COLUMN relation_delta TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE favor_log ADD COLUMN event_id TEXT",
+        "CREATE UNIQUE INDEX idx_relation_event ON favor_log(group_id,user_id,event_id) WHERE event_id IS NOT NULL",
     ],
 }
 
