@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
-function harness(){
+function harness(timerOverrides={}){
  let ui;const pending=[];const pendingGets=[];const reads=[];
  const bridge={
   apiGet:async(endpoint,params)=>{
@@ -14,7 +14,7 @@ function harness(){
   apiPost:(endpoint,params)=>new Promise(resolve=>pending.push({endpoint,params,resolve}))
  };
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8'),{
-  Vue:{ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},createApp:options=>({mount(){ui=options.setup()}})},window:{AstrBotPluginPage:bridge},console
+  Vue:{ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},onUnmounted:()=>{},createApp:options=>({mount(){ui=options.setup()}})},window:{AstrBotPluginPage:bridge},console,setTimeout,clearTimeout,...timerOverrides
  });
  ui.bots.value=[{bot_id:'10001',scope_mode:'per_group'},{bot_id:'20002',scope_mode:'per_group'}];ui.selectedBot.value='10001';
  return {ui,pending,pendingGets,reads};
@@ -164,4 +164,25 @@ test('group whitelist uses an array and an empty field restores all groups',asyn
  pending[1].resolve({success:true,fields:[],values:{group_whitelist:[]},revision:'cleared'});
  await clear;
  assert.deepEqual(Array.from(ui.detailValues.value.group_whitelist),[]);
+});
+
+
+test('temporary expiry refreshes the member and ignores a closed detail',async()=>{
+ let tick;
+ const {ui,pendingGets,reads}=harness({setTimeout:fn=>{tick=fn;return 1},clearTimeout:()=>{}});
+ const open=ui.openMember({group_id:'10001',user_id:'u'});
+ pendingGets[0].resolve({success:true,member:{group_id:'10001',user_id:'u',familiarity:90,affinity:65,trust:-40,temporary:{active:true,expires_at:Date.now()/1000-1}}});
+ await open;
+ assert.equal(ui.relationEditMode.value,'temporary');
+ const expired=tick();
+ assert.equal(pendingGets.length,2);
+ pendingGets[1].resolve({success:true,member:{group_id:'10001',user_id:'u',familiarity:30,affinity:20,trust:10,temporary:{active:false}}});
+ await expired;
+ assert.equal(ui.relationForm.value.affinity,20);
+ assert.equal(ui.relationEditMode.value,'permanent');
+ assert.ok(reads.some(row=>row.endpoint==='users'));
+ ui.closeMember();
+ const before=pendingGets.length;
+ await tick();
+ assert.equal(pendingGets.length,before);
 });

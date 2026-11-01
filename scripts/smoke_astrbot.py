@@ -355,6 +355,50 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             "dashboard-admin",
         )
         assert status == 200 and body["relation"]["trust"] == -30
+        # 临时修改复用受保护的关系入口；正式值与审计独立保留。
+        temporary = dict(
+            target,
+            action="temporary",
+            familiarity=90,
+            affinity=-60,
+            trust=70,
+            duration_sec=60,
+        )
+        status, _ = await call(
+            page.handle_relation, "/astrbot_plugin_bond/relation", "POST", temporary
+        )
+        assert status == 401
+        status, body = await call(
+            page.handle_relation,
+            "/astrbot_plugin_bond/relation",
+            "POST",
+            temporary,
+            "dashboard-admin",
+        )
+        assert status == 200, body
+        assert (await old_deps.favor.get(OLD_GROUP, OLD_USER)).favor == -60
+        assert (await old_deps.favor.formal_relation(OLD_GROUP, OLD_USER))[
+            "affinity"
+        ] == 41.7
+        audit = await old_deps.favor.temporary_audit(OLD_GROUP, OLD_USER)
+        assert audit[0]["actor"] == "dashboard-admin"
+        status, _ = await call(
+            page.handle_relation,
+            "/astrbot_plugin_bond/relation",
+            "POST",
+            dict(target, familiarity=0, affinity=0, trust=0),
+            "dashboard-admin",
+        )
+        assert status == 400
+        status, _ = await call(
+            page.handle_relation,
+            "/astrbot_plugin_bond/relation",
+            "POST",
+            dict(target, action="cancel_temporary"),
+            "dashboard-admin",
+        )
+        assert status == 200
+        assert (await old_deps.favor.get(OLD_GROUP, OLD_USER)).favor == 41.7
         adjustment = (await old_deps.favor.query_logs(OLD_GROUP, OLD_USER))[0]
         assert "dashboard-admin" in adjustment["reason"]
         status, body = await call(

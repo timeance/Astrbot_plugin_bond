@@ -290,7 +290,8 @@ class SQLiteBackend(StorageBackend):
         apply_favor_change（同事务带额度/流水/冷却）；本方法保留给
         无需记账的调用方。"""
         now = time.time()
-        with self._lock:
+        with self._lock, self._c():
+            self._guard_relation_write(group_id, user_id)
             conn = self._c()
             new_value, real_delta, new_h = self._compute_favor_write(
                 conn,
@@ -617,7 +618,8 @@ class SQLiteBackend(StorageBackend):
 
     async def set_value(self, group_id: str, user_id: str, value: float) -> FavorRecord:
         value = round1(value)
-        with self._lock:
+        with self._lock, self._c():
+            self._guard_relation_write(group_id, user_id)
             self._upsert(group_id, user_id, {"favor": value}, touch=True)
         return FavorRecord(group_id, user_id, value, time.time())
 
@@ -1151,7 +1153,7 @@ class SQLiteBackend(StorageBackend):
                     (group_id, user_id),
                 ),
             ]
-        with self._lock:
+        with self._lock, self._c():
             conn = self._c()
             active = (
                 self._c()
@@ -1627,7 +1629,14 @@ class SQLiteBackend(StorageBackend):
             raise ValueError("临时关系生效或任务版本已过期，请结束临时关系后重试")
 
     async def set_override(
-        self, group_id, user_id, values, duration, actor, default_favor=0
+        self,
+        group_id,
+        user_id,
+        values,
+        duration,
+        actor,
+        default_favor=0,
+        reason="管理员调整",
     ):
         with self._lock:
             conn = self._c()
@@ -1667,7 +1676,13 @@ class SQLiteBackend(StorageBackend):
                             actor,
                             "updated" if old["active"] else "created",
                             now,
-                            json.dumps(dict(values=values, expires_at=now + duration)),
+                            json.dumps(
+                                dict(
+                                    values=values,
+                                    expires_at=now + duration,
+                                    reason=reason,
+                                )
+                            ),
                         ),
                     )
                 conn.commit()

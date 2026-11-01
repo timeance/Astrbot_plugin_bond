@@ -134,7 +134,9 @@ class AssessmentService:
             await self.storage.finish_assessment_call(call_id, status, None)
             return None
 
-    async def assess(self, interaction: Interaction, *, directed: bool):
+    async def assess(
+        self, interaction: Interaction, *, directed: bool, admission_state=None
+    ):
         cfg = self.config
         if interaction.bot_id != self.storage.bot_id:
             raise ValueError("评估 Bot 与数据库身份不符")
@@ -146,7 +148,13 @@ class AssessmentService:
         temporary = await self.favor.temporary_state(
             interaction.group_id, interaction.user_id
         )
-        if temporary["active"]:
+        if temporary["active"] or (
+            admission_state is not None
+            and (
+                admission_state["active"]
+                or admission_state["revision"] != temporary["revision"]
+            )
+        ):
             await self.storage.record_assessment_skip(interaction, "temporary")
             return "temporary"
         key = (self.favor.group_key(interaction.group_id), interaction.user_id)

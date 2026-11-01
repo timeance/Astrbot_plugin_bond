@@ -77,6 +77,10 @@ class ImpressionService:
             return
         self._pending.add(key)
         try:
+            temporary = await self._storage.override_state(group_id, user_id)
+            if temporary["active"]:
+                self._pending.discard(key)
+                return
             # 调度时锁定这一批证据；刷新和进度提交必须使用同一批，避免
             # interval 大于提示词旧上限时只消费部分流水而重复触发。
             logs = await self._storage.impression_logs(
@@ -93,6 +97,7 @@ class ImpressionService:
                         user_id,
                         umo,
                         evidence_ids=tuple(r["id"] for r in logs),
+                        expected_revision=temporary["revision"],
                     )
                 finally:
                     self._pending.discard(key)
@@ -135,6 +140,7 @@ class ImpressionService:
         umo: str = "",
         *,
         evidence_ids: tuple[int, ...] | None = None,
+        expected_revision: int | None = None,
     ) -> tuple[bool, str]:
         """收集流水 → 构造汇总提示 → 调 provider → 解析落库。"""
         group_id = self.group_key(group_id)
@@ -142,8 +148,11 @@ class ImpressionService:
 
         try:
             temporary = await self._storage.override_state(group_id, user_id)
-            if temporary["active"]:
-                return False, "临时关系期间暂停印象更新"
+            if temporary["active"] or (
+                expected_revision is not None
+                and temporary["revision"] != expected_revision
+            ):
+                return False, "临时关系已使该任务失效，保留原印象"
             rec = await self._storage.get(group_id, user_id)
             names = await self._storage.member_names()
             nickname = (

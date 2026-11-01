@@ -865,10 +865,16 @@ class FavorService:
     async def temporary_state(self, group_id, user_id):
         return await self._storage.override_state(self.group_key(group_id), user_id)
 
-    async def set_temporary(self, group_id, user_id, values, duration, actor):
+    async def set_temporary(
+        self, group_id, user_id, values, duration, actor, reason="管理员调整"
+    ):
         from dataclasses import asdict
         from ..core.relation_policy import RelationState
 
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("需要可信管理员身份")
+        if not isinstance(reason, str) or len(reason) > 120:
+            raise ValueError("调整原因不能超过 120 字")
         if values is not None:
             values = asdict(RelationState(**values))
             if (
@@ -884,6 +890,7 @@ class FavorService:
             duration,
             actor,
             self.default_favor,
+            reason,
         )
 
     async def temporary_audit(self, group_id, user_id):

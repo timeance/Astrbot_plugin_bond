@@ -1,4 +1,4 @@
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
   setup() {
@@ -118,6 +118,7 @@ createApp({
       snapshot.bot_id === selectedBot.value &&
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
+      clearExpiryTimer();
       scopeRevision.value += 1;
       detailSettings.value = null; detailValues.value = {}; detailLoading.value = false; detailNotice.value = "";
       loading.value = false;
@@ -297,6 +298,27 @@ createApp({
     // 成员详情弹窗（印象/标签/近期评审）
     const memberDetail = ref(null);
     const memberLoading = ref(false);
+    let expiryTimer;
+    const clearExpiryTimer = () => { clearTimeout(expiryTimer); expiryTimer = undefined; };
+    onUnmounted(clearExpiryTimer);
+    const scheduleExpiryRefresh = (member, snapshot, revision, target) => {
+      clearExpiryTimer();
+      if (!member?.temporary?.active) return;
+      const delay = Math.max(0, member.temporary.expires_at * 1000 - Date.now()) + 100;
+      expiryTimer = setTimeout(async () => {
+        if (!isCurrentMemberRequest(target, revision)) return;
+        if (Date.now() < member.temporary.expires_at * 1000) {
+          scheduleExpiryRefresh(member, snapshot, revision, target);
+          return;
+        }
+        try {
+          await loadMemberRecord(member.group_id, member.user_id, snapshot, revision, target);
+          if (isCurrentMemberRequest(target, revision)) await fetchUsers();
+        } catch (e) {
+          if (isCurrentMemberRequest(target, revision)) setMemberNotice("临时调整已到期，请刷新确认当前关系。" + String(e), true);
+        }
+      }, Math.min(delay, 2147483647));
+    };
     const syncMemberForms = (member) => {
       relationEditMode.value = member?.temporary?.active ? "temporary" : "permanent";
       const m = member || {};
@@ -319,6 +341,7 @@ createApp({
       }
       memberDetail.value = data.member || null;
       syncMemberForms(memberDetail.value);
+      scheduleExpiryRefresh(memberDetail.value, snapshot, revision, target);
       return true;
     };
     const openMember = async (u) => {
@@ -337,6 +360,7 @@ createApp({
         return;
       }
       errorMsg.value = "";
+      clearExpiryTimer();
       memberDetail.value = null;
       memberSaveLoading.value = false;
       memberLoading.value = true;
@@ -352,6 +376,7 @@ createApp({
       }
     };
     const closeMember = () => {
+      clearExpiryTimer();
       memberSession += 1;
       memberRequestTarget.value = null;
       memberDetail.value = null;
@@ -379,7 +404,7 @@ createApp({
     };
     const endTemporary = async () => {
       const member=memberDetail.value, snapshot=scopeSnapshot(), revision=scopeRevision.value, target=memberRequestTarget.value;
-      if (!member || memberSaveLoading.value) return;
+      if (!member || !snapshot || memberSaveLoading.value) return;
       memberSaveLoading.value=true;
       try {
         const result=await scopedPost("relation",{group_id:member.group_id,user_id:member.user_id,action:"cancel_temporary"},snapshot);
@@ -1309,11 +1334,11 @@ createApp({
             <label class="xx-form-row xx-form-row-block"><span>印象</span><textarea class="xx-textarea" v-model="profileForm.impression" placeholder="成员印象"></textarea></label>
             <label class="xx-form-row xx-form-row-block"><span>标签</span><input class="xx-input" v-model="profileForm.tagsText" placeholder="用逗号分隔多个标签"></label>
             <div class="xx-modal-actions">
-              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading || !memberDetail.group_id">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
+              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading || !memberDetail.group_id || memberDetail.temporary?.active">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
               <button class="xx-btn" @click="saveProfile" :disabled="memberSaveLoading || !memberDetail.group_id">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
             </div>
           </section>
-          <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length"><summary>临时关系操作记录</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }} · {{ JSON.stringify(item.details) }}</p></details>
+          <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length"><summary>临时关系操作记录</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }}<span v-if="item.details.values"> · 熟悉度 {{ item.details.values.familiarity }}，亲近度 {{ item.details.values.affinity }}，信任度 {{ item.details.values.trust }} · 截至 {{ fmtTime(item.details.expires_at) }} · {{ item.details.reason }}</span></p></details>
           <details class="xx-member-history">
             <summary>近期评审（{{ memberDetail.recent_judges ? memberDetail.recent_judges.length : 0 }}）</summary>
             <p v-if="!memberDetail.recent_judges || !memberDetail.recent_judges.length" class="xx-modal-text xx-muted-text">暂无评估记录</p>

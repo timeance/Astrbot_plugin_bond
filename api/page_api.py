@@ -499,6 +499,7 @@ class PageApi:
                         values,
                         params.get("duration_sec"),
                         self._username(),
+                        reason,
                     )
                     return self._response({"success": True})
                 if action != "permanent":
