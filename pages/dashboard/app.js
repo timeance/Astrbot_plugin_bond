@@ -384,22 +384,30 @@ createApp({
       memberSaveLoading.value = false;
       setMemberNotice("");
     };
-    const refreshNames = async () => {
-      const member = memberDetail.value, snapshot = scopeSnapshot(), revision = scopeRevision.value;
-      const target = memberRequestTarget.value;
+    const refreshNames = async (row = null) => {
+      const member = row || memberDetail.value, snapshot = scopeSnapshot(), revision = scopeRevision.value;
+      const target = memberRequestTarget.value, session = memberSession;
       if (!member || !snapshot || memberSaveLoading.value) return;
+      const groupId = row ? (selectedMode.value === "global" ? filterGroup.value : row.group_id) : member.group_id;
+      const current = () => isCurrentScope(snapshot, revision) && memberSession === session && (row !== null || isCurrentMemberRequest(target, revision));
       memberSaveLoading.value = true;
       try {
-        const data = await scopedPost("member", {group_id:member.group_id,user_id:member.user_id}, snapshot);
-        if (!isCurrentMemberRequest(target, revision)) return;
+        const data = await scopedPost("member", {group_id:groupId || "",user_id:String(member.user_id)}, snapshot);
+        if (!current()) return;
         if (!data.success) throw new Error(data.error || "刷新昵称失败");
-        memberDetail.value.nickname = data.member.nickname;
+        if (!row) memberDetail.value.nickname = data.member.nickname;
         await fetchUsers();
-        if (isCurrentMemberRequest(target, revision)) setMemberNotice("昵称已刷新");
+        if (current()) {
+          if (row) errorMsg.value = "";
+          else setMemberNotice("昵称已刷新");
+        }
       } catch (e) {
-        if (isCurrentMemberRequest(target, revision)) setMemberNotice(String(e), true);
+        if (current()) {
+          if (row) errorMsg.value = String(e);
+          else setMemberNotice(String(e), true);
+        }
       } finally {
-        if (isCurrentMemberRequest(target, revision)) memberSaveLoading.value = false;
+        if (current()) memberSaveLoading.value = false;
       }
     };
     const endTemporary = async () => {
@@ -1050,6 +1058,7 @@ createApp({
                 </div>
               </td>
               <td class="xx-actions">
+                <button class="xx-btn xx-btn-mini" @click="refreshNames(u)" :disabled="memberSaveLoading || scopeLoading">刷新昵称</button>
                 <button class="xx-btn xx-btn-mini" @click="openMember(u)" title="查看成员详情">详情</button>
               </td>
             </tr>
@@ -1310,7 +1319,7 @@ createApp({
           </div>
           <p v-if="memberNotice" :class="['xx-status', memberNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ memberNotice }}</p>
           <section class="xx-modal-section xx-edit-section">
-            <button class="xx-btn xx-btn-mini" @click="refreshNames" :disabled="memberSaveLoading">刷新昵称</button>
+            <button class="xx-btn xx-btn-mini" @click="refreshNames()" :disabled="memberSaveLoading">刷新昵称</button>
             <h4>编辑三维关系</h4>
             <div v-if="memberDetail.temporary && memberDetail.temporary.active" role="status">
               <p><strong>临时关系生效中</strong>，截至 {{ fmtTime(memberDetail.temporary.expires_at) }}。评估、印象更新和正式关系衰减已暂停。</p>

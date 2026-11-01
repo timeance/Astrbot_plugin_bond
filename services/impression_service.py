@@ -115,7 +115,7 @@ class ImpressionService:
             # 连 spawn 都没发生，运维必须可见（2026-09-11 审查：原为纯 pass）
             from astrbot.api import logger as _logger
 
-            _logger.debug(f"[心弦] 印象刷新调度失败（跳过本轮）: {e}", exc_info=True)
+            _logger.debug(f"[八千代] 印象刷新调度失败（跳过本轮）: {e}", exc_info=True)
 
     async def refresh_now(
         self, group_id: str, user_id: str, umo: str = ""
@@ -216,14 +216,14 @@ class ImpressionService:
                 expected_revision=temporary["revision"],
             ):
                 return False, "评审已撤销，保留原印象"
-            logger.info(f"[心弦] {group_id}/{user_id} 印象已刷新: {impression}")
+            logger.info(f"[八千代] {group_id}/{user_id} 印象已刷新: {impression}")
             msg = f"已生成印象：{impression}" + (
                 f"（标签：{'、'.join(tags)}）" if tags else ""
             )
             return True, msg
 
         except Exception as e:
-            logger.warning(f"[心弦] 印象刷新失败（静默）: {e}")
+            logger.warning(f"[八千代] 印象刷新失败（静默）: {e}")
             return False, f"刷新失败: {e}"
 
     async def _refresh_points(
@@ -317,12 +317,12 @@ class ImpressionService:
             ):
                 return False, "评审已撤销，保留原印象"
             logger.info(
-                f"[心弦] {group_id}/{user_id} 印象点已刷新: "
+                f"[八千代] {group_id}/{user_id} 印象点已刷新: "
                 f"{len(kept)} 点（挤出 {len(dropped)}）"
             )
             return True, f"已生成印象：{impression}"
         except Exception as e:
-            logger.warning(f"[心弦] 印象点刷新失败（静默）: {e}")
+            logger.warning(f"[八千代] 印象点刷新失败（静默）: {e}")
             return False, f"刷新失败: {e}"
 
     async def set_tags(self, group_id: str, user_id: str, tags: list[str]) -> None:

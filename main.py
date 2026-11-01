@@ -73,7 +73,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 三维关系与成员印象",
-    "0.2.0-dev",
+    "0.2.1",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -88,10 +88,10 @@ class BondPlugin(Star):
         if migrated:
             try:
                 config.save_config()
-                logger.info(f"[心弦] 配置默认值迁移：{', '.join(migrated)}")
+                logger.info(f"[八千代] 配置默认值迁移：{', '.join(migrated)}")
             except Exception:
                 # 本次运行已用上内存中的新值；文件未写入则下次加载重试
-                logger.warning("[心弦] 配置默认值迁移后保存失败，将在下次加载时重试")
+                logger.warning("[八千代] 配置默认值迁移后保存失败，将在下次加载时重试")
 
         from copy import deepcopy
 
@@ -273,13 +273,13 @@ class BondPlugin(Star):
 
     async def initialize(self) -> None:
         self._runtime.modes()
-        logger.info("[心弦] 好感度插件已加载")
+        logger.info("[八千代] 好感度插件已加载")
 
     async def terminate(self) -> None:
         # X10：先取消并等待在飞任务（评审/印象刷新/延迟清理），再关存储
         await self._registry.cancel_and_wait_all(timeout=5.0)
         await self._storage.close()
-        logger.info("[心弦] 好感度插件已卸载")
+        logger.info("[八千代] 好感度插件已卸载")
 
     # ---------------- 事件钩子（薄壳转发） ----------------
 

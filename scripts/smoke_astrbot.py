@@ -83,7 +83,39 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             )
         ]
     )
+
+    # 模拟旧版 GET-only 成员路由；升级必须清除，不能命中旧处理器。
+    async def stale_member():
+        return {"success": False, "error": "stale route"}, 400
+
+    context.register_web_api(
+        "/astrbot_plugin_bond/member", stale_member, ["GET"], "old"
+    )
+    context.register_web_api("/other_plugin/member", stale_member, ["GET"], "unrelated")
+    # 两个独立 aiocqhttp 适配器，各自连接一个真实账号。
+    second_client = CQHttp(use_ws_reverse=True)
+    client._wsr_api_clients.pop(BOT_IDS[1])
+    second_client._wsr_api_clients[BOT_IDS[1]] = object()
+    context.platform_manager.platform_insts.append(
+        SimpleNamespace(
+            meta=lambda: SimpleNamespace(name="aiocqhttp", id="second-adapter"),
+            get_client=lambda: second_client,
+        )
+    )
     plugin = BondPlugin(context, config)
+    assert all(
+        handler is not stale_member
+        for route, handler, _, _ in context.registered_web_apis
+        if route.startswith("/astrbot_plugin_bond/")
+    )
+    assert any(
+        route == "/other_plugin/member" for route, *_ in context.registered_web_apis
+    )
+    context.registered_web_apis[:] = [
+        entry
+        for entry in context.registered_web_apis
+        if entry[0] != "/other_plugin/member"
+    ]
     await plugin.initialize()
     assert plugin._runtime.known_bot_ids() == sorted(BOT_IDS)
     assert plugin._storage.known_bot_ids() == []
@@ -127,6 +159,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     assert route_names["groups"] == ["GET"]
     assert route_names["users"] == ["GET"]
     assert route_names["member"] == ["GET", "POST"]
+    from astrbot.dashboard.api.plugins import _match_registered_web_api
+
+    assert (
+        _match_registered_web_api(routes, "astrbot_plugin_bond/member", "GET")[
+            0
+        ].__self__
+        is plugin._page_api
+    )
     assert route_names["bots"] == ["GET"]
     assert all(
         route_names[name] == ["POST"]
@@ -301,6 +341,22 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         finally:
             command_api.try_text_wake = original_text_wake
             plugin._text_wake_enabled = False
+
+        second_event = FakeEvent()
+        second_event.bot = BOT_IDS[1]
+        second_event.user = "8008"
+        second_event.message_obj.raw_message = {
+            "sender": {"nickname": "测试昵称", "card": "测试名片"}
+        }
+        await _drain(plugin._on_group_msg(second_event))
+        await asyncio.sleep(0.05)
+        second_deps = await plugin._runtime.select(BOT_IDS[1])
+        second_rows = await second_deps.favor.standings(OLD_GROUP)
+        assert any(
+            row["user_id"] == "8008" and row["nickname"] == "测试名片"
+            for row in second_rows
+        ), second_rows
+        assert await second_deps.favor.member_name(None, "8008") == "测试昵称"
 
         app = Quart(__name__)
         page = plugin._page_api
@@ -626,6 +682,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         )
         assert status == 200 and body["member"]["trust"] == -40
         assert "戒备" in body["member"]["relation_title"]
+
+        for suffix in ("", "&group_id="):
+            status, body = await call(
+                page.handle_member,
+                f"/astrbot_plugin_bond/member?bot_id={BOT_IDS[0]}&scope_mode=global&user_id=7000124{suffix}",
+                username="dashboard-admin",
+            )
+            assert status == 200, (suffix, status, body)
 
         # 备份/恢复走页面 API，且目标始终显式携带 Bot 与 scope。
         await old_deps.favor.set_favor(OLD_GROUP, OLD_USER, 12)

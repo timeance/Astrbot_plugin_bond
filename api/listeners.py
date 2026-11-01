@@ -164,7 +164,9 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                     )
         except Exception:
             # 意外异常属疑难：warning 必须带堆栈，否则后台静默死因不可查
-            logger.warning("[心弦] 后台评估任务异常（忽略，不影响对话）", exc_info=True)
+            logger.warning(
+                "[八千代] 后台评估任务异常（忽略，不影响对话）", exc_info=True
+            )
 
     if deps.registry is not None:
         deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
@@ -182,7 +184,9 @@ async def on_llm_request(
     try:
         await _on_llm_request_inner(deps, event, req)
     except Exception:
-        logger.warning("[心弦] 注入链路异常，本次跳过注入（不影响对话）", exc_info=True)
+        logger.warning(
+            "[八千代] 注入链路异常，本次跳过注入（不影响对话）", exc_info=True
+        )
 
 
 async def _on_llm_request_inner(

@@ -141,13 +141,13 @@ class JudgeService:
                 resp = await call
             content = (getattr(resp, "completion_text", "") or "").strip()
         except Exception as e:
-            logger.warning(f"[心弦] judge 调用失败（已静默降级）: {e}")
+            logger.warning(f"[八千代] judge 调用失败（已静默降级）: {e}")
             return None
 
         result = self._parse(content)
         if result is None:
             logger.debug(
-                f"[心弦] judge 输出解析失败（本轮放弃，冷却照常）: {content[:80]!r}"
+                f"[八千代] judge 输出解析失败（本轮放弃，冷却照常）: {content[:80]!r}"
             )
             return None
         return result
@@ -170,7 +170,7 @@ class JudgeService:
             res = self._context.get_using_provider(umo)
             return await res if inspect.isawaitable(res) else res
         except Exception as e:
-            logger.warning(f"[心弦] 获取 provider 失败（已静默降级）: {e}")
+            logger.warning(f"[八千代] 获取 provider 失败（已静默降级）: {e}")
             return None
 
     async def _maisoul_replyer_provider(self):
@@ -187,10 +187,10 @@ class JudgeService:
                 return None
             prov = await api.get_replyer_provider()
             if prov is not None:
-                logger.debug("[心弦] 评审模型跟随麦麦 replyer 绑定")
+                logger.debug("[八千代] 评审模型跟随麦麦 replyer 绑定")
             return prov
         except Exception as e:
-            logger.debug(f"[心弦] 取麦麦 replyer 绑定失败（回落自有链）: {e}")
+            logger.debug(f"[八千代] 取麦麦 replyer 绑定失败（回落自有链）: {e}")
             return None
 
     async def _persona_ctx(self, event: AstrMessageEvent) -> tuple[str, str]:
@@ -233,7 +233,7 @@ class JudgeService:
                 name = str(persona.get("name") or persona_id or self._bot_name)
                 return name, str(persona.get("prompt") or "")
         except Exception as e:
-            logger.debug(f"[心弦] 人格解析失败，评审回落默认称呼: {e}")
+            logger.debug(f"[八千代] 人格解析失败，评审回落默认称呼: {e}")
         return self._bot_name, ""
 
     # ---------------- 公共能力（印象汇总等兄弟服务复用，禁止摸私有成员） ----------------
@@ -283,7 +283,7 @@ class JudgeService:
                     contexts.append({"role": role, "content": content})
             return contexts
         except Exception as e:
-            logger.warning(f"[心弦] 取最近上下文失败（已降级为零上下文）: {e}")
+            logger.warning(f"[八千代] 取最近上下文失败（已降级为零上下文）: {e}")
             return []
 
     def _parse(self, content: str) -> JudgeResult | None:

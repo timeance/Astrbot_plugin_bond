@@ -186,3 +186,41 @@ test('temporary expiry refreshes the member and ignores a closed detail',async()
  await tick();
  assert.equal(pendingGets.length,before);
 });
+
+
+test('global list can refresh names without opening member detail',async()=>{
+ const {ui,pending,reads}=harness();
+ ui.selectedMode.value='global';
+ const work=ui.refreshNames({group_id:'__global__',user_id:'8008'});
+ assert.equal(pending[0].endpoint,'member');
+ assert.equal(pending[0].params.group_id,'');
+ assert.equal(pending[0].params.user_id,'8008');
+ pending[0].resolve({success:true,member:{nickname:'新昵称'}});
+ await work;
+ assert.ok(reads.some(r=>r.endpoint==='users'));
+ assert.equal(ui.memberDetail.value,null);
+ assert.equal(ui.memberSaveLoading.value,false);
+});
+
+test('all-groups global detail sends an empty real-group selector',async()=>{
+ const {ui,pendingGets}=harness();
+ ui.selectedMode.value='global';
+ const work=ui.openMember({group_id:'__global__',user_id:'8008'});
+ assert.equal(pendingGets[0].params.group_id,'');
+ pendingGets[0].resolve({success:true,member:{group_id:'',user_id:'8008'}});
+ await work;
+ assert.equal(ui.memberDetail.value.user_id,'8008');
+});
+
+
+test('row nickname refresh cannot overwrite a newly opened member session',async()=>{
+ const {ui,pending,pendingGets}=harness();
+ const refresh=ui.refreshNames({group_id:'10001',user_id:'8008'});
+ const detail=ui.openMember({group_id:'10001',user_id:'8009'});
+ pendingGets[0].resolve({success:true,member:{group_id:'10001',user_id:'8009',nickname:'当前成员'}});
+ await detail;
+ pending[0].resolve({success:false,error:'旧请求失败'});
+ await refresh;
+ assert.equal(ui.memberDetail.value.nickname,'当前成员');
+ assert.equal(ui.errorMsg.value,'');
+});
