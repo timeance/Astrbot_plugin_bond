@@ -47,6 +47,8 @@ class Deps:
     context: object | None = None
     emotion_coupling: bool = True
     assessment: object | None = None
+    prompts: object | None = None
+    bot_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -184,29 +186,25 @@ async def _on_llm_request_inner(
     if not group_id or not user_id:
         return
     rec = await deps.favor.get(group_id, user_id)
-    try:
-        nickname = event.get_sender_name()
-    except Exception:
-        # 同上：昵称缺席时注入块回落 user_id 显示
-        nickname = None
-    logs = await deps.favor.query_logs(group_id, user_id, limit=15)
-    # recent_events 是 async def——漏 await 会返回协程，注入链路在
-    # _format_events 的 for 循环上炸 TypeError: 'coroutine' object is not iterable
-    events = await deps.favor.recent_events(
-        group_id,
-        user_id,
-        deps.memory_count,
-        deps.memory_days,
-        logs=logs,
-        sig_threshold=deps.memory_sig_threshold,
-        sig_window_mult=deps.memory_sig_window_mult,
+    # 全局关系可用于当前成员的称谓，但不召回其他群的印象或聊天流水。
+    local = deps.favor.scope_mode == "per_group"
+    events = (
+        await deps.favor.recent_events(
+            group_id,
+            user_id,
+            deps.memory_count,
+            deps.memory_days,
+            sig_threshold=deps.memory_sig_threshold,
+            sig_window_mult=deps.memory_sig_window_mult,
+        )
+        if local
+        else []
     )
-    milestone = deps.favor.recent_milestone(group_id, user_id, logs=logs)
-    block = deps.inject.build_block(
-        rec,
-        is_master=deps.favor.is_master(user_id),
-        nickname=nickname,
-        recent_events=events,
-        milestone=milestone,
+    template = deps.prompts.resolve("behavior", deps.bot_id, str(group_id))
+    block = deps.inject.build_relation_block(
+        template,
+        relationship=await deps.favor.relation_title(group_id, user_id),
+        impression=rec.impression if local else "",
+        events=events,
     )
     deps.inject.inject(req, block)
