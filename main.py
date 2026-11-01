@@ -37,6 +37,7 @@ from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
 from .services.inject_service import InjectService
 from .services.prompt_service import PromptService
+from .services.livingmemory_service import LivingMemoryService
 from .services.assessment_service import (
     AssessmentConfig,
     AssessmentCapacity,
@@ -104,7 +105,10 @@ class BondPlugin(Star):
             (config.get("assessment") or {}).get("max_concurrent_assessments", 2)
         )
         self._storage = BotScopeStorageRouter(data_dir)
-        self._runtime = RuntimeService(self._storage, config, self._build_deps)
+        self._livingmemory = LivingMemoryService(context, config)
+        self._runtime = RuntimeService(
+            self._storage, config, self._build_deps, livingmemory=self._livingmemory
+        )
         self._relationships = None
         cmd_cfg = config.get("command") or {}
         self._ranking_limit = int(cmd_cfg.get("ranking_limit", 10))

@@ -66,9 +66,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 15
+    assert len(routes) == 16
     assert set(route_names) == {
         "logs",
+        "livingmemory",
         "relation",
         "profile",
         "prompts",
@@ -240,6 +241,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             "user_id": OLD_USER,
         }
         for endpoint in (
+            "livingmemory",
             "relation",
             "profile",
             "prompts",
@@ -475,6 +477,88 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert status == 200 and body["member"]["trust"] == -40
         assert "戒备" in body["member"]["relation_title"]
 
+        # 可选插件生命周期只改变探测状态，不改变本地权威数据。
+        local_before = await old_deps.favor.get_relation(OLD_GROUP, OLD_USER)
+        logs_before = await old_deps.favor.query_logs(OLD_GROUP, OLD_USER)
+        profile_before = (await old_deps.favor.get(OLD_GROUP, OLD_USER)).impression
+        lookup_count = [0]
+        current_memory_plugin = [SimpleNamespace(activated=True, star_cls=object())]
+
+        def find_memory_plugin(name):
+            lookup_count[0] += 1
+            value = current_memory_plugin[0]
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        original_lookup = context.get_registered_star
+        context.get_registered_star = find_memory_plugin
+        memory_url = f"/astrbot_plugin_bond/livingmemory?bot_id={BOT_IDS[0]}&scope_mode=per_group"
+        try:
+            status, body = await call(
+                page.handle_livingmemory, memory_url, username="dashboard-admin"
+            )
+            assert (
+                status == 200
+                and body["state"]["status"] == "standalone"
+                and lookup_count[0] == 0
+            )
+            memory_config = dict(enabled=True, read_enabled=True, write_enabled=True)
+            status, body = await call(
+                page.handle_livingmemory,
+                memory_url,
+                "POST",
+                dict(target, config=memory_config),
+                "dashboard-admin",
+            )
+            assert status == 200 and body["state"]["status"] == "unsupported_scope"
+            assert (
+                not body["state"]["read"]["available"]
+                and not body["state"]["write"]["available"]
+            )
+            for instance, expected in (
+                (SimpleNamespace(activated=False, star_cls=object()), "disabled"),
+                (None, "missing"),
+                (RuntimeError("registry fixture"), "error"),
+                (
+                    SimpleNamespace(activated=True, star_cls=object()),
+                    "unsupported_scope",
+                ),
+            ):
+                current_memory_plugin[0] = instance
+                status, body = await call(
+                    page.handle_livingmemory, memory_url, username="dashboard-admin"
+                )
+                assert status == 200 and body["state"]["status"] == expected
+            lookups = lookup_count[0]
+            status, body = await call(
+                page.handle_livingmemory,
+                memory_url,
+                "POST",
+                dict(
+                    target,
+                    config=dict(enabled=False, read_enabled=True, write_enabled=False),
+                ),
+                "dashboard-admin",
+            )
+            assert status == 200 and body["state"]["status"] == "standalone"
+            assert lookup_count[0] == lookups
+            status, body = await call(
+                page.handle_livingmemory,
+                memory_url,
+                "POST",
+                dict(target, config=dict(enabled="true")),
+                "dashboard-admin",
+            )
+            assert status == 400
+        finally:
+            context.get_registered_star = original_lookup
+        assert await old_deps.favor.get_relation(OLD_GROUP, OLD_USER) == local_before
+        assert await old_deps.favor.query_logs(OLD_GROUP, OLD_USER) == logs_before
+        assert (
+            await old_deps.favor.get(OLD_GROUP, OLD_USER)
+        ).impression == profile_before
+
         # 备份/恢复走页面 API，且目标始终显式携带 Bot 与 scope。
         await old_deps.favor.set_favor(OLD_GROUP, OLD_USER, 12)
         status, body = await call(
@@ -518,14 +602,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 15
+        assert len(context2.registered_web_apis) == 16
     finally:
         await plugin2.terminate()
     assert plugin2._storage._closed is True
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、15 路 WebUI、认证、备份恢复、卸载。"
+        "scope 持久化、冻结 listener、16 路 WebUI、认证、备份恢复、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

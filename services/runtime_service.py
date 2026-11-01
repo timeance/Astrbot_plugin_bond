@@ -9,7 +9,8 @@ from ..core.scope import account_id, scope_mode
 
 
 class RuntimeService:
-    def __init__(self, storage, config, factory) -> None:
+    def __init__(self, storage, config, factory, *, livingmemory=None) -> None:
+        self.livingmemory = livingmemory
         self.storage = storage
         self._config = config
         self._factory = factory
@@ -98,6 +99,19 @@ class RuntimeService:
                 self._config["assessment"] = previous
                 raise
         # 已捕获的在途任务继续使用旧配置。插件重载后统一生效。
+
+    async def save_livingmemory_settings(self, values):
+        from .livingmemory_service import LivingMemoryService
+
+        validated = LivingMemoryService.validate_config({"livingmemory": values})
+        async with self._lock:
+            previous = self._config.get("livingmemory")
+            self._config["livingmemory"] = validated
+            try:
+                self._config.save_config()
+            except BaseException:
+                self._config["livingmemory"] = previous
+                raise
 
     async def describe(self) -> list[dict]:
         return [

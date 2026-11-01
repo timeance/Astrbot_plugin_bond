@@ -181,6 +181,12 @@ class PageApi:
         if reg is None or jsonify is None:
             return
         for endpoint, handler, methods, label in (
+            (
+                "livingmemory",
+                self.handle_livingmemory,
+                ["GET", "POST"],
+                "Bond 可选记忆集成状态",
+            ),
             ("relation", self.handle_relation, ["POST"], "Bond 修改三维关系"),
             ("profile", self.handle_profile, ["POST"], "Bond 修改印象与标签"),
             ("prompts", self.handle_prompts, ["GET", "POST"], "Bond 提示词设置"),
@@ -558,5 +564,24 @@ class PageApi:
                 )
             except (ValueError, TypeError):
                 raise _PageRequestError from None
+
+        return await self._invoke(run)
+
+    async def handle_livingmemory(self):
+        async def run():
+            params = await self._params()
+            self._target(params)
+            if request.method == "POST":
+                values = params.get("config")
+                if not isinstance(values, dict):
+                    raise _PageRequestError
+                try:
+                    await self._runtime.save_livingmemory_settings(values)
+                except (ValueError, TypeError):
+                    raise _PageRequestError from None
+            state = self._runtime.livingmemory.status()
+            return self._response(
+                {"success": True, "config": state["config"], "state": state}
+            )
 
         return await self._invoke(run)
