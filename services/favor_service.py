@@ -17,6 +17,7 @@ from ..core.identity import is_master as _is_master
 from ..core.levels import LevelTable
 from ..core.level_economy import EconomyConfig, apply as apply_economy
 from ..core.level_economy import repair_params_for_level
+from ..core.relation_policy import affinity_bounds_for_undo
 from ..core.relationship import RelationshipTable
 from ..core.models import FavorChange, FavorRecord, LevelDef
 from ..storage.base import StorageBackend
@@ -748,12 +749,18 @@ class FavorService:
         cur = (await self.get(group_id, user_id)).favor
         state = await self.get(group_id, user_id)
         vector = log.get("relation_delta") or {}
+        affinity_min, affinity_max = affinity_bounds_for_undo(
+            vector, legacy_min=self.min_favor, legacy_max=self.max_favor
+        )
         relation_after = dict(
             familiarity=round1(
                 max(0, min(100, state.familiarity - vector.get("familiarity", 0)))
             ),
             affinity=round1(
-                max(self.min_favor, min(self.max_favor, cur - float(log["delta"])))
+                max(
+                    affinity_min,
+                    min(affinity_max, cur - float(log["delta"])),
+                )
             ),
             trust=round1(max(-100, min(100, state.trust - vector.get("trust", 0)))),
         )
@@ -761,7 +768,10 @@ class FavorService:
             "relation_after": relation_after,
             "current": cur,
             "after": round1(
-                max(self.min_favor, min(self.max_favor, cur - float(log["delta"])))
+                max(
+                    affinity_min,
+                    min(affinity_max, cur - float(log["delta"])),
+                )
             ),
             "delta": float(log["delta"]),
             "reason": log.get("reason") or "",

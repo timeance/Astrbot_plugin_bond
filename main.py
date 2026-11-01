@@ -54,6 +54,15 @@ def _split_phrases(raw: str) -> set[str]:
     }
 
 
+_RANKING_GROUP_REQUIRED = "请在群聊中查询本群排行。"
+
+
+def _group_entry_id(event) -> str | None:
+    """群功能入口契约：先确认群身份，再交给 RuntimeService 解析。"""
+    group_id = event.get_group_id()
+    return str(group_id) if group_id else None
+
+
 @register(
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
@@ -312,6 +321,9 @@ class BondPlugin(Star):
     @filter.command("好感排行")
     async def _cmd_rank(self, event: AstrMessageEvent):
         """查看本群对小千的好感度排行（图片；未安装 Pillow 时降级文字）"""
+        if _group_entry_id(event) is None:
+            yield event.plain_result(_RANKING_GROUP_REQUIRED)
+            return
         deps = await self._runtime.for_event(event)
         event._bond_cmd_done = True
         kind, payload = await cmd.rank_reply(
@@ -406,5 +418,7 @@ class BondPlugin(Star):
     @filter.llm_tool(name="query_favor_ranking")
     async def _tool_rank(self, event: AstrMessageEvent) -> str:
         """查询本群成员对小千的好感度排行榜"""
+        if _group_entry_id(event) is None:
+            return _RANKING_GROUP_REQUIRED
         deps = await self._runtime.for_event(event)
         return await tools.tool_query_ranking(deps.favor, event, self._ranking_limit)

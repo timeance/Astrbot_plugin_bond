@@ -22,6 +22,18 @@ RELATION_BOUNDS = {
 }
 
 
+def affinity_bounds_for_undo(
+    relation_delta: Mapping[str, object] | None,
+    *,
+    legacy_min: float,
+    legacy_max: float,
+) -> tuple[float, float]:
+    """返回撤销流水时亲近度的值域。三维流水固定使用关系值域，旧标量流水保留配置值域。"""
+    if relation_delta:
+        return RELATION_BOUNDS["affinity"]
+    return float(legacy_min), float(legacy_max)
+
+
 class EventType(str, Enum):
     """PR-2 支持的关系事件类型。"""
 

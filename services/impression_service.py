@@ -77,6 +77,8 @@ class ImpressionService:
             return
         self._pending.add(key)
         try:
+            # 调度时锁定这一批证据；刷新和进度提交必须使用同一批，避免
+            # interval 大于提示词旧上限时只消费部分流水而重复触发。
             logs = await self._storage.impression_logs(
                 group_id, user_id, self._interval
             )
@@ -86,7 +88,7 @@ class ImpressionService:
 
             async def run():
                 try:
-                    await self._refresh_inner(group_id, user_id, umo)
+                    await self._refresh_inner(group_id, user_id, umo, evidence=logs)
                 finally:
                     self._pending.discard(key)
 
@@ -122,7 +124,12 @@ class ImpressionService:
             self._pending.discard(key)
 
     async def _refresh_inner(
-        self, group_id: str, user_id: str, umo: str = ""
+        self,
+        group_id: str,
+        user_id: str,
+        umo: str = "",
+        *,
+        evidence: list[dict] | None = None,
     ) -> tuple[bool, str]:
         """收集流水 → 构造汇总提示 → 调 provider → 解析落库。"""
         group_id = self.group_key(group_id)
@@ -132,7 +139,13 @@ class ImpressionService:
             rec = await self._storage.get(group_id, user_id)
             nickname = (rec.nickname if rec else "") or user_id
             old_impression = (rec.impression if rec else "") or ""
-            logs = await self._storage.impression_logs(group_id, user_id, 20)
+            logs = (
+                evidence
+                if evidence is not None
+                else await self._storage.impression_logs(
+                    group_id, user_id, self._interval
+                )
+            )
             judged = [
                 r for r in logs if r.get("source") == "judge" and not r.get("reversed")
             ]

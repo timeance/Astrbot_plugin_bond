@@ -60,7 +60,7 @@ def build_summary_prompt(
     who = (nickname or "").strip() or "该成员"
     old = (old_impression or "").strip()
     old_line = f"旧印象（可延续可推翻）：{old}\n" if old else ""
-    body = "\n".join(samples[-20:]) or "（暂无记录）"
+    body = "\n".join(samples) or "（暂无记录）"
     return (
         f"你是「{persona_name}」的印象管理员。根据下面的互动记录，"
         f"用{persona_name}的视角给群成员「{who}」写一句印象侧写，并给几个标签。\n\n"
