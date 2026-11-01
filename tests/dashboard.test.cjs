@@ -109,3 +109,18 @@ for(const operation of ['switch','restore']) test(`log tab reloads after ${opera
  assert.ok(request);assert.equal(request.params.bot_id,ui.selectedBot.value);
  assert.equal(ui.logs.value[0].id,ui.selectedBot.value);assert.equal(ui.tab.value,'logs');
 });
+
+
+test('optional integration save uses its original scope and ignores late completion',async()=>{
+ const {ui,pending}=harness();
+ ui.integrationConfig.value={enabled:true,read_enabled:true,write_enabled:false};
+ const save=ui.saveIntegration();
+ assert.equal(pending[0].endpoint,'livingmemory');
+ assert.equal(pending[0].params.bot_id,'10001');
+ ui.selectedBot.value='20002';await ui.selectBot();
+ pending[0].resolve({success:true,config:{enabled:true,read_enabled:true,write_enabled:false},state:{status:'unsupported_scope'}});
+ await save;
+ assert.equal(ui.integrationState.value,null);
+ assert.equal(ui.integrationConfig.value.enabled,false);
+ assert.equal(ui.integrationLoading.value,false);
+});

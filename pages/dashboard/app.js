@@ -49,6 +49,10 @@ createApp({
     const assessmentStats = ref({ calls: [], events: {}, currency_cost: null });
     const modelNotice = ref("");
     const modelNoticeError = ref(false);
+    const integrationState = ref(null);
+    const integrationConfig = ref({enabled:false, read_enabled:false, write_enabled:false});
+    const integrationLoading = ref(false);
+    const integrationNotice = ref("");
 
     const DEFAULT_MODEL_CONFIG = {
       enabled: false,
@@ -87,6 +91,10 @@ createApp({
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
       scopeRevision.value += 1;
+      integrationState.value = null;
+      integrationConfig.value = {enabled:false, read_enabled:false, write_enabled:false};
+      integrationLoading.value = false;
+      integrationNotice.value = "";
       loading.value = false;
       memberLoading.value = false;
       memberSaveLoading.value = false;
@@ -790,6 +798,30 @@ createApp({
       }
     };
 
+    const integrationRequest = async (save = false) => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot || integrationLoading.value) return;
+      integrationLoading.value = true;
+      integrationNotice.value = "";
+      try {
+        const data = save
+          ? await scopedPost("livingmemory", {config:{...integrationConfig.value}}, snapshot)
+          : await scopedGet("livingmemory", {}, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (!data.success) throw new Error(data.error || "可选集成状态读取失败");
+        integrationState.value = data.state;
+        integrationConfig.value = {...data.config};
+        if (save) integrationNotice.value = "配置已保存，当前运行方式见下方状态。";
+      } catch (error) {
+        if (isCurrentScope(snapshot, revision)) integrationNotice.value = String(error);
+      } finally {
+        if (isCurrentScope(snapshot, revision)) integrationLoading.value = false;
+      }
+    };
+    const loadIntegration = () => integrationRequest();
+    const saveIntegration = () => integrationRequest(true);
+
     const visibleUsers = computed(() => {
       const q = filterUser.value.trim();
       return q ? users.value.filter((u) => u.user_id.indexOf(q) !== -1) : users.value;
@@ -799,6 +831,7 @@ createApp({
       if (tab.value === "logs") return fetchLogs();
       if (tab.value === "prompts") return loadPrompts();
       if (tab.value === "evaluation") return loadEvaluation();
+      if (tab.value === "integrations") return loadIntegration();
       return fetchUsers();
     };
     const switchTab = (t) => {
@@ -808,6 +841,7 @@ createApp({
       if (t === "users" && !users.value.length) fetchUsers();
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
+      if (t === "integrations") loadIntegration();
     };
 
     onMounted(async () => {
@@ -838,6 +872,7 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
+      integrationState, integrationConfig, integrationLoading, integrationNotice, loadIntegration, saveIntegration,
     };
   },
   template: `
@@ -852,6 +887,7 @@ createApp({
           <button class="xx-tab" :class="{ active: tab === 'logs' }" @click="switchTab('logs')">变动流水</button>
           <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
           <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
+          <button class="xx-tab" :class="{ active: tab === 'integrations' }" @click="switchTab('integrations')">可选集成</button>
         </nav>
       </header>
       <div class="xx-string"></div>
@@ -1142,6 +1178,25 @@ createApp({
       </div>
 
       <!-- 成员详情弹窗：三维关系 + profile 编辑 + 可展开历史 -->
+      <section v-if="tab === 'integrations'" class="xx-panel">
+        <h3>LivingMemory 可选增强</h3>
+        <p class="xx-help">开关对所有 Bot 生效。当前上游缺少可验证 Bot／群来源的公开接口，Bond 继续独立运行，实际外部读写保持关闭。</p>
+        <label><input type="checkbox" v-model="integrationConfig.enabled" :disabled="integrationLoading">启用集成探测</label>
+        <label><input type="checkbox" v-model="integrationConfig.read_enabled" :disabled="integrationLoading">允许读取（仍需接口可用）</label>
+        <label><input type="checkbox" v-model="integrationConfig.write_enabled" :disabled="integrationLoading">允许写入（仍需接口可用）</label>
+        <div class="xx-actions">
+          <button class="xx-btn" @click="saveIntegration()" :disabled="integrationLoading">保存集成设置</button>
+          <button class="xx-btn" @click="loadIntegration()" :disabled="integrationLoading">刷新状态</button>
+        </div>
+        <p v-if="integrationNotice" role="status">{{ integrationNotice }}</p>
+        <div v-if="integrationState">
+          <p>运行方式：{{ integrationState.mode }} · {{ integrationState.status }}</p>
+          <p>{{ integrationState.reason }}</p>
+          <p>外部读取：{{ integrationState.read.available ? "可用" : "未执行" }}；外部写入：{{ integrationState.write.available ? "可用" : "未执行" }}</p>
+        </div>
+        <p class="xx-help">关闭、卸载或重新安装 LivingMemory 均不删除或迁移 Bond 的关系、印象和流水，也不删除外部已有记忆。</p>
+      </section>
+
       <div v-if="memberDetail" class="xx-modal" @click.self="closeMember">
         <div class="xx-modal-box">
           <header class="xx-modal-header">

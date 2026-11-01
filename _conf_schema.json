@@ -723,5 +723,26 @@
         "description": "所有 Bot 共用的在途评估上限，无等待队列"
       }
     }
+  },
+  "livingmemory": {
+    "type": "object",
+    "description": "LivingMemory 可选增强（当前公开接口不满足作用域保护，实际读写保持不可用）",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "default": false,
+        "description": "启用可选集成探测；关闭时完全独立运行"
+      },
+      "read_enabled": {
+        "type": "bool",
+        "default": false,
+        "description": "请求允许读取；还需安全公开接口可用"
+      },
+      "write_enabled": {
+        "type": "bool",
+        "default": false,
+        "description": "请求允许写入；还需来源隔离与持久幂等接口可用"
+      }
+    }
   }
 }
