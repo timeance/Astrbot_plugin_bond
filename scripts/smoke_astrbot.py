@@ -58,25 +58,54 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     config_path = runtime_dir / "bond_config.json"
     config = AstrBotConfig(str(config_path), schema=schema)
     # 隐藏字段仍由 AstrBot 的 schema 加载、保存和重载，不能被清理。
+    config["livingmemory"] = {"enabled": True, "read_enabled": True}
+    config["group_whitelist"] = [OLD_GROUP]
+    config["master_ids"] = OLD_USER
+    config["inject"]["enabled"] = True
     config["judge"]["roster"] = "synthetic-preserved"
     config["inject"]["memory_days"] = 9
     config.save_config()
     config = AstrBotConfig(str(config_path), schema=schema)
+    assert "livingmemory" not in config
     assert config["judge"]["roster"] == "synthetic-preserved"
     assert config["inject"]["memory_days"] == 9
     context = _context(Context, config)
+    from aiocqhttp import CQHttp
+
+    client = CQHttp(use_ws_reverse=True)
+    client._wsr_api_clients.update({bot_id: object() for bot_id in BOT_IDS})
+    # 真实 CQHttp 连接映射，两个账号共享同一个宿主适配器；不建立外部连接。
+    context.platform_manager = SimpleNamespace(
+        platform_insts=[
+            SimpleNamespace(
+                meta=lambda: SimpleNamespace(name="aiocqhttp", id="synthetic-adapter"),
+                get_client=lambda: client,
+            )
+        ]
+    )
     plugin = BondPlugin(context, config)
     await plugin.initialize()
+    assert plugin._runtime.known_bot_ids() == sorted(BOT_IDS)
+    assert plugin._storage.known_bot_ids() == []
+    # 私聊中的真实账号也能登记，但不初始化关系数据库。
+    private = SimpleNamespace(
+        get_self_id=lambda: "10000003",
+        get_group_id=lambda: "",
+        get_sender_id=lambda: OLD_USER,
+    )
+    await _drain(plugin._on_group_msg(private))
+    assert "10000003" in plugin._runtime.known_bot_ids()
+    assert plugin._storage.known_bot_ids() == []
+    assert len(await plugin._runtime.describe()) == 3
     data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
     assert data_dir == runtime_dir / "data/plugin_data/astrbot_plugin_bond"
     assert not (data_dir / "bond.db").exists(), "旧单库不得在装配期创建"
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 17
+    assert len(routes) == 16
     assert set(route_names) == {
         "logs",
-        "livingmemory",
         "relation",
         "profile",
         "prompts",
@@ -93,6 +122,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         "backup",
         "restore",
     }
+    assert not hasattr(plugin._page_api, "handle_livingmemory")
     assert route_names["logs"] == ["GET"]
     assert route_names["groups"] == ["GET"]
     assert route_names["users"] == ["GET"]
@@ -178,6 +208,48 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
         from astrbot.api.message_components import At
 
+        excluded = FakeEvent()
+        excluded.group = "60006"
+        for handler in (
+            plugin._on_group_msg,
+            plugin._cmd_self_relation,
+            plugin._cmd_rank,
+            plugin._cmd_set,
+            plugin._cmd_reset,
+            plugin._cmd_set_rel,
+            plugin._cmd_set_tags,
+            plugin._cmd_refresh_imp,
+        ):
+            assert [item async for item in handler(excluded)] == []
+        request = SimpleNamespace(system_prompt="当前人格", prompt="输入", contexts=[])
+        await plugin._on_llm_req(excluded, request)
+        assert request.system_prompt == "当前人格"
+        assert await plugin._tool_query(excluded) == "本群未启用关系功能。"
+        assert await plugin._tool_rank(excluded) == "本群未启用关系功能。"
+        assert not plugin._registry._tasks and not entered.is_set()
+        for bot_id in BOT_IDS:
+            assert "60006" not in {
+                row["group_id"]
+                for row in await (
+                    await plugin._runtime.select(bot_id)
+                ).favor.distinct_groups()
+            }
+        configured_request = SimpleNamespace(
+            system_prompt="当前人格", prompt="输入", contexts=[]
+        )
+        await plugin._on_llm_req(FakeEvent(), configured_request)
+        assert configured_request.system_prompt.startswith("当前人格\n\n")
+        assert (
+            "维护者在插件配置中将当前用户设为主人" in configured_request.system_prompt
+        )
+        other = FakeEvent()
+        other.user = "8002"
+        other_request = SimpleNamespace(
+            system_prompt="当前人格", prompt="输入", contexts=[]
+        )
+        await plugin._on_llm_req(other, other_request)
+        assert "维护者在插件配置中将当前用户设为主人" not in other_request.system_prompt
+
         event = FakeEvent()
         dispatch = asyncio.create_task(_drain(plugin._on_group_msg(event)))
         await asyncio.wait_for(entered.wait(), timeout=2)
@@ -249,7 +321,6 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             "user_id": OLD_USER,
         }
         for endpoint in (
-            "livingmemory",
             "relation",
             "profile",
             "prompts",
@@ -512,88 +583,6 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert status == 200 and body["member"]["trust"] == -40
         assert "戒备" in body["member"]["relation_title"]
 
-        # 可选插件生命周期只改变探测状态，不改变本地权威数据。
-        local_before = await old_deps.favor.get_relation(OLD_GROUP, OLD_USER)
-        logs_before = await old_deps.favor.query_logs(OLD_GROUP, OLD_USER)
-        profile_before = (await old_deps.favor.get(OLD_GROUP, OLD_USER)).impression
-        lookup_count = [0]
-        current_memory_plugin = [SimpleNamespace(activated=True, star_cls=object())]
-
-        def find_memory_plugin(name):
-            lookup_count[0] += 1
-            value = current_memory_plugin[0]
-            if isinstance(value, Exception):
-                raise value
-            return value
-
-        original_lookup = context.get_registered_star
-        context.get_registered_star = find_memory_plugin
-        memory_url = f"/astrbot_plugin_bond/livingmemory?bot_id={BOT_IDS[0]}&scope_mode=per_group"
-        try:
-            status, body = await call(
-                page.handle_livingmemory, memory_url, username="dashboard-admin"
-            )
-            assert (
-                status == 200
-                and body["state"]["status"] == "standalone"
-                and lookup_count[0] == 0
-            )
-            memory_config = dict(enabled=True, read_enabled=True, write_enabled=True)
-            status, body = await call(
-                page.handle_livingmemory,
-                memory_url,
-                "POST",
-                dict(target, config=memory_config),
-                "dashboard-admin",
-            )
-            assert status == 200 and body["state"]["status"] == "unsupported_scope"
-            assert (
-                not body["state"]["read"]["available"]
-                and not body["state"]["write"]["available"]
-            )
-            for instance, expected in (
-                (SimpleNamespace(activated=False, star_cls=object()), "disabled"),
-                (None, "missing"),
-                (RuntimeError("registry fixture"), "error"),
-                (
-                    SimpleNamespace(activated=True, star_cls=object()),
-                    "unsupported_scope",
-                ),
-            ):
-                current_memory_plugin[0] = instance
-                status, body = await call(
-                    page.handle_livingmemory, memory_url, username="dashboard-admin"
-                )
-                assert status == 200 and body["state"]["status"] == expected
-            lookups = lookup_count[0]
-            status, body = await call(
-                page.handle_livingmemory,
-                memory_url,
-                "POST",
-                dict(
-                    target,
-                    config=dict(enabled=False, read_enabled=True, write_enabled=False),
-                ),
-                "dashboard-admin",
-            )
-            assert status == 200 and body["state"]["status"] == "standalone"
-            assert lookup_count[0] == lookups
-            status, body = await call(
-                page.handle_livingmemory,
-                memory_url,
-                "POST",
-                dict(target, config=dict(enabled="true")),
-                "dashboard-admin",
-            )
-            assert status == 400
-        finally:
-            context.get_registered_star = original_lookup
-        assert await old_deps.favor.get_relation(OLD_GROUP, OLD_USER) == local_before
-        assert await old_deps.favor.query_logs(OLD_GROUP, OLD_USER) == logs_before
-        assert (
-            await old_deps.favor.get(OLD_GROUP, OLD_USER)
-        ).impression == profile_before
-
         # 备份/恢复走页面 API，且目标始终显式携带 Bot 与 scope。
         await old_deps.favor.set_favor(OLD_GROUP, OLD_USER, 12)
         status, body = await call(
@@ -641,7 +630,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 17
+        assert len(context2.registered_web_apis) == 16
         assert plugin2._prompts.load_error
         deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
         assert (await deps2.favor.get(OLD_GROUP, OLD_USER)).favor == 12
@@ -680,7 +669,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、17 路 WebUI、认证、备份恢复、损坏提示词降级、卸载。"
+        "scope 持久化、冻结 listener、16 路 WebUI、群白名单、主人标记、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

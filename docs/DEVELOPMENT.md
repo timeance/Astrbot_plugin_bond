@@ -57,4 +57,4 @@ Schema 11 将成功汇总的流水 ID 保存在本地，并与印象、标签和
 
 Schema 12 增加三维关系和事件去重，Schema 13 保存评估事件、调用状态与预算。`affinity` 继续使用单一 `favor` 列，熟悉度和信任度各有独立列；不维护第二份亲近度或三维总分。管理员资料修改也通过 `FavorService`，资料与审计流水原子提交，资料流水不能当作数值撤销。
 
-`PromptService` 管理独立 JSON；`LivingMemoryService` 管理可选插件的发现与不可用状态。后者当前不执行外部读写，也没有强制依赖。集成范围和待验项目见 [验收记录](ACCEPTANCE.md)。
+`PromptService` 管理独立 JSON。LivingMemory 集成已移除；相关决策和代码调查见 [接口调查](LIVINGMEMORY.md)。

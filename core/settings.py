@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 # 仅暴露当前仍使用的详细设置。基础开关、模型和数据空间有各自入口。
 SECTIONS = {
+    "basic": ("基础设置", ["default_scope_mode", "master_ids", "group_whitelist"]),
     "rules": (
         "关系变化",
         ["timezone", "decay", "economy"],
@@ -20,6 +21,18 @@ SECTIONS = {
     "commands": ("查询与排行", ["command", "render"]),
 }
 LABELS = {
+    "default_scope_mode": (
+        "默认关系模式",
+        "按群：各群分别记录；全局：同一 Bot 跨群共用关系。页面顶部为指定 Bot 选择的模式优先；切换不复制或合并历史。",
+    ),
+    "master_ids": (
+        "主人 QQ",
+        "多个 QQ 号用英文逗号分隔。仅作为关系身份标记，不授予管理权限，不豁免评分；称呼服从当前人格。",
+    ),
+    "group_whitelist": (
+        "启用 Bond 的群（白名单）",
+        "留空对所有群生效；填写后仅在这些群记录、评估、注入关系和响应 Bond 群聊指令。群号用逗号分隔，对所有 Bot 生效；已有记录保留。",
+    ),
     "timezone": (
         "每日限额时区",
         "决定关系每日限额的换日时间，例如 Asia/Shanghai。复核次数按 UTC 换日。",
@@ -167,6 +180,13 @@ def validate_patch(values):
         typ = f["type"]
         if typ == "bool":
             valid = type(value) is bool
+        elif typ == "list":
+            from .scope import account_id
+
+            valid = isinstance(value, list) and len(value) <= 1000
+            if valid:
+                for item in value:
+                    account_id(item)
         elif typ == "int":
             valid = type(value) is int
         elif typ == "float":
@@ -200,5 +220,11 @@ def validate_patch(values):
                 maximum = 1
             if not minimum <= value <= maximum:
                 raise ValueError("数值超出范围")
+        if path == "master_ids":
+            from .identity import parse_master_ids
+            from .scope import account_id
+
+            for item in parse_master_ids(value):
+                account_id(item)
         if path == "timezone":
             ZoneInfo(value)

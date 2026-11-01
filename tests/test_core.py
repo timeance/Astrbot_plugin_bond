@@ -2528,7 +2528,7 @@ def test_listener_priority_before_maisoul():
     main_txt = (Path(__file__).resolve().parent.parent / "main.py").read_text(
         encoding="utf-8"
     )
-    assert "GROUP_MESSAGE, priority=1000" in main_txt
+    assert "EventMessageType.ALL, priority=1000" in main_txt
 
 
 def test_maisoul_api_duck_fallback():

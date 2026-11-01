@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from astrbot_plugin_bond.core.settings import fields, snapshot, validate_patch
 from astrbot_plugin_bond.services.runtime_service import RuntimeService
-from astrbot_plugin_bond.services.livingmemory_service import LivingMemoryService
 
 
 class Config(dict):
@@ -21,9 +20,13 @@ def test_defaults_and_hidden_fields_preserve_schema():
     schema = json.loads(
         (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
     )
-    assert schema["livingmemory"]["invisible"] is True
+    assert "livingmemory" not in schema
     assert schema["levels"]["invisible"] is True
     assert not schema["assessment"]["items"]["enabled"].get("invisible")
+    assert not schema["master_ids"]["invisible"]
+    assert schema["group_whitelist"]["default"] == []
+    for key in ("small_provider_id", "large_provider_id"):
+        assert schema["assessment"]["items"][key]["_special"] == "select_provider"
     data = snapshot({})
     for field in data["fields"]:
         validate_patch({field["path"]: data["values"][field["path"]]})
@@ -35,6 +38,11 @@ def test_defaults_and_hidden_fields_preserve_schema():
     "values",
     [
         {"bot_scope_modes": "{}"},
+        {"group_whitelist": "10001"},
+        {"group_whitelist": [10001]},
+        {"group_whitelist": ["10001", "fake"]},
+        {"master_ids": "10001,not-an-account"},
+        {"default_scope_mode": "other"},
         {"inject.enabled": True},
         {"inject.memory_days": True},
         {"inject.memory_days": float("nan")},
@@ -73,24 +81,3 @@ def test_save_preserves_unrelated_config_rejects_stale_revision_and_rolls_back()
         assert config == before
 
     asyncio.run(run())
-
-
-def test_manual_memory_check_does_not_enable_integration():
-    class Context:
-        calls = 0
-
-        def get_registered_star(self, name):
-            self.calls += 1
-            return None
-
-    config = Config(
-        livingmemory={"enabled": False, "read_enabled": True, "write_enabled": True}
-    )
-    context = Context()
-    service = LivingMemoryService(context, config)
-    before = copy.deepcopy(dict(config))
-    assert service.status()["reason_code"] == "config_disabled"
-    assert context.calls == 0
-    assert service.status(check=True)["reason_code"] == "plugin_missing"
-    assert context.calls == 1
-    assert config == before

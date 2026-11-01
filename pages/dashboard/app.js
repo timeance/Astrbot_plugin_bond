@@ -50,7 +50,6 @@ createApp({
     const assessmentStats = ref({ calls: [], events: {}, currency_cost: null });
     const modelNotice = ref("");
     const modelNoticeError = ref(false);
-    const integrationState = ref(null);
     const detailSettings = ref(null);
     const detailValues = ref({});
     const detailLoading = ref(false);
@@ -77,11 +76,9 @@ createApp({
         if (isCurrentScope(snapshot, revision)) detailLoading.value = false;
       }
     };
+    const updateListSetting = (path, raw) => { detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean); };
     const loadSettings = () => settingsRequest();
     const saveSettings = () => settingsRequest(true);
-    const integrationLabel = computed(() => ({plugin_missing:"未安装", plugin_disabled:"插件已停用", instance_unavailable:"插件实例暂不可用", public_api_missing:"接口暂不支持", discovery_error:"检查失败，请稍后重试", config_disabled:"尚未检查", invalid_config:"原有配置无效"}[integrationState.value?.reason_code] || "尚未检查"));
-    const integrationLoading = ref(false);
-    const integrationNotice = ref("");
 
     const DEFAULT_MODEL_CONFIG = {
       enabled: false,
@@ -120,10 +117,7 @@ createApp({
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
       scopeRevision.value += 1;
-      integrationState.value = null;
       detailSettings.value = null; detailValues.value = {}; detailLoading.value = false; detailNotice.value = "";
-      integrationLoading.value = false;
-      integrationNotice.value = "";
       loading.value = false;
       memberLoading.value = false;
       memberSaveLoading.value = false;
@@ -650,7 +644,6 @@ createApp({
         if (tab.value === "prompts") await loadPrompts(snapshot);
         if (tab.value === "evaluation") await loadEvaluation(snapshot);
         if (tab.value === "settings") await loadSettings();
-        if (tab.value === "integrations") await loadIntegration();
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) {
           errorMsg.value = String(e);
@@ -839,25 +832,6 @@ createApp({
       }
     };
 
-    const loadIntegration = async (check = false) => {
-      const snapshot = scopeSnapshot();
-      const revision = scopeRevision.value;
-      if (!snapshot || integrationLoading.value) return;
-      integrationLoading.value = true;
-      integrationNotice.value = "";
-      integrationState.value = null;
-      try {
-        const data = await scopedGet("livingmemory", check ? {check:"1"} : {}, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
-        if (!data.success) throw new Error("检查失败，请稍后重试");
-        integrationState.value = data.state;
-      } catch (error) {
-        if (isCurrentScope(snapshot, revision)) integrationNotice.value = "检查失败，请稍后重试。Bond 继续独立运行。";
-      } finally {
-        if (isCurrentScope(snapshot, revision)) integrationLoading.value = false;
-      }
-    };
-
     const visibleUsers = computed(() => {
       const q = filterUser.value.trim();
       return q ? users.value.filter((u) => u.user_id.indexOf(q) !== -1) : users.value;
@@ -867,7 +841,6 @@ createApp({
       if (tab.value === "logs") return fetchLogs();
       if (tab.value === "prompts") return loadPrompts();
       if (tab.value === "evaluation") return loadEvaluation();
-      if (tab.value === "integrations") return loadIntegration();
       if (tab.value === "settings") return loadSettings();
       return fetchUsers();
     };
@@ -878,7 +851,6 @@ createApp({
       if (t === "users" && !users.value.length) fetchUsers();
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
-      if (t === "integrations") loadIntegration();
       if (t === "settings") loadSettings();
     };
 
@@ -910,8 +882,7 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
-      integrationState, integrationLoading, integrationNotice, loadIntegration, integrationLabel,
-      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings,
+      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, updateListSetting,
     };
   },
   template: `
@@ -927,7 +898,6 @@ createApp({
           <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
           <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
           <button class="xx-tab" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">详细设置</button>
-          <button class="xx-tab" :class="{ active: tab === 'integrations' }" @click="switchTab('integrations')">可选集成</button>
         </nav>
       </header>
       <div class="xx-string"></div>
@@ -952,6 +922,7 @@ createApp({
           <strong>{{ selectedBot ? scopeLabel : "未选择" }}</strong>
         </div>
         <div class="xx-scope-actions">
+          <button class="xx-btn xx-btn-mini" @click="fetchBots()" :disabled="scopeLoading || modeLoading">刷新 Bot 列表</button>
           <button class="xx-btn xx-btn-mini" @click="backupScope" :disabled="!selectedBot || backupLoading || scopeLoading">
             {{ backupLoading ? "处理中…" : "备份当前空间" }}
           </button>
@@ -1199,6 +1170,7 @@ createApp({
 
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
+        <p><strong>如果不知道怎么调，请保持默认。</strong></p>
         <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
         <p class="xx-help">自动评估、回复中的关系信息和模型选择，请在 AstrBot 的 Bond 插件配置中修改。</p>
         <p v-if="detailNotice" role="status">{{ detailNotice }}</p>
@@ -1206,15 +1178,18 @@ createApp({
           <button class="xx-btn" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
           <button class="xx-btn" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
-        <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
+        <details v-for="group in detailGroups" :key="group.group" :open="group.group === 'basic'" class="xx-form-card">
           <summary>{{ group.title }}</summary>
-          <label v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
-            <span>{{ field.label }}<small class="xx-help">{{ field.hint }}</small></span>
-            <input v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
-            <select v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"增长较快",realistic:"增长较慢"})[option] || option }}</option></select>
-            <input v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
-            <input v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
-          </label>
+          <div v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
+            <span class="xx-field-label"><label :for="'setting-' + field.path">{{ field.label }}</label>
+              <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="field.label + '：说明'" :aria-describedby="'hint-' + field.path">?</button><span class="xx-help-tooltip" role="tooltip" :id="'hint-' + field.path">{{ field.hint }}</span></span>
+            </span>
+            <input :id="'setting-' + field.path" v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
+            <select :id="'setting-' + field.path" v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"增长较快",realistic:"增长较慢",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="detailValues[field.path].join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" placeholder="留空对所有群生效；多个群号用逗号分隔">
+            <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
+          </div>
         </details>
       </section>
 
@@ -1243,21 +1218,6 @@ createApp({
       </div>
 
       <!-- 成员详情弹窗：三维关系 + profile 编辑 + 可展开历史 -->
-      <section v-if="tab === 'integrations'" class="xx-panel">
-        <h3>LivingMemory</h3>
-        <p>当前版本暂不支持读取或写入 LivingMemory。</p>
-        <p>Bond 正在独立运行，关系、印象和历史记录保存在本地。</p>
-        <div class="xx-actions">
-          <button class="xx-btn" @click="loadIntegration(true)" :disabled="integrationLoading">{{ integrationLoading ? "检查中…" : "检查插件状态" }}</button>
-        </div>
-        <p v-if="integrationNotice" role="status">{{ integrationNotice }}</p>
-        <p v-if="integrationState" role="status">插件状态：{{ integrationLabel }}</p>
-        <details class="xx-form-card"><summary>查看原因</summary>
-          <p>当前接口无法确认记忆属于哪个 Bot 和群，因此 Bond 暂不接入。检查插件状态只查询安装和启用情况，不读取或写入记忆。</p>
-          <p>停用或卸载 LivingMemory 不会删除 Bond 的关系、印象和历史记录，也不会删除 LivingMemory 的已有记忆。</p>
-        </details>
-      </section>
-
       <div v-if="memberDetail" class="xx-modal" @click.self="closeMember">
         <div class="xx-modal-box">
           <header class="xx-modal-header">

@@ -206,5 +206,6 @@ async def _on_llm_request_inner(
         relationship=await deps.favor.relation_title(group_id, user_id),
         impression=rec.impression if local else "",
         events=events,
+        configured_master=deps.favor.is_master(str(user_id)),
     )
     deps.inject.inject(req, block)
