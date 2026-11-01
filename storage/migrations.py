@@ -138,7 +138,9 @@ def migrate(conn: sqlite3.Connection) -> None:
     显式 BEGIN 是必需的——默认隔离级别只对 DML 隐式开事务，
     而 v2 首句是 DDL（CREATE），若不在事务内会自动提交、回滚救不回。
     """
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version > SCHEMA_VERSION:
+        raise ValueError(f"不支持的未来 schema 版本: {version}")
     while version < SCHEMA_VERSION:
         version += 1
         try:

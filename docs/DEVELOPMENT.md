@@ -18,10 +18,10 @@ python scripts/build_package.py --output /tmp/bond-check.zip
 
 ```bash
 python -m pip install AstrBot==4.28.0
-python scripts/smoke_astrbot.py
+python scripts/smoke_astrbot.py --session-dir <本次测试目录> --runtime-dir <本次测试目录>/runtime
 ```
 
-该检查验证完整及空配置下的初始化、数据目录、数据库迁移、页面 API 注册、空库查询与卸载。不会连接平台或模型，也不证明完整宿主启动、页面登录及 Angel Heart 联动已通过。
+每次使用新的空运行目录。该检查验证真实框架装配、两个 Bot 的四个数据库、模式持久化、在飞评估身份冻结、页面 API 注册、服务端认证拒绝、备份恢复与卸载。不会连接平台或远程模型；认证上下文由测试模拟，不证明完整宿主 HTTP 登录及 Angel Heart 联动已通过。
 
 ## 自动检查
 
@@ -38,7 +38,7 @@ python scripts/smoke_astrbot.py
 
 沿用单向分层，关系修改通过统一服务入口。新行为补充成功与失败路径测试。用户文档写用途、操作与限制；架构细节放入开发文档。
 
-从 main 建立分支，使用中文 Conventional Commits。PR 说明问题、改动和测试范围，不提交真实用户数据，不自动合并。每个阶段以可验证结果为交付边界。
+使用中文 Conventional Commits。前置阶段尚未合并时，可从其分支建立堆叠 PR，写明依赖和合并顺序。PR 说明问题、改动和测试范围，不提交真实用户数据，不自动合并。每个阶段以可验证结果为交付边界。
 
 ## 发布
 

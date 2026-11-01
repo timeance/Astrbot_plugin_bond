@@ -22,6 +22,7 @@ from ..core.judge_parse import ParsedJudge, parse as parse_judge
 from ..core.judge_prompt import render, tier_ranges_line
 from ..core.maisoul_probe import resolve_maisoul_api
 from ..storage.base import StorageBackend
+from ..core.scope import group_key
 
 
 @dataclass
@@ -57,9 +58,11 @@ class JudgeService:
         roster: str = "",
         timeout_sec: float = 60.0,
         follow_maisoul: bool = True,
+        scope_mode: str = "per_group",
     ) -> None:
         self._context = context
         self._storage = storage
+        self.scope_mode = scope_mode
         self._enabled = enabled
         self._provider_id = provider_id
         self._cooldown_sec = cooldown_sec
@@ -95,6 +98,8 @@ class JudgeService:
             return None
 
         group_id, user_id = event.get_group_id(), event.get_sender_id()
+        if self.scope_mode == "global":
+            group_id = group_key(self.scope_mode, group_id)
         now = time.time()
         last = await self._storage.last_event_at(group_id, user_id, "judge")
         if last is not None and now - last < self._cooldown_sec:

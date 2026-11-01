@@ -50,6 +50,30 @@ class Deps:
     emotion_coupling: bool = True
 
 
+@dataclass(frozen=True)
+class AssessmentEvent:
+    """排队时固定可信身份，后台不再引用可变的平台事件。"""
+
+    group_id: str
+    user_id: str
+    bot_id: str
+    unified_msg_origin: str
+    platform_name: str
+    message_id: str = ""
+
+    def get_group_id(self):
+        return self.group_id
+
+    def get_sender_id(self):
+        return self.user_id
+
+    def get_self_id(self):
+        return self.bot_id
+
+    def get_platform_name(self):
+        return self.platform_name
+
+
 def _chain_flags(event: AstrMessageEvent) -> tuple[bool, bool]:
     """解析消息链：是否@小千、是否回复小千。"""
     self_id = str(event.get_self_id() or "")
@@ -91,9 +115,18 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     # P-F：引用前缀/转发占位不冒充发言人本人，清洗后再进评审
     text = sanitize_text(event.message_str or "")
     has_at_bot, is_reply_bot = _chain_flags(event)
+    event = AssessmentEvent(
+        str(group_id),
+        str(user_id),
+        str(event.get_self_id()),
+        str(getattr(event, "unified_msg_origin", "") or ""),
+        str(event.get_platform_name() or ""),
+        str(getattr(event.message_obj, "message_id", "") or ""),
+    )
 
     async def _bg() -> None:
         try:
+            await deps.favor.observe_member(group_id, user_id)
             if _nick:
                 await deps.favor.touch_nickname(group_id, user_id, _nick)
             result = await deps.judge.judge(
@@ -131,7 +164,10 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                             deps.favor.level_of(change.favor_after),
                             deps.favor.level_order(),
                         )
-                    if deps.impressions is not None:
+                    if (
+                        deps.impressions is not None
+                        and deps.favor.scope_mode == "per_group"
+                    ):
                         await deps.impressions.maybe_refresh(
                             group_id,
                             user_id,

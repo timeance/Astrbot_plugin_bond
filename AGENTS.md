@@ -2,7 +2,7 @@
 
 ## 目标与范围
 
-本项目为 `astrbot_plugin_bond`，面向 AstrBot 社区。当前为 PR-0 工程基线，三维关系、Bot 隔离与通用人格适配仍待实现；需求见 `docs/PRD.md`。默认关闭评估、注入及麦麦联动，不宣称可生产使用。
+本项目为 `astrbot_plugin_bond`，面向 AstrBot 社区。当前已在 PR-0 工程基线上实施 PR-1 Bot/作用域隔离；三维关系与通用人格适配仍待实现；需求见 `docs/PRD.md`。默认关闭评估、注入及麦麦联动，不宣称可生产使用。
 
 用户已授权本阶段导入公开上游源码、补齐 CI 和中文 README。后续按可审查阶段交付，不自动合并 PR、不自动部署或发布。
 
@@ -27,7 +27,7 @@
 - 修改行为时验证成功与失败路径；运行全量测试和锁定版本的 Black。
 - 数据迁移同步修改 MIGRATIONS、SCHEMA_VERSION 和 pragma_version 分支。
 - 代码标识符英文，使用说明和注释用中文；注释解释契约，不记录开发过程。
-- 从 main 创建分支，使用中文 Conventional Commits。
+- 使用中文 Conventional Commits；存在尚未合并的前置阶段时，可基于其分支创建堆叠 PR，并在 PR 中明确依赖。不得自动合并。
 - PR 说明改动、原因、关键边界和实际测试；未验证内容须明确说明。
 - `metadata.yaml` 与 `@register()` 的标识、版本、作者和源码地址保持一致。
 - 工作流只在任务授权范围内修改；发布须由维护者合并后创建 annotated tag。

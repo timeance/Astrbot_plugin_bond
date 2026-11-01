@@ -13,6 +13,7 @@ import asyncio
 
 from ..core.impression import build_summary_prompt, parse_summary, stats_tags
 from ..storage.base import StorageBackend
+from ..core.scope import group_key
 
 
 class ImpressionService:
@@ -27,8 +28,10 @@ class ImpressionService:
         timeout_sec: float = 60.0,
         registry=None,
         points_mode: bool = False,
+        scope_mode: str = "per_group",
     ) -> None:
         self._storage = storage
+        self.scope_mode = scope_mode
         self._interval = max(1, int(interval))
         self._summarizer = (
             summarizer  # main.py 注入（JudgeService，借其 provider 解析）
@@ -41,6 +44,13 @@ class ImpressionService:
         self._registry = registry
         self._pending = set()
         self._tasks = set()
+
+    def group_key(self, group_id):
+        return (
+            group_key(self.scope_mode, group_id)
+            if self.scope_mode == "global"
+            else group_id
+        )
 
     async def _call_llm(self, provider, prompt: str):
         """带超时的 text_chat（X3）；超时抛 TimeoutError 由调用方降级。"""
@@ -61,6 +71,7 @@ class ImpressionService:
         """
         if self._summarizer is None:
             return
+        group_id = self.group_key(group_id)
         key = (group_id, user_id)
         if key in self._pending:
             return
@@ -100,6 +111,7 @@ class ImpressionService:
         """立即刷新印象（指令/WebUI 手动触发），返回 (是否成功, 一句话结果)。"""
         if self._summarizer is None:
             return False, "印象功能未启用"
+        group_id = self.group_key(group_id)
         key = (group_id, user_id)
         if key in self._pending:
             return False, "印象正在刷新，请稍后再试"
@@ -113,6 +125,7 @@ class ImpressionService:
         self, group_id: str, user_id: str, umo: str = ""
     ) -> tuple[bool, str]:
         """收集流水 → 构造汇总提示 → 调 provider → 解析落库。"""
+        group_id = self.group_key(group_id)
         from astrbot.api import logger  # 延迟导入，保持本模块可脱离框架测试
 
         try:
@@ -264,6 +277,7 @@ class ImpressionService:
 
     async def set_tags(self, group_id: str, user_id: str, tags: list[str]) -> None:
         """手动设置标签（指令入口）；印象本体由 AI 维护，这里只改标签。"""
+        group_id = self.group_key(group_id)
         rec = await self._storage.get(group_id, user_id)
         await self._storage.set_impression(
             group_id,
