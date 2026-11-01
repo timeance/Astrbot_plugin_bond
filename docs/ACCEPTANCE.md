@@ -28,7 +28,6 @@
 - 不兼容的旧 schema 备份被拒绝，原备份文件不升级、不改写。
 - 100 个同时候选、在途上限 2：仅 2 个进入模型，其余 98 个记为 busy；取消和 Provider 故障释放容量，后续事件可继续。
 - 提示词文件损坏时保留原字节，提示词 API 返回 503；无模型调用和分值变动，本地管理与聊天请求继续。小模型和复核使用同一模板快照。
-- 关闭、缺失、接口不支持和注册异常的 LivingMemory 状态均不改变本地关系、印象或流水。
 - 打包门禁要求 `bond_behavior.txt`，防止缺少启动所需资源。归档来自已提交 HEAD，包含许可文件并排除测试、脚本、运行数据。
 
 复现命令见 [开发指南](DEVELOPMENT.md)。Python 测试、真实框架装配分别使用独立环境；页面测试执行真实 JavaScript，模板编译不等于浏览器视觉验收。
@@ -63,14 +62,6 @@
 | T24 | 同名或改昵称不串档，使用结构化 QQ ID | `tests/test_core.py` 的身份、昵称和成员存储测试；`tests/test_review_regressions.py::test_new_member_uses_configured_half_life` | `[~]` 存储按 ID，缺少完整的同名真实事件流程 |
 | T25 | WebUI 备份/恢复只作用于选定 Bot 和空间 | `tests/test_storage_router.py::test_backup_restore_targets_one_database_and_keeps_backend_reference`；`scripts/smoke_astrbot.py` | `[x]` 有 SQLite backup API、恢复校验和面板 handler 断言 |
 | T26 | 恶意 Bot ID、群号、用户参数不能穿越、跨库或写入非法数值 | `tests/test_storage_router.py::test_path_validation_and_internal_aliases`；`tests/test_runtime_scope.py` 的非法模式/非有限值测试；`tests/test_prompt_service.py` 的身份校验 | `[x]` 有路径、作用域、数值和模板参数测试 |
-| T27 | LivingMemory 缺失、未安装或卸载时 Bond 继续本地运行 | `tests/test_livingmemory_service.py::test_missing_plugin_fails_safe`；`tests/test_livingmemory_service.py::test_uninstall_and_reinstall_are_seen_without_cached_instance` | `[x]` 有动态注册表模拟；未读取外部数据库 |
-| T28 | `livingmemory.enabled=false` 时不发现、不读、不写、不报错 | `tests/test_livingmemory_service.py::test_default_standalone_has_zero_discovery_calls`；`tests/test_livingmemory_service.py::test_dynamic_disable_stops_discovery_and_requests` | `[x]` 有零探测和动态关闭测试 |
-| T29 | LivingMemory 可用时按需发现，读写开关独立，读取不改分 | `docs/LIVINGMEMORY.md`；`tests/test_livingmemory_service.py::test_enabled_plugin_is_explicitly_unsupported_without_public_scope_api` | `[ ]` 当前 `a1e9c20`/`2.8.2` 没有可证明 Bot/group 作用域的公开 API；Bond 返回 `unsupported_scope`，`read.available` 和 `write.available` 保持 `false`，不能声称真实召回或写入 |
-| T30 | LivingMemory 关闭、卸载重装或实例替换不使用旧缓存 | `tests/test_livingmemory_service.py::test_dynamic_disable_stops_discovery_and_requests`；`tests/test_livingmemory_service.py::test_uninstall_and_reinstall_are_seen_without_cached_instance` | `[x]` 有动态探测和生命周期模拟测试 |
-| T31 | LivingMemory 接口变化、异常或超时在本地 fail-safe | `tests/test_livingmemory_service.py::test_discovery_exception_is_a_local_error_status`；`docs/LIVINGMEMORY.md` | `[~]` 已覆盖发现异常；真实公开 API 调用和超时路径当前没有可验收实现 |
-| T32 | 无法证明 Bot/group 来源或处于 global 时跳过外部读写 | `docs/LIVINGMEMORY.md`；`services/livingmemory_service.py` 的 `unsupported_scope` 分支 | `[~]` 当前通过不支持状态 fail-safe；没有真实成功路径可证明作用域过滤 |
-| T33 | 外部记忆或模型文本不能直接改分、覆盖印象 | `tests/test_persona_injection.py::test_relation_block_preserves_persona_and_serializes_untrusted_text`；`tests/test_assessment.py::test_protocol_rejects_untrusted_model_fields` | `[~]` Bond 本地不可信文本边界有测试；LivingMemory 真实写入未启用 |
-| T34 | 相同 `source_id/event_id` 重试不重复创建事件、印象或分值变化 | `tests/test_assessment.py::test_persistent_dedup_and_three_dimensions`；`tests/test_relation_storage.py::test_relation_concurrent_event_is_applied_once` | `[~]` Bond 本地事件去重有证据；LivingMemory 外部写入的持久幂等接口当前不可用，不能声称完成外部去重 |
 
 ## 已知未完成验收
 
@@ -81,7 +72,6 @@
 - 联网 Provider 的真实延迟、错误率、语义准确率、误判率和实际 Token 消耗；
 - 完整 AstrBot Dashboard 浏览器登录、页面交互、视觉布局和跨页面恢复；
 - 真实数据集回放及人工判定集；当前模型测试均为合成输入和模拟输出；
-- LivingMemory 的真实召回、外部写入和 `source_id/event_id` 持久幂等；
 - 生产部署、真实用户数据迁移、正式发布和质量准确率承诺。
 
 ## 升级与回滚证据要求
@@ -90,4 +80,16 @@
 
 ## 安装与发布结论
 
-按依赖审核 PR0 至 PR7，通过后再由维护者决定合并及发布。合并前试用使用 `feat/pr7-release-readiness` 快照或审核版 ZIP，解压目录必须命名为 `astrbot_plugin_bond`。`main` 在完成这条审核链前仍不是安装对象。本文本身不批准合并、发布或生产部署。
+PR0 至 PR7 已进入 main，可从 main 安装开发版。后续修改仍经独立 PR 审核，由维护者决定合并及发布。审核版 ZIP 解压目录必须命名为 `astrbot_plugin_bond`。本文不批准自动合并、发布或生产部署。
+
+## 2026-11-02 范围调整
+
+按维护者要求移除 LivingMemory 集成，原 T27～T34 外部集成验收项取消，不再列为已实现或待验能力。Bond 本地不可信内容校验及事件去重仍由原单元测试覆盖。
+
+## 2026-11-02 设置与 Bot 列表回归
+
+- 离线 Python 测试：391 项通过；Node 页面状态测试：15 项通过；Vue 3.4.38 模板编译通过。
+- 真实 AstrBot 4.28.0 装配脚本通过：使用真实 CQHttp 对象的合成连接映射，验证一个适配器包含两个 Bot；私聊事件可登记第三个合成账号，不创建关系数据库。
+- 白名单默认留空，表示所有群；配置后的群外消息不触发记录、模型评估、关系注入、群聊指令和工具查询。已有数据保留；保存后重载生效。
+- 默认关系模式不会覆盖已有 Bot 专属选择；主人身份仅由维护者配置及可信发言者账号匹配，沿用当前人格，不授予管理权限、不豁免评分。
+- 仍未连接真实 QQ、Provider 或完整 Dashboard 浏览器页面；不把装配和模板编译视为真实双 Bot 或视觉验收。

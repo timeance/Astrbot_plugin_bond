@@ -1,9 +1,10 @@
 {
   "master_ids": {
     "type": "string",
-    "description": "主人 QQ 号（多个用英文逗号分隔）。主人有专属身份标识，但好感度数值照常涨跌",
+    "description": "主人 QQ",
     "default": "",
-    "invisible": true
+    "invisible": false,
+    "hint": "多个 QQ 号用英文逗号分隔。仅作为关系身份标记，沿用当前人格；不授予管理权限，关系数值照常变化。保存后重载插件生效。"
   },
   "max_favor": {
     "type": "float",
@@ -703,14 +704,16 @@
         "default": "",
         "description": "评估模型",
         "invisible": false,
-        "hint": "选择 AstrBot 中已配置的 Provider，用于日常互动判断。"
+        "hint": "选择 AstrBot 中已配置的 Provider，用于日常互动判断。",
+        "_special": "select_provider"
       },
       "large_provider_id": {
         "type": "string",
         "default": "",
         "description": "复核模型（可选）",
         "invisible": false,
-        "hint": "用于复核容易误判的互动。留空时不调用复核模型；无法确定的互动不评分。"
+        "hint": "用于复核容易误判的互动。留空时不调用复核模型；无法确定的互动不评分。",
+        "_special": "select_provider"
       },
       "assessment_mode": {
         "type": "string",
@@ -761,26 +764,20 @@
     },
     "hint": "详细设置和调用统计请打开 Bond 插件页面。修改后重载插件生效。"
   },
-  "livingmemory": {
-    "type": "object",
-    "description": "LivingMemory 可选增强（当前公开接口不满足作用域保护，实际读写保持不可用）",
-    "items": {
-      "enabled": {
-        "type": "bool",
-        "default": false,
-        "description": "启用可选集成探测；关闭时完全独立运行"
-      },
-      "read_enabled": {
-        "type": "bool",
-        "default": false,
-        "description": "请求允许读取；还需安全公开接口可用"
-      },
-      "write_enabled": {
-        "type": "bool",
-        "default": false,
-        "description": "请求允许写入；还需来源隔离与持久幂等接口可用"
-      }
-    },
-    "invisible": true
+  "default_scope_mode": {
+    "type": "string",
+    "description": "默认关系模式",
+    "default": "per_group",
+    "options": [
+      "per_group",
+      "global"
+    ],
+    "hint": "per_group：每个群分别记录关系；global：同一 Bot 的关系跨群共用。Bond 页面为指定 Bot 选择的模式优先。切换只选择数据空间，不复制或合并历史。保存后重载插件生效。"
+  },
+  "group_whitelist": {
+    "type": "list",
+    "description": "启用 Bond 的群（白名单）",
+    "default": [],
+    "hint": "留空对所有群生效；填写后仅在这些群记录、评估、注入关系和响应 Bond 群聊指令。每项填写一个群号，对所有 Bot 生效。保存后重载插件生效。"
   }
 }

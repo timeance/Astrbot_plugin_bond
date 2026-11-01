@@ -1,73 +1,19 @@
-# LivingMemory 可选适配
+# LivingMemory 集成移除说明
 
-## 调查结论
+核验日期：2026-11-02。调查源码固定在以下提交，结论不代表未来版本永远不可接入。
 
-调查日期：2026-11-01。
+LivingMemory 集成已按维护者要求移除。Bond 不再提供相关设置、页面、探测服务或 API。升级时旧的 `livingmemory` 设置由宿主配置校验清理；不修改 Bond 数据库，也不修改或删除 LivingMemory 数据。
 
-公开仓库 `lxfight-s-Astrbot-Plugins/astrbot_plugin_livingmemory` 的 `master` 当前提交为 `a1e9c20a8c5fab93d6143f51be26fb1bbf8143ec`，提交信息为 `chore(release): 2.8.2`。本地 PR-0 记录的基线与公开仓库一致。
+## 已有调用路径
 
-核对了以下路径：
+LivingMemory 2.8.4，提交 `bfb8b1321daf93b628bf819c3a28328d940cb063`：插件注册模型工具，检索引擎通过 `initializer.memory_engine` 暴露在插件实例上。不能将其描述成“完全没有接口”。
 
-- `metadata.yaml`：插件名 `astrbot_plugin_livingmemory`，版本 `2.8.2`。
-- `main.py`：入口为继承 `Star` 的 `LivingMemoryPlugin`，依赖元数据自动发现；没有独立的 `self.api` 服务门面。
-- `main.py::_register_agent_tools_if_needed`：通过 `context.add_llm_tools(...)` 条件注册模型工具。
-- `core/tools/memory_search_tool.py`：注册 `recall_long_term_memory`，从 `ContextWrapper` 取得当前事件后调用内部 `memory_engine.search_memories(...)`。
-- `core/tools/memory_memorize_tool.py`：注册 `memorize_long_term_memory`，从当前事件解析作用域后调用内部 `memory_engine.add_memory(...)`。
-- `core/tools/memory_read_tool.py`：注册可选的 `read_memory_evidence`，读取仍经内部 engine 和当前工具访问策略。
-- `core/tools/memory_forget_tool.py`：注册 `forget_long_term_memory`，带管理员检查和软删除逻辑，仍是模型工具内部实现。
-- `core/memory_scope.py`：作用域可为当前 `unified_msg_origin`、`livingmemory:user:<platform>:<identity>` 或固定 `livingmemory:global`。
-- `core/passive_group_capture.py`：`get_active_plugin()` 是插件内部弱引用，不能作为跨插件公开 API。
+[group_chat_plus 的 memory_injector.py](https://github.com/Him666233/astrbot_plugin_group_chat_plus/blob/aa97e0e35a18733e73db753238dd2a3021446e42/utils/memory_injector.py) 通过 AstrBot 的插件注册表取得 LivingMemory 实例，访问 `initializer.memory_engine.search_memories()`，传入 `event.unified_msg_origin` 和人格 ID。该项目确实有调用实现；本次没有运行该项目，不声称其所有版本和场景均验证通过。
 
-这些工具的访问上下文包含 session、平台、发送者和群组信息，但没有能独立证明 Bond 的真实 Bot ID 与群来源的公开服务契约。`session`、`user` 和 `global` 模式还可能跨会话或跨群共享。直接调用 `initializer.memory_engine`、任何数据库、工具对象或插件内部弱引用都会绕过上游策略，也不能证明来源隔离，因此本适配器不调用它们。
+## Bond 尚缺少的保证
 
-## 当前实现
+AstrBot 4.28.0 的消息来源由适配器标识、消息类型和会话 ID 组成，不保证包含真实 Bot 账号。一个 OneBot 适配器连接多个账号时，不能仅凭会话和人格证明记忆属于哪个 Bot。
 
-`LivingMemoryService` 保持 Bond 的 `standalone` 默认模式。它不导入 LivingMemory，不添加运行时依赖，不访问 LivingMemory 数据库，也不保存插件实例。
+LivingMemory 的 `core/memory_scope.py` 支持会话、用户和全局模式；用户／全局范围可能共享会话内容。真实 Bot 账号来源必须同时在写入及召回结果中可验证，不能只给搜索函数传入 Bot 自造的字符串，或把人格 ID 当作 Bot 身份。
 
-构造：
-
-```python
-service = LivingMemoryService(context, config)
-```
-
-配置使用三个独立开关，默认均为关闭：
-
-```python
-{
-    "livingmemory": {
-        "enabled": False,
-        "read_enabled": False,
-        "write_enabled": False,
-    }
-}
-```
-
-父集成可调用：
-
-```python
-state = service.status()
-read_result = await service.recall(
-    query="用户偏好",
-    bot_id=bot_id,
-    group_id=group_id,
-    user_id=user_id,
-)
-write_result = await service.memorize(
-    memory="用户偏好简洁回答",
-    bot_id=bot_id,
-    group_id=group_id,
-    user_id=user_id,
-    source_id="bond",
-    event_id=event_id,
-)
-```
-
-配置只接受嵌套字典中的三个布尔值。缺少键按 `false` 处理；其它类型返回 `invalid_config`，管理入口可调用 `LivingMemoryService.validate_config(config)` 取得 `ValueError`。`status()`、`recall()` 和 `memorize()` 每次调用都会重新读取配置；在 `enabled=false` 时直接返回 `standalone`，不调用 `context`。启用后每次调用都通过 `context.get_registered_star("astrbot_plugin_livingmemory")` 重新发现真实 `StarMetadata`，检查 `activated` 和 `star_cls`，不缓存旧对象。状态同时给出 `read.enabled`、`read.available`、`read.reason` 和对应的 `write` 字段，父集成应以 `available` 为准。
-
-当前活跃插件的状态是 `unsupported_scope`，`reason_code` 为 `public_api_missing`。读取返回空 `items`，写入返回 `written=false`。这表示当前公开接口不能安全适配，不表示读取或写入成功。缺失、未激活、注册异常、实例不可用和动态关闭都在本地降级，不影响 Bond 自有 SQLite 和正常回复。
-
-## 后续启用条件
-
-只有上游提供稳定公开服务 API，并同时返回或验证以下边界，才可以增加真实读取：真实 Bot ID、平台、群或私聊作用域、用户身份、超时行为和来源字段。读取仍需限长、超时和去重；`global` 关系不能授权召回其它群的原始记忆。
-
-写入还需要稳定的 `source_id` 与 `event_id` 持久幂等契约。外部记忆文本只能作为待校验上下文，不能直接修改 Bond 的 familiarity、affinity、trust、印象或事件状态。满足这些条件前，父集成应保持 `read.available=false` 和 `write.available=false`。
+这条调用路径尚不能满足 Bond 的多 Bot 隔离验收。因此移除集成，继续使用本地关系、印象和历史记录。未来如重新接入，需另行确认范围和权限；本次不保留占位开关或空实现。

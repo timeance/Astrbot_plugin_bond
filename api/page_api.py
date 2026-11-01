@@ -94,7 +94,7 @@ class PageApi:
         except (TypeError, ValueError):
             raise _PageRequestError from None
         try:
-            known = self._runtime.storage.known_bot_ids()
+            known = self._runtime.known_bot_ids()
         except Exception as exc:
             raise _PageOperationError from exc
         if bot_id not in known:
@@ -181,12 +181,6 @@ class PageApi:
         if reg is None or jsonify is None:
             return
         for endpoint, handler, methods, label in (
-            (
-                "livingmemory",
-                self.handle_livingmemory,
-                ["GET", "POST"],
-                "Bond 可选记忆集成状态",
-            ),
             ("settings", self.handle_settings, ["GET", "POST"], "Bond 详细设置"),
             ("relation", self.handle_relation, ["POST"], "Bond 修改三维关系"),
             ("profile", self.handle_profile, ["POST"], "Bond 修改印象与标签"),
@@ -249,7 +243,7 @@ class PageApi:
         )
 
     async def handle_bots(self):
-        """返回已产生可信事件的 Bot；这是已认证的元数据端点，不选定数据空间。"""
+        """返回当前连接及已有本地记录的 Bot；这是已认证的元数据端点，不选定数据空间。"""
 
         async def run():
             try:
@@ -587,25 +581,6 @@ class PageApi:
                     **self._runtime.detailed_settings(),
                     "restart_required": request.method == "POST",
                 }
-            )
-
-        return await self._invoke(run)
-
-    async def handle_livingmemory(self):
-        async def run():
-            params = await self._params()
-            self._target(params)
-            if request.method == "POST":
-                values = params.get("config")
-                if not isinstance(values, dict):
-                    raise _PageRequestError
-                try:
-                    await self._runtime.save_livingmemory_settings(values)
-                except (ValueError, TypeError):
-                    raise _PageRequestError from None
-            state = self._runtime.livingmemory.status(check=params.get("check") == "1")
-            return self._response(
-                {"success": True, "config": state["config"], "state": state}
             )
 
         return await self._invoke(run)

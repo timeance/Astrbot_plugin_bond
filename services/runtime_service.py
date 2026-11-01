@@ -9,13 +9,19 @@ from ..core.scope import account_id, scope_mode
 
 
 class RuntimeService:
-    def __init__(self, storage, config, factory, *, livingmemory=None) -> None:
-        self.livingmemory = livingmemory
+    def __init__(self, storage, config, factory, *, bot_discovery=None) -> None:
+        self._bot_discovery = bot_discovery
         self.storage = storage
         self._config = config
         self._factory = factory
         self._bundles = {}
         self._lock = asyncio.Lock()
+        self._observed_bot_ids = set()
+        self._default_mode = scope_mode(config.get("default_scope_mode", "per_group"))
+        whitelist = config.get("group_whitelist", [])
+        if not isinstance(whitelist, list):
+            raise ValueError("群白名单必须是群号列表")
+        self._group_whitelist = frozenset(account_id(item) for item in whitelist)
 
     def modes(self) -> dict[str, str]:
         raw = self._config.get("bot_scope_modes", "{}") or "{}"
@@ -28,7 +34,7 @@ class RuntimeService:
         return modes
 
     def current_mode(self, bot_id: str) -> str:
-        return self.modes().get(account_id(bot_id), "per_group")
+        return self.modes().get(account_id(bot_id), self._default_mode)
 
     async def select(self, bot_id: str, mode: str | None = None):
         bot_id = account_id(bot_id)
@@ -40,16 +46,27 @@ class RuntimeService:
                 self._bundles[key] = self._factory(backend, mode)
             return self._bundles[key]
 
+    def observe_bot(self, event):
+        """仅信任宿主事件的真实账号，私聊也可登记；不为发现账号创建数据库。"""
+        self._observed_bot_ids.add(account_id(str(event.get_self_id() or "")))
+
+    def group_enabled(self, group_id):
+        group_id = account_id(group_id)
+        return not self._group_whitelist or group_id in self._group_whitelist
+
     async def for_event(self, event):
+        self.observe_bot(event)
+        group_id = str(event.get_group_id() or "")
+        if not group_id or not self.group_enabled(group_id):
+            return None
         # 调用时捕获模式，之后后台任务只持该 bundle，不再读取可变配置。
-        account_id(str(event.get_group_id() or ""))
         account_id(str(event.get_sender_id() or ""))
         return await self.select(str(event.get_self_id() or ""))
 
     async def switch_mode(self, bot_id: str, mode: str) -> None:
         bot_id, mode = account_id(bot_id), scope_mode(mode)
-        if bot_id not in self.storage.known_bot_ids():
-            raise ValueError("请选择已连接并产生可信事件的 Bot")
+        if bot_id not in self.known_bot_ids():
+            raise ValueError("请选择当前已连接或已有本地记录的 Bot")
         async with self._lock:
             previous = self._config.get("bot_scope_modes", "{}")
             modes = self.modes()
@@ -102,19 +119,6 @@ class RuntimeService:
                 raise
         # 已捕获的在途任务继续使用旧配置。插件重载后统一生效。
 
-    async def save_livingmemory_settings(self, values):
-        from .livingmemory_service import LivingMemoryService
-
-        validated = LivingMemoryService.validate_config({"livingmemory": values})
-        async with self._lock:
-            previous = self._config.get("livingmemory")
-            self._config["livingmemory"] = validated
-            try:
-                self._config.save_config()
-            except BaseException:
-                self._config["livingmemory"] = previous
-                raise
-
     def detailed_settings(self):
         from ..core.settings import snapshot
 
@@ -142,8 +146,14 @@ class RuntimeService:
                 self._config.update(previous)
                 raise
 
+    def known_bot_ids(self) -> list[str]:
+        ids = set(self.storage.known_bot_ids()) | self._observed_bot_ids
+        if self._bot_discovery is not None:
+            ids.update(self._bot_discovery.account_ids())
+        return sorted(ids)
+
     async def describe(self) -> list[dict]:
         return [
             {"bot_id": bot_id, "scope_mode": self.current_mode(bot_id)}
-            for bot_id in self.storage.known_bot_ids()
+            for bot_id in self.known_bot_ids()
         ]

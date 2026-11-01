@@ -37,7 +37,6 @@ from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
 from .services.inject_service import InjectService
 from .services.prompt_service import PromptService
-from .services.livingmemory_service import LivingMemoryService
 from .services.assessment_service import (
     AssessmentConfig,
     AssessmentCapacity,
@@ -114,9 +113,13 @@ class BondPlugin(Star):
             (config.get("assessment") or {}).get("max_concurrent_assessments", 2)
         )
         self._storage = BotScopeStorageRouter(data_dir)
-        self._livingmemory = LivingMemoryService(context, config)
+        from .services.bot_discovery import BotDiscovery
+
         self._runtime = RuntimeService(
-            self._storage, config, self._build_deps, livingmemory=self._livingmemory
+            self._storage,
+            config,
+            self._build_deps,
+            bot_discovery=BotDiscovery(context),
         )
         self._relationships = None
         cmd_cfg = config.get("command") or {}
@@ -289,17 +292,20 @@ class BondPlugin(Star):
     # （不发声、不 stop、不改正文），取 1000 保证恒先于任何接管者执行
     # （priority=1 盖不过正数大优先级的接管者）；文字唤醒默认关，开启时
     # 由 _bond_cmd_done 防重。
-    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE, priority=1000)
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=1000)
     async def _on_group_msg(self, event: AstrMessageEvent):
         # 文字唤醒：群里直接发文字（不用 /）触发查询指令；与 / 指令一致，之后照常跑评估引擎
         try:
+            self._runtime.observe_bot(event)
             sender = str(event.get_sender_id() or "")
             ignored = {str(x) for x in (self.config.get("ignored_bot_ids") or [])}
-            ignored.update(self._storage.known_bot_ids())
+            ignored.update(self._runtime.known_bot_ids())
             ignored.add(str(event.get_self_id() or ""))
             if sender in ignored:
                 return
             deps = await self._runtime.for_event(event)
+            if deps is None:
+                return
         except Exception:
             logger.warning("[Bond] 数据路由不可用，本次跳过关系观察")
             return
@@ -333,6 +339,8 @@ class BondPlugin(Star):
     async def _on_llm_req(self, event: AstrMessageEvent, req: ProviderRequest):
         try:
             deps = await self._runtime.for_event(event)
+            if deps is None:
+                return
         except Exception:
             logger.warning("[Bond] 数据路由不可用，本次跳过关系注入")
             return
@@ -347,6 +355,8 @@ class BondPlugin(Star):
             yield event.plain_result("请在群聊中查询自己的关系。")
             return
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         yield event.plain_result(await tools.tool_query_favor(deps.favor, event))
 
     @filter.command("好感排行")
@@ -356,6 +366,8 @@ class BondPlugin(Star):
             yield event.plain_result(_RANKING_GROUP_REQUIRED)
             return
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         event._bond_cmd_done = True
         kind, payload = await cmd.rank_reply(
             deps.favor,
@@ -392,6 +404,8 @@ class BondPlugin(Star):
     ):
         """设置某成员好感度（管理员，支持一位小数与负值）。用法：/好感设置 QQ号 数值"""
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         yield event.plain_result(await cmd.handle_set(deps.favor, event, target, value))
 
     @filter.command("好感重置")
@@ -399,6 +413,8 @@ class BondPlugin(Star):
     async def _cmd_reset(self, event: AstrMessageEvent, target: str = ""):
         """重置好感度（管理员）。用法：/好感重置 [QQ号]，不带参数清空整群"""
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         yield event.plain_result(await cmd.handle_reset(deps.favor, event, target))
 
     @filter.command("关系设置")
@@ -408,6 +424,8 @@ class BondPlugin(Star):
     ):
         """设置某成员与小千的关系（管理员）。用法：/关系设置 QQ号 类型"""
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         yield event.plain_result(
             await cmd.handle_set_relationship(
                 deps.favor, self._relationships, event, target, key
@@ -421,6 +439,8 @@ class BondPlugin(Star):
     ):
         """设置成员标签（管理员）。用法：/印象设置 QQ号 标签1,标签2"""
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         yield event.plain_result(
             await cmd.handle_set_tags(deps.impressions, event, target, tags)
         )
@@ -430,6 +450,8 @@ class BondPlugin(Star):
     async def _cmd_refresh_imp(self, event: AstrMessageEvent, target: str = ""):
         """立即刷新成员印象（管理员）。用法：/印象刷新 QQ号"""
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return
         yield event.plain_result(
             await cmd.handle_refresh_impression(deps.impressions, event, target)
         )
@@ -446,6 +468,8 @@ class BondPlugin(Star):
         if _group_entry_id(event) is None:
             return "请在群聊中查询自己的关系。"
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return "本群未启用关系功能。"
         return await tools.tool_query_favor(deps.favor, event, target)
 
     @filter.llm_tool(name="query_favor_ranking")
@@ -454,4 +478,6 @@ class BondPlugin(Star):
         if _group_entry_id(event) is None:
             return _RANKING_GROUP_REQUIRED
         deps = await self._runtime.for_event(event)
+        if deps is None:
+            return "本群未启用关系功能。"
         return await tools.tool_query_ranking(deps.favor, event, self._ranking_limit)

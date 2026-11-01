@@ -111,15 +111,6 @@ for(const operation of ['switch','restore']) test(`log tab reloads after ${opera
 });
 
 
-test('optional integration check is read only and ignores an old scope',async()=>{
- const {ui,pendingGets,reads,pending}=harness();
- const check=ui.loadIntegration(true);
- await check;
- assert.equal(reads.find(x=>x.endpoint==='livingmemory').params.check,'1');
- assert.equal(pending.length,0);
- assert.equal(ui.saveIntegration,undefined);
-});
-
 test('detailed settings save sends changed fields only and ignores late completion',async()=>{
  const {ui,pending}=harness();
  ui.detailSettings.value={revision:'v1',values:{timezone:'UTC',memory_days:4},fields:[]};
@@ -147,4 +138,30 @@ for(const operation of ['saveRelation','saveProfile','refreshImpression']) test(
  pending[1].resolve({success:true});await new Promise(resolve=>setImmediate(resolve));
  pendingGets[2].resolve({success:true,member});await current;
  assert.equal(ui.memberSaveLoading.value,false);assert.equal(ui.memberNotice.value,'印象和标签已保存');
+});
+
+test('removed integration has no UI or API calls',()=>{
+ const {ui,reads}=harness();
+ assert.equal(ui.loadIntegration,undefined);
+ assert.equal(reads.some(x=>x.endpoint==='livingmemory'),false);
+});
+
+
+test('group whitelist uses an array and an empty field restores all groups',async()=>{
+ const {ui,pending}=harness();
+ ui.detailSettings.value={values:{group_whitelist:[]},revision:'before'};
+ ui.detailValues.value={group_whitelist:[]};
+ ui.updateListSetting('group_whitelist','10001, 20002，30003');
+ assert.deepEqual(Array.from(ui.detailValues.value.group_whitelist),['10001','20002','30003']);
+ const save=ui.saveSettings();
+ assert.equal(pending[0].endpoint,'settings');
+ assert.deepEqual(Array.from(pending[0].params.values.group_whitelist),['10001','20002','30003']);
+ pending[0].resolve({success:true,fields:[],values:{group_whitelist:['10001','20002','30003']},revision:'after'});
+ await save;
+ ui.updateListSetting('group_whitelist','   ');
+ const clear=ui.saveSettings();
+ assert.deepEqual(Array.from(pending[1].params.values.group_whitelist),[]);
+ pending[1].resolve({success:true,fields:[],values:{group_whitelist:[]},revision:'cleared'});
+ await clear;
+ assert.deepEqual(Array.from(ui.detailValues.value.group_whitelist),[]);
 });
