@@ -157,9 +157,15 @@ createApp({
     };
     const sameRequestTarget = (left, right, keys) => Boolean(left && right) &&
       keys.every((key) => String(left[key] ?? "") === String(right[key] ?? ""));
+    const currentPromptFields = () => ({
+      kind: promptKind.value,
+      level: promptLevel.value,
+      group_id: promptLevel.value === "group" ? String(promptGroupId.value || "") : "",
+    });
     const isCurrentPromptRequest = (target, revision) =>
       isCurrentScope(target, revision) &&
-      sameRequestTarget(target, promptRequestTarget.value, ["kind", "level", "group_id"]);
+      sameRequestTarget(target, promptRequestTarget.value, ["kind", "level", "group_id"]) &&
+      sameRequestTarget(target, currentPromptFields(), ["kind", "level", "group_id"]);
     const isCurrentMemberRequest = (target, revision) =>
       isCurrentScope(target, revision) &&
       sameRequestTarget(target, memberRequestTarget.value, ["group_id", "user_id"]);
@@ -417,6 +423,7 @@ createApp({
       }
       const revision = scopeRevision.value;
       let params;
+      promptRequestTarget.value = null;
       try {
         params = promptRequest();
       } catch (e) {
@@ -448,6 +455,7 @@ createApp({
       const revision = scopeRevision.value;
       if (!snapshot) return;
       let params;
+      promptRequestTarget.value = null;
       try {
         params = promptRequest();
       } catch (e) {
