@@ -360,6 +360,15 @@ class PageApi:
                         "affinity": rec.affinity,
                         "familiarity": rec.familiarity,
                         "trust": rec.trust,
+                        "temporary": await deps.favor.temporary_state(
+                            group_id, user_id
+                        ),
+                        "formal_relation": await deps.favor.formal_relation(
+                            group_id, user_id
+                        ),
+                        "temporary_audit": await deps.favor.temporary_audit(
+                            group_id, user_id
+                        ),
                         "relation_title": await deps.favor.relation_title(
                             group_id, user_id
                         ),
@@ -474,6 +483,26 @@ class PageApi:
             if not isinstance(reason, str) or len(reason) > 120:
                 raise _PageRequestError
             try:
+                action = params.get("action", "permanent")
+                if action in ("temporary", "cancel_temporary"):
+                    values = (
+                        {
+                            key: params.get(key)
+                            for key in ("familiarity", "affinity", "trust")
+                        }
+                        if action == "temporary"
+                        else None
+                    )
+                    await deps.favor.set_temporary(
+                        group,
+                        user,
+                        values,
+                        params.get("duration_sec"),
+                        self._username(),
+                    )
+                    return self._response({"success": True})
+                if action != "permanent":
+                    raise ValueError("操作无效")
                 result = await deps.favor.set_relation(
                     group,
                     user,

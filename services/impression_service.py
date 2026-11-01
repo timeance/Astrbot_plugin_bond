@@ -141,6 +141,9 @@ class ImpressionService:
         from astrbot.api import logger  # 延迟导入，保持本模块可脱离框架测试
 
         try:
+            temporary = await self._storage.override_state(group_id, user_id)
+            if temporary["active"]:
+                return False, "临时关系期间暂停印象更新"
             rec = await self._storage.get(group_id, user_id)
             nickname = (rec.nickname if rec else "") or user_id
             old_impression = (rec.impression if rec else "") or ""
@@ -178,6 +181,7 @@ class ImpressionService:
                     judged,
                     provider,
                     logger,
+                    temporary["revision"],
                 )
             prompt = build_summary_prompt(
                 nickname, old_impression, samples, persona_name
@@ -192,7 +196,12 @@ class ImpressionService:
             extra = [t for t in stats_tags(logs) if t not in llm_tags]
             tags = (llm_tags + extra)[:3]
             if not await self._storage.commit_impression(
-                group_id, user_id, impression, tags, [r["id"] for r in judged]
+                group_id,
+                user_id,
+                impression,
+                tags,
+                [r["id"] for r in judged],
+                expected_revision=temporary["revision"],
             ):
                 return False, "评审已撤销，保留原印象"
             logger.info(f"[心弦] {group_id}/{user_id} 印象已刷新: {impression}")
@@ -216,6 +225,7 @@ class ImpressionService:
         judged,
         provider,
         logger,
+        expected_revision,
     ) -> tuple[bool, str]:
         """P-C 带权点模式：LLM 提点 → 损失厌恶加权 → 相似合并 → 限量保留。"""
         import time as _time
@@ -282,7 +292,13 @@ class ImpressionService:
             # 原子档案更新：点集/印象/标签一次写入（失败即整体不生效，可安全重试）
             old_tags = rec.parsed_tags() if rec else []
             if not await self._storage.commit_impression(
-                group_id, user_id, impression, old_tags, [r["id"] for r in judged], kept
+                group_id,
+                user_id,
+                impression,
+                old_tags,
+                [r["id"] for r in judged],
+                kept,
+                expected_revision=expected_revision,
             ):
                 return False, "评审已撤销，保留原印象"
             logger.info(

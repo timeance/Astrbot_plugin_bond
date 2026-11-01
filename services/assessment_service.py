@@ -143,6 +143,12 @@ class AssessmentService:
         if not locally_relevant(interaction.text, directed):
             await self.storage.record_assessment_skip(interaction, "filtered")
             return "filtered"
+        temporary = await self.favor.temporary_state(
+            interaction.group_id, interaction.user_id
+        )
+        if temporary["active"]:
+            await self.storage.record_assessment_skip(interaction, "temporary")
+            return "temporary"
         key = (self.favor.group_key(interaction.group_id), interaction.user_id)
         if key in self.pending or self.capacity.active >= self.capacity.limit:
             await self.storage.record_assessment_skip(interaction, "busy")
@@ -175,6 +181,14 @@ class AssessmentService:
                 status = "failed"
             else:
                 review = needs_review(verdict, interaction.text)
+                current = await self.favor.temporary_state(
+                    interaction.group_id, interaction.user_id
+                )
+                if current["active"] or current["revision"] != temporary["revision"]:
+                    await self.storage.finish_assessment(
+                        interaction.event_id, "temporary"
+                    )
+                    return "temporary"
                 if review:
                     verdict = (
                         await self._call(
@@ -204,6 +218,7 @@ class AssessmentService:
                         # 自动评估以 claim_assessment 的入场时间为唯一冷却边界。
                         # 提交仍检查事件去重和每日限幅，不按推理完成时间二次拒绝。
                         cooldown_sec=0,
+                        expected_revision=temporary["revision"],
                     )
                     status = (
                         "accepted"
