@@ -77,6 +77,10 @@ class ImpressionService:
             return
         self._pending.add(key)
         try:
+            temporary = await self._storage.override_state(group_id, user_id)
+            if temporary["active"]:
+                self._pending.discard(key)
+                return
             # 调度时锁定这一批证据；刷新和进度提交必须使用同一批，避免
             # interval 大于提示词旧上限时只消费部分流水而重复触发。
             logs = await self._storage.impression_logs(
@@ -93,6 +97,7 @@ class ImpressionService:
                         user_id,
                         umo,
                         evidence_ids=tuple(r["id"] for r in logs),
+                        expected_revision=temporary["revision"],
                     )
                 finally:
                     self._pending.discard(key)
@@ -135,12 +140,19 @@ class ImpressionService:
         umo: str = "",
         *,
         evidence_ids: tuple[int, ...] | None = None,
+        expected_revision: int | None = None,
     ) -> tuple[bool, str]:
         """收集流水 → 构造汇总提示 → 调 provider → 解析落库。"""
         group_id = self.group_key(group_id)
         from astrbot.api import logger  # 延迟导入，保持本模块可脱离框架测试
 
         try:
+            temporary = await self._storage.override_state(group_id, user_id)
+            if temporary["active"] or (
+                expected_revision is not None
+                and temporary["revision"] != expected_revision
+            ):
+                return False, "临时关系已使该任务失效，保留原印象"
             rec = await self._storage.get(group_id, user_id)
             names = await self._storage.member_names()
             nickname = (
@@ -181,6 +193,7 @@ class ImpressionService:
                     judged,
                     provider,
                     logger,
+                    temporary["revision"],
                 )
             prompt = build_summary_prompt(
                 nickname, old_impression, samples, persona_name
@@ -195,7 +208,12 @@ class ImpressionService:
             extra = [t for t in stats_tags(logs) if t not in llm_tags]
             tags = (llm_tags + extra)[:3]
             if not await self._storage.commit_impression(
-                group_id, user_id, impression, tags, [r["id"] for r in judged]
+                group_id,
+                user_id,
+                impression,
+                tags,
+                [r["id"] for r in judged],
+                expected_revision=temporary["revision"],
             ):
                 return False, "评审已撤销，保留原印象"
             logger.info(f"[心弦] {group_id}/{user_id} 印象已刷新: {impression}")
@@ -219,6 +237,7 @@ class ImpressionService:
         judged,
         provider,
         logger,
+        expected_revision,
     ) -> tuple[bool, str]:
         """P-C 带权点模式：LLM 提点 → 损失厌恶加权 → 相似合并 → 限量保留。"""
         import time as _time
@@ -288,7 +307,13 @@ class ImpressionService:
             # 原子档案更新：点集/印象/标签一次写入（失败即整体不生效，可安全重试）
             old_tags = rec.parsed_tags() if rec else []
             if not await self._storage.commit_impression(
-                group_id, user_id, impression, old_tags, [r["id"] for r in judged], kept
+                group_id,
+                user_id,
+                impression,
+                old_tags,
+                [r["id"] for r in judged],
+                kept,
+                expected_revision=expected_revision,
             ):
                 return False, "评审已撤销，保留原印象"
             logger.info(

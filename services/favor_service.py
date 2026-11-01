@@ -178,6 +178,7 @@ class FavorService:
     async def get(self, group_id: str, user_id: str) -> FavorRecord:
         """读取记录；无记录时返回默认值（不落库）。返回的是有效好感度（含时间衰减）。"""
         group_id = self.group_key(group_id)
+        temporary = await self._storage.override_state(group_id, user_id)
         rec = await self._storage.get(group_id, user_id)
         if rec is None:
             rec = FavorRecord(
@@ -188,6 +189,10 @@ class FavorService:
             )
         else:
             rec.favor = self._effective(rec.favor, rec.updated_at, rec.half_life)
+        if temporary["active"]:
+            rec.favor = temporary["values"]["affinity"]
+            rec.familiarity = temporary["values"]["familiarity"]
+            rec.trust = temporary["values"]["trust"]
         return rec
 
     async def get_relation(self, group_id, user_id):
@@ -235,6 +240,7 @@ class FavorService:
         reason="关系事件",
         message="",
         cooldown_sec=120,
+        expected_revision=None,
     ):
         """供可信评估服务调用；身份与事件分类在平台边界核验后传入。"""
         self._validate_event_id(event_id)
@@ -269,6 +275,7 @@ class FavorService:
             day=self._today().isoformat(),
             caps=self._relation_caps,
             cooldown_sec=cooldown_sec,
+            expected_revision=expected_revision,
             reason=reason,
             message=message,
             effective=self._effective,
@@ -337,11 +344,12 @@ class FavorService:
             rows = await self._storage.ranking_observed(group_id, -1)
         else:
             rows = await self._storage.ranking(group_id, -1)
-        for r in rows:
-            r.favor = self._effective(
-                r.favor, r.updated_at, getattr(r, "half_life", 10.0)
-            )
+        rows = [await self.get(r.group_id, r.user_id) for r in rows]
         names = await self._storage.member_names()
+        for r in rows:
+            r.nickname = names.get((group_id, r.user_id)) or names.get(
+                ("", r.user_id), ""
+            )
         for r in rows:
             r.nickname = names.get((group_id, r.user_id)) or names.get(
                 ("", r.user_id), ""
@@ -360,8 +368,9 @@ class FavorService:
         now = time.time()
         out: list[dict] = []
         names = await self._storage.member_names()
-        for r in recs:
-            eff = self._effective(r.favor, r.updated_at, r.half_life)
+        for stored in recs:
+            r = await self.get(stored.group_id, stored.user_id)
+            eff = r.favor
             idle = int((now - r.updated_at) // 86400) if r.updated_at > 0 else None
             out.append(
                 {
@@ -372,8 +381,11 @@ class FavorService:
                     "familiarity": r.familiarity,
                     "trust": r.trust,
                     "relation_title": self._relation_title(r.familiarity, eff, r.trust),
-                    "stored_favor": round1(r.favor),
-                    "decayed": round1(r.favor) != eff,
+                    "stored_favor": round1(stored.favor),
+                    "decayed": round1(stored.favor) != eff
+                    and not (await self.temporary_state(r.group_id, r.user_id))[
+                        "active"
+                    ],
                     "level": self.level_of(eff).name,
                     "relationship": (
                         self.relationship_label(r.relationship)
@@ -848,4 +860,54 @@ class FavorService:
         names = await self._storage.member_names()
         return (names.get((group_id, user_id)) if group_id else "") or names.get(
             ("", user_id), ""
+        )
+
+    async def temporary_state(self, group_id, user_id):
+        return await self._storage.override_state(self.group_key(group_id), user_id)
+
+    async def set_temporary(
+        self, group_id, user_id, values, duration, actor, reason="管理员调整"
+    ):
+        from dataclasses import asdict
+        from ..core.relation_policy import RelationState
+
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("需要可信管理员身份")
+        if not isinstance(reason, str) or len(reason) > 120:
+            raise ValueError("调整原因不能超过 120 字")
+        if values is not None:
+            values = asdict(RelationState(**values))
+            if (
+                type(duration) not in (int, float)
+                or not math.isfinite(duration)
+                or not 60 <= duration <= 30 * 86400
+            ):
+                raise ValueError("临时时长须为 1 分钟至 30 天")
+        await self._storage.set_override(
+            self.group_key(group_id),
+            user_id,
+            values,
+            duration,
+            actor,
+            self.default_favor,
+            reason,
+        )
+
+    async def temporary_audit(self, group_id, user_id):
+        return await self._storage.override_audit(self.group_key(group_id), user_id)
+
+    async def formal_relation(self, group_id, user_id):
+        state = await self.temporary_state(group_id, user_id)
+        rec = await self._storage.get(self.group_key(group_id), user_id)
+        if rec is None:
+            return dict(familiarity=0, affinity=self.default_favor, trust=0)
+        shift = (
+            max(0, time.time() - state["started_at"])
+            if state["active"] and rec.updated_at > 0
+            else 0
+        )
+        return dict(
+            familiarity=rec.familiarity,
+            affinity=self._effective(rec.favor, rec.updated_at + shift, rec.half_life),
+            trust=rec.trust,
         )

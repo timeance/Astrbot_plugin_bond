@@ -128,6 +128,8 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
         str(getattr(event.message_obj, "message_id", "") or ""),
     )
 
+    admission_state = await deps.favor.temporary_state(group_id, user_id)
+
     async def _bg() -> None:
         try:
             await deps.favor.observe_member(group_id, user_id)
@@ -148,7 +150,9 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                     text,
                 )
                 status = await deps.assessment.assess(
-                    interaction, directed=has_at_bot or is_reply_bot
+                    interaction,
+                    directed=has_at_bot or is_reply_bot,
+                    admission_state=admission_state,
                 )
                 if (
                     status == "accepted"

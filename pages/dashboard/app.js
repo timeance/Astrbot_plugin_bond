@@ -1,4 +1,4 @@
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
   setup() {
@@ -25,6 +25,8 @@ createApp({
     const memberNotice = ref("");
     const memberNoticeError = ref(false);
     const memberSaveLoading = ref(false);
+    const relationEditMode = ref("permanent");
+    const temporaryMinutes = ref(60);
     const relationForm = ref({ familiarity: 0, affinity: 0, trust: 0, reason: "管理员调整" });
     const profileForm = ref({ impression: "", tagsText: "" });
     const promptKind = ref("behavior");
@@ -116,6 +118,7 @@ createApp({
       snapshot.bot_id === selectedBot.value &&
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
+      clearExpiryTimer();
       scopeRevision.value += 1;
       detailSettings.value = null; detailValues.value = {}; detailLoading.value = false; detailNotice.value = "";
       loading.value = false;
@@ -295,7 +298,29 @@ createApp({
     // 成员详情弹窗（印象/标签/近期评审）
     const memberDetail = ref(null);
     const memberLoading = ref(false);
+    let expiryTimer;
+    const clearExpiryTimer = () => { clearTimeout(expiryTimer); expiryTimer = undefined; };
+    onUnmounted(clearExpiryTimer);
+    const scheduleExpiryRefresh = (member, snapshot, revision, target) => {
+      clearExpiryTimer();
+      if (!member?.temporary?.active) return;
+      const delay = Math.max(0, member.temporary.expires_at * 1000 - Date.now()) + 100;
+      expiryTimer = setTimeout(async () => {
+        if (!isCurrentMemberRequest(target, revision)) return;
+        if (Date.now() < member.temporary.expires_at * 1000) {
+          scheduleExpiryRefresh(member, snapshot, revision, target);
+          return;
+        }
+        try {
+          await loadMemberRecord(member.group_id, member.user_id, snapshot, revision, target);
+          if (isCurrentMemberRequest(target, revision)) await fetchUsers();
+        } catch (e) {
+          if (isCurrentMemberRequest(target, revision)) setMemberNotice("临时调整已到期，请刷新确认当前关系。" + String(e), true);
+        }
+      }, Math.min(delay, 2147483647));
+    };
     const syncMemberForms = (member) => {
+      relationEditMode.value = member?.temporary?.active ? "temporary" : "permanent";
       const m = member || {};
       relationForm.value = {
         familiarity: Number(m.familiarity ?? 0),
@@ -316,6 +341,7 @@ createApp({
       }
       memberDetail.value = data.member || null;
       syncMemberForms(memberDetail.value);
+      scheduleExpiryRefresh(memberDetail.value, snapshot, revision, target);
       return true;
     };
     const openMember = async (u) => {
@@ -334,6 +360,7 @@ createApp({
         return;
       }
       errorMsg.value = "";
+      clearExpiryTimer();
       memberDetail.value = null;
       memberSaveLoading.value = false;
       memberLoading.value = true;
@@ -349,6 +376,7 @@ createApp({
       }
     };
     const closeMember = () => {
+      clearExpiryTimer();
       memberSession += 1;
       memberRequestTarget.value = null;
       memberDetail.value = null;
@@ -374,6 +402,19 @@ createApp({
         if (isCurrentMemberRequest(target, revision)) memberSaveLoading.value = false;
       }
     };
+    const endTemporary = async () => {
+      const member=memberDetail.value, snapshot=scopeSnapshot(), revision=scopeRevision.value, target=memberRequestTarget.value;
+      if (!member || !snapshot || memberSaveLoading.value) return;
+      memberSaveLoading.value=true;
+      try {
+        const result=await scopedPost("relation",{group_id:member.group_id,user_id:member.user_id,action:"cancel_temporary"},snapshot);
+        if (!isCurrentMemberRequest(target,revision)) return;
+        if (!result.success) throw new Error(result.error || "结束临时关系失败");
+        await loadMemberRecord(member.group_id,member.user_id,snapshot,revision,target);
+        if (isCurrentMemberRequest(target,revision)) await fetchUsers();
+      } catch(e) { if (isCurrentMemberRequest(target,revision)) setMemberNotice(String(e),true); }
+      finally { if (isCurrentMemberRequest(target,revision)) memberSaveLoading.value=false; }
+    };
     const saveRelation = async () => {
       const member = memberDetail.value;
       const snapshot = scopeSnapshot();
@@ -397,6 +438,8 @@ createApp({
         const data = await scopedPost("relation", {
           group_id: String(member.group_id),
           user_id: String(member.user_id),
+          action: relationEditMode.value,
+          duration_sec: Number(temporaryMinutes.value) * 60,
           familiarity,
           affinity,
           trust,
@@ -890,7 +933,7 @@ createApp({
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, showDetail, closeDetail,
       memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
-      relationForm, profileForm, openMember, closeMember, refreshNames, saveRelation, saveProfile, refreshImpression,
+      relationEditMode, temporaryMinutes, endTemporary, relationForm, profileForm, openMember, closeMember, refreshNames, saveRelation, saveProfile, refreshImpression,
       fetchBots, selectBot, applyMode, backupScope, prepareRestore,
       closeRestore, confirmRestore, fetchLogs, fetchUsers, refresh, switchTab,
       restorePreview,
@@ -1269,13 +1312,21 @@ createApp({
           <section class="xx-modal-section xx-edit-section">
             <button class="xx-btn xx-btn-mini" @click="refreshNames" :disabled="memberSaveLoading">刷新昵称</button>
             <h4>编辑三维关系</h4>
+            <div v-if="memberDetail.temporary && memberDetail.temporary.active" role="status">
+              <p><strong>临时关系生效中</strong>，截至 {{ fmtTime(memberDetail.temporary.expires_at) }}。评估、印象更新和正式关系衰减已暂停。</p>
+              <p>正式值：熟悉度 {{ memberDetail.formal_relation.familiarity }}，亲近度 {{ memberDetail.formal_relation.affinity }}，信任度 {{ memberDetail.formal_relation.trust }}</p>
+              <button class="xx-btn xx-btn-mini" @click="endTemporary" :disabled="memberSaveLoading">立即结束临时关系</button>
+            </div>
+            <label class="xx-form-row"><span>调整方式</span><select v-model="relationEditMode"><option value="permanent" :disabled="memberDetail.temporary && memberDetail.temporary.active">正式调整</option><option value="temporary">临时调整</option></select></label>
+            <label v-if="relationEditMode === 'temporary'" class="xx-form-row"><span>持续时间（分钟，1～43200）</span><input type="number" min="1" max="43200" v-model.number="temporaryMinutes"></label>
+            <p v-if="relationEditMode === 'temporary'" class="xx-help">临时覆盖三个维度，称谓和排行随之变化；到期恢复正式关系，不补评期间消息。修改临时值会重新计算截止时间。</p>
             <div class="xx-edit-grid">
               <label><span>熟悉度</span><input class="xx-input" type="number" min="0" max="100" step="0.1" v-model.number="relationForm.familiarity"></label>
               <label><span>亲近度</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.affinity"></label>
               <label><span>信任度</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.trust"></label>
             </div>
             <label class="xx-form-row xx-form-row-block"><span>变更原因</span><input class="xx-input" v-model="relationForm.reason" placeholder="管理员调整"></label>
-            <div class="xx-modal-actions"><button class="xx-btn" @click="saveRelation" :disabled="memberSaveLoading">保存三维关系</button></div>
+            <div class="xx-modal-actions"><button class="xx-btn" @click="saveRelation" :disabled="memberSaveLoading">{{ relationEditMode === 'temporary' ? '保存临时关系' : '保存正式关系' }}</button></div>
           </section>
           <section class="xx-modal-section xx-edit-section">
             <h4>编辑印象与标签</h4>
@@ -1283,10 +1334,11 @@ createApp({
             <label class="xx-form-row xx-form-row-block"><span>印象</span><textarea class="xx-textarea" v-model="profileForm.impression" placeholder="成员印象"></textarea></label>
             <label class="xx-form-row xx-form-row-block"><span>标签</span><input class="xx-input" v-model="profileForm.tagsText" placeholder="用逗号分隔多个标签"></label>
             <div class="xx-modal-actions">
-              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading || !memberDetail.group_id">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
+              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading || !memberDetail.group_id || memberDetail.temporary?.active">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
               <button class="xx-btn" @click="saveProfile" :disabled="memberSaveLoading || !memberDetail.group_id">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
             </div>
           </section>
+          <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length"><summary>临时关系操作记录</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }}<span v-if="item.details.values"> · 熟悉度 {{ item.details.values.familiarity }}，亲近度 {{ item.details.values.affinity }}，信任度 {{ item.details.values.trust }} · 截至 {{ fmtTime(item.details.expires_at) }} · {{ item.details.reason }}</span></p></details>
           <details class="xx-member-history">
             <summary>近期评审（{{ memberDetail.recent_judges ? memberDetail.recent_judges.length : 0 }}）</summary>
             <p v-if="!memberDetail.recent_judges || !memberDetail.recent_judges.length" class="xx-modal-text xx-muted-text">暂无评估记录</p>

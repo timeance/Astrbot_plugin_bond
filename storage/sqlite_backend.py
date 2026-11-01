@@ -290,7 +290,8 @@ class SQLiteBackend(StorageBackend):
         apply_favor_change（同事务带额度/流水/冷却）；本方法保留给
         无需记账的调用方。"""
         now = time.time()
-        with self._lock:
+        with self._lock, self._c():
+            self._guard_relation_write(group_id, user_id)
             conn = self._c()
             new_value, real_delta, new_h = self._compute_favor_write(
                 conn,
@@ -350,6 +351,7 @@ class SQLiteBackend(StorageBackend):
             conn = self._c()
             try:
                 conn.execute("BEGIN")
+                self._guard_relation_write(group_id, user_id)
                 allowed, capped = delta, False
                 if daily_cap_up is not None and daily_cap_down is not None and day:
                     grow = conn.execute(
@@ -459,6 +461,7 @@ class SQLiteBackend(StorageBackend):
         decay=None,
         default_favor=0.0,
         values=None,
+        expected_revision=None,
     ):
         """复用标量衰减计算及每日限幅；三维状态共用一个事务和流水。"""
         now = time.time()
@@ -466,6 +469,7 @@ class SQLiteBackend(StorageBackend):
             conn = self._c()
             try:
                 conn.execute("BEGIN")
+                self._guard_relation_write(group_id, user_id, expected_revision)
                 row = conn.execute(
                     "SELECT favor,updated_at,half_life,familiarity,trust FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
@@ -614,7 +618,8 @@ class SQLiteBackend(StorageBackend):
 
     async def set_value(self, group_id: str, user_id: str, value: float) -> FavorRecord:
         value = round1(value)
-        with self._lock:
+        with self._lock, self._c():
+            self._guard_relation_write(group_id, user_id)
             self._upsert(group_id, user_id, {"favor": value}, touch=True)
         return FavorRecord(group_id, user_id, value, time.time())
 
@@ -635,6 +640,7 @@ class SQLiteBackend(StorageBackend):
             conn = self._c()
             try:
                 conn.execute("BEGIN")
+                self._guard_relation_write(group_id, user_id)
                 row = conn.execute(
                     "SELECT favor, updated_at, half_life FROM favor "
                     "WHERE group_id=? AND user_id=?",
@@ -815,7 +821,14 @@ class SQLiteBackend(StorageBackend):
             ]
 
     async def commit_impression(
-        self, group_id, user_id, impression, tags, log_ids, points=None
+        self,
+        group_id,
+        user_id,
+        impression,
+        tags,
+        log_ids,
+        points=None,
+        expected_revision=None,
     ):
         if not log_ids:
             return False
@@ -823,6 +836,7 @@ class SQLiteBackend(StorageBackend):
             conn = self._c()
             try:
                 conn.execute("BEGIN")
+                self._guard_relation_write(group_id, user_id, expected_revision)
                 progress = conn.execute(
                     "SELECT log_id FROM impression_progress WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
@@ -1139,8 +1153,19 @@ class SQLiteBackend(StorageBackend):
                     (group_id, user_id),
                 ),
             ]
-        with self._lock:
+        with self._lock, self._c():
             conn = self._c()
+            active = (
+                self._c()
+                .execute(
+                    "SELECT user_id FROM relation_override WHERE group_id=? AND active=1",
+                    (group_id,),
+                )
+                .fetchall()
+            )
+            for (uid,) in active:
+                if user_id is None or user_id == uid:
+                    self._guard_relation_write(group_id, uid)
             for sql, params in stmts:
                 conn.execute(sql, params)
             conn.commit()
@@ -1296,6 +1321,7 @@ class SQLiteBackend(StorageBackend):
                 if row[3]:
                     raise ValueError("该变动已撤销")
                 group_id, user_id, delta = row[0], row[1], float(row[2])
+                self._guard_relation_write(group_id, user_id)
                 frow = conn.execute(
                     "SELECT favor, updated_at, half_life FROM favor "
                     "WHERE group_id=? AND user_id=?",
@@ -1544,6 +1570,140 @@ class SQLiteBackend(StorageBackend):
                 .execute("SELECT group_id,user_id,nickname FROM member_names")
                 .fetchall()
             }
+
+    def _override_state(self, group_id, user_id, now):
+        row = (
+            self._c()
+            .execute(
+                "SELECT revision,active,started_at,expires_at,values_json FROM relation_override WHERE group_id=? AND user_id=?",
+                (group_id, user_id),
+            )
+            .fetchone()
+        )
+        if row is None:
+            return dict(revision=0, active=False)
+        revision, active, started, expires, values = row
+        if active and now >= expires:
+            self._end_override(group_id, user_id, expires, "system", "expired")
+            active = False
+        return dict(
+            revision=revision,
+            active=bool(active),
+            started_at=started,
+            expires_at=expires,
+            values=json.loads(values),
+        )
+
+    def _end_override(self, group_id, user_id, ended, actor, action):
+        row = (
+            self._c()
+            .execute(
+                "SELECT started_at,expires_at FROM relation_override WHERE group_id=? AND user_id=? AND active=1",
+                (group_id, user_id),
+            )
+            .fetchone()
+        )
+        if row is None:
+            return
+        duration = max(0, min(ended, row[1]) - row[0])
+        self._c().execute(
+            "UPDATE favor SET updated_at=CASE WHEN updated_at>0 THEN updated_at+? ELSE updated_at END WHERE group_id=? AND user_id=?",
+            (duration, group_id, user_id),
+        )
+        self._c().execute(
+            "UPDATE relation_override SET active=0 WHERE group_id=? AND user_id=?",
+            (group_id, user_id),
+        )
+        self._c().execute(
+            "INSERT INTO override_audit(group_id,user_id,actor,action,ts,details) VALUES(?,?,?,?,?,?)",
+            (group_id, user_id, actor, action, ended, "{}"),
+        )
+
+    async def override_state(self, group_id, user_id):
+        with self._lock, self._c():
+            return self._override_state(group_id, user_id, time.time())
+
+    def _guard_relation_write(self, group_id, user_id, revision=None):
+        state = self._override_state(group_id, user_id, time.time())
+        if state["active"] or (revision is not None and state["revision"] != revision):
+            raise ValueError("临时关系生效或任务版本已过期，请结束临时关系后重试")
+
+    async def set_override(
+        self,
+        group_id,
+        user_id,
+        values,
+        duration,
+        actor,
+        default_favor=0,
+        reason="管理员调整",
+    ):
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN")
+                now = time.time()
+                old = self._override_state(group_id, user_id, now)
+                conn.execute(
+                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life) VALUES(?,?,?,?,?) ON CONFLICT(group_id,user_id) DO NOTHING",
+                    (group_id, user_id, default_favor, 0, self._initial_half_life),
+                )
+                if values is None:
+                    self._end_override(group_id, user_id, now, actor, "cancelled")
+                    conn.execute(
+                        "UPDATE relation_override SET revision=revision+1 WHERE group_id=? AND user_id=?",
+                        (group_id, user_id),
+                    )
+                else:
+                    started = old["started_at"] if old["active"] else now
+                    conn.execute(
+                        "INSERT INTO relation_override VALUES(?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET revision=excluded.revision,active=1,started_at=excluded.started_at,expires_at=excluded.expires_at,values_json=excluded.values_json",
+                        (
+                            group_id,
+                            user_id,
+                            old["revision"] + 1,
+                            1,
+                            started,
+                            now + duration,
+                            json.dumps(values),
+                        ),
+                    )
+                    conn.execute(
+                        "INSERT INTO override_audit(group_id,user_id,actor,action,ts,details) VALUES(?,?,?,?,?,?)",
+                        (
+                            group_id,
+                            user_id,
+                            actor,
+                            "updated" if old["active"] else "created",
+                            now,
+                            json.dumps(
+                                dict(
+                                    values=values,
+                                    expires_at=now + duration,
+                                    reason=reason,
+                                )
+                            ),
+                        ),
+                    )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+    async def override_audit(self, group_id, user_id):
+        with self._lock:
+            rows = (
+                self._c()
+                .execute(
+                    "SELECT actor,action,ts,details FROM override_audit WHERE group_id=? AND user_id=? ORDER BY id DESC LIMIT 20",
+                    (group_id, user_id),
+                )
+                .fetchall()
+            )
+            return [
+                dict(actor=a, action=b, ts=c, details=json.loads(d))
+                for a, b, c, d in rows
+            ]
 
     async def ensure_member(self, group_id, user_id):
         with self._lock, self._c():

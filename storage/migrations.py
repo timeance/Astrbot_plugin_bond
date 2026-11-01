@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -144,6 +144,10 @@ MIGRATIONS: dict[int, list[str]] = {
     ],
     14: [
         "CREATE TABLE member_names (group_id TEXT NOT NULL, user_id TEXT NOT NULL, nickname TEXT NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY(group_id,user_id))"
+    ],
+    15: [
+        "CREATE TABLE relation_override (group_id TEXT NOT NULL,user_id TEXT NOT NULL,revision INTEGER NOT NULL,active INTEGER NOT NULL,started_at REAL NOT NULL,expires_at REAL NOT NULL,values_json TEXT NOT NULL,PRIMARY KEY(group_id,user_id))",
+        "CREATE TABLE override_audit (id INTEGER PRIMARY KEY AUTOINCREMENT,group_id TEXT NOT NULL,user_id TEXT NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,ts REAL NOT NULL,details TEXT NOT NULL)",
     ],
 }
 
