@@ -1,0 +1,22 @@
+astrbot_plugin_bond
+
+Derived from astrbot_plugin_xinxian (心弦好感度), by yiwuerxin.
+Original source: https://github.com/yiwuerxin/astrbot_plugin_xinxian
+Baseline: c727e861472f7901ce1f87c1e27686f6655a96ec
+Original license declaration: README.md, "AGPL-3.0".
+The original README is retained in docs/upstream/README.xinxian.md.
+Upstream commits remain available at the original source repository.
+The local development checkout retains upstream history; this independent
+GitHub repository imports its source baseline with attribution.
+
+Bond modifications: Timeance and contributors, beginning 2026-10-31.
+Target source repository: https://github.com/timeance/Astrbot_plugin_bond
+License: GNU Affero General Public License, version 3 (see LICENSE).
+
+The upstream baseline did not contain a standalone LICENSE. The standard
+AGPL v3 text has been included without changing the upstream declaration.
+No additional permission from the upstream author is asserted.
+
+The LICENSE document is the standard FSF license text, also distributed in
+astrbot_plugin_livingmemory at a1e9c20a8c5fab93d6143f51be26fb1bbf8143ec.
+No LivingMemory implementation code is incorporated into this baseline.

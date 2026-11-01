@@ -1,0 +1,183 @@
+"""Bond 关系系统 - 插件页面 Web API（AstrBot 原生 dashboard）。
+
+通过 ``context.register_web_api`` 注册到 AstrBot 主面板（端口 6185），
+在 ``/#/plugin-page/astrbot_plugin_bond/dashboard`` 内嵌页面里被前端调用。
+handler 使用 Flask 的 ``jsonify`` / ``request``；鉴权由主面板继承，插件无需自行处理。
+"""
+
+from __future__ import annotations
+
+from astrbot.api import logger
+
+PLUGIN_NAME = "astrbot_plugin_bond"
+
+try:  # dashboard 服务基于 Quart（异步 Flask），用 quart 的 jsonify/request
+    from quart import jsonify, request
+except ImportError:  # pragma: no cover
+    jsonify = None
+    request = None
+
+
+class PageApi:
+    """Bond 关系面板后端 API（X7：取数一律经 service，不直拿 storage）。"""
+
+    def __init__(self, favor, impressions=None) -> None:
+        self._favor = favor
+        self._impressions = impressions
+
+    @staticmethod
+    async def _params() -> dict:
+        """GET 查询串 + POST JSON body 合并取参（undo/refresh 已改 POST）。"""
+        params = {k: v for k, v in request.args.items()}
+        try:
+            body = await request.get_json(silent=True)
+            if isinstance(body, dict):
+                params.update(body)
+        except Exception:
+            pass  # 非 JSON body（如空 POST）按无参处理
+        return params
+
+    def register(self, context) -> None:
+        """注册原生 Web API；框架不支持（无 register_web_api 或无 Flask）时静默跳过。"""
+        reg = getattr(context, "register_web_api", None)
+        if reg is None or jsonify is None:
+            return
+        reg(f"/{PLUGIN_NAME}/logs", self.handle_logs, ["GET"], "Bond 关系变动记录")
+        reg(
+            f"/{PLUGIN_NAME}/groups", self.handle_groups, ["GET"], "Bond 有记录的群列表"
+        )
+        reg(f"/{PLUGIN_NAME}/users", self.handle_users, ["GET"], "Bond 当前关系总览")
+        # X7：带副作用的端点改 POST（GET 会被预取/缓存/分享 URL 误触发）
+        reg(
+            f"/{PLUGIN_NAME}/undo", self.handle_undo, ["POST"], "Bond 撤销/预览一次变动"
+        )
+        reg(
+            f"/{PLUGIN_NAME}/member",
+            self.handle_member,
+            ["GET"],
+            "Bond 成员详情（印象/标签/近期评审）",
+        )
+        reg(
+            f"/{PLUGIN_NAME}/refresh_impression",
+            self.handle_refresh_impression,
+            ["POST"],
+            "Bond 立即刷新成员印象",
+        )
+
+    # ---------------- handlers ----------------
+
+    async def handle_logs(self):
+        """变动流水：?group_id=&user_id=&limit=&offset=&fuzzy=1，按时间倒序。
+
+        fuzzy=1 时 user_id 子串匹配（WebUI 搜索框用）；默认精确。
+        """
+        try:
+            group_id = (request.args.get("group_id") or "").strip() or None
+            user_id = (request.args.get("user_id") or "").strip() or None
+            fuzzy = (request.args.get("fuzzy") or "").strip() == "1"
+            limit = max(1, min(int(request.args.get("limit", 300)), 1000))
+            offset = max(0, int(request.args.get("offset", 0)))
+            logs = await self._favor.query_logs(
+                group_id, user_id, limit, offset, fuzzy=fuzzy
+            )
+            return jsonify({"success": True, "logs": logs, "count": len(logs)})
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[心弦] 面板接口失败: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)})
+
+    async def handle_groups(self):
+        """有当前好感记录的群列表（含每群人数，供前端群筛选下拉）。"""
+        try:
+            groups = await self._favor.distinct_groups()
+            return jsonify({"success": True, "groups": groups})
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[心弦] 面板接口失败: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)})
+
+    async def handle_users(self):
+        """当前总览：?group_id=&limit=，按有效好感降序。"""
+        try:
+            group_id = (request.args.get("group_id") or "").strip() or None
+            limit = max(1, min(int(request.args.get("limit", 500)), 2000))
+            users = await self._favor.standings(group_id, limit)
+            return jsonify({"success": True, "users": users, "count": len(users)})
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[心弦] 面板接口失败: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)})
+
+    async def handle_member(self):
+        """成员详情：?group_id=&user_id= → 基础信息 + 印象/标签 + 最近 judge 理由。"""
+        try:
+            group_id = (request.args.get("group_id") or "").strip()
+            user_id = (request.args.get("user_id") or "").strip()
+            if not group_id or not user_id:
+                return jsonify({"success": False, "error": "缺少 group_id/user_id"})
+            rec = await self._favor.get(group_id, user_id)
+            logs = await self._favor.query_logs(group_id, user_id, limit=30)
+            judged = [r for r in logs if r.get("source") == "judge"][:10]
+            return jsonify(
+                {
+                    "success": True,
+                    "member": {
+                        "group_id": group_id,
+                        "user_id": user_id,
+                        "nickname": rec.nickname or "",
+                        "favor": rec.favor,
+                        "level": self._favor.level_of(rec.favor).name,
+                        "relationship": (
+                            self._favor.relationship_label(rec.relationship)
+                            if rec.relationship
+                            else ""
+                        ),
+                        "is_master": self._favor.is_master(user_id),
+                        "impression": rec.impression or "",
+                        "tags": rec.parsed_tags(),
+                        "impression_at": rec.impression_at,
+                        "recent_judges": [
+                            {
+                                "ts": r.get("ts"),
+                                "delta": r.get("delta"),
+                                "reason": r.get("reason") or "",
+                                "message": r.get("message") or "",
+                            }
+                            for r in judged
+                        ],
+                    },
+                }
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[心弦] 面板接口失败: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)})
+
+    async def handle_refresh_impression(self):
+        """立即刷新成员印象：POST {group_id, user_id}。"""
+        try:
+            params = await self._params()
+            group_id = (params.get("group_id") or "").strip()
+            user_id = (params.get("user_id") or "").strip()
+            if not group_id or not user_id:
+                return jsonify({"success": False, "error": "缺少 group_id/user_id"})
+            if self._impressions is None:
+                return jsonify({"success": False, "error": "印象功能未启用"})
+            ok, msg = await self._impressions.refresh_now(group_id, user_id)
+            return jsonify({"success": ok, "message": msg})
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[心弦] 面板接口失败: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)})
+
+    async def handle_undo(self):
+        """撤销/预览：POST {id, dry=1}。dry=1 只预览（返回当前/撤销后好感），否则真撤销。"""
+        try:
+            params = await self._params()
+            log_id = int(params.get("id"))
+            dry = str(params.get("dry") or "").strip() == "1"
+            if dry:
+                info = await self._favor.undo_preview(log_id)
+                return jsonify({"success": True, "preview": info})
+            rec = await self._favor.undo_log(log_id)
+            return jsonify({"success": True, "favor": rec.favor})
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)})
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[心弦] 面板接口失败: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)})
