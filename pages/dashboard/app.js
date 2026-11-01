@@ -1208,7 +1208,7 @@ createApp({
         </div>
         <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
           <summary>{{ group.title }}</summary>
-          <label v-for="field in group.fields" :key="field.path" class="xx-form-row">
+          <label v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
             <span>{{ field.label }}<small class="xx-help">{{ field.hint }}</small></span>
             <input v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
             <select v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"增长较快",realistic:"增长较慢"})[option] || option }}</option></select>
