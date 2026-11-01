@@ -341,8 +341,11 @@ class FavorService:
             r.favor = self._effective(
                 r.favor, r.updated_at, getattr(r, "half_life", 10.0)
             )
+        names = await self._storage.member_names()
         for r in rows:
-            r.nickname = await self.member_name(group_id, r.user_id)
+            r.nickname = names.get((group_id, r.user_id)) or names.get(
+                ("", r.user_id), ""
+            )
         rows.sort(key=lambda r: (-r.favor, r.user_id))
         return rows[:limit] if limit >= 0 else rows
 
