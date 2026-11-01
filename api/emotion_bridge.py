@@ -39,7 +39,7 @@ def _maisoul_api(context):
     测性不冲突。"""
     api = resolve_maisoul_api(context)
     if api is None:
-        logger.debug("[心弦] 麦麦 facade 未探测到，联动本轮空转")
+        logger.debug("[八千代] 麦麦 facade 未探测到，联动本轮空转")
     return api
 
 
@@ -53,12 +53,12 @@ async def modulate_delta(context, group_id: str, delta: float) -> float:
     try:
         fb = await api.get_feedback(str(group_id))
     except Exception as e:
-        logger.debug(f"[心弦] 读麦麦 pfb 失败，增量不调制: {e}")
+        logger.debug(f"[八千代] 读麦麦 pfb 失败，增量不调制: {e}")
         return delta
     if not isinstance(fb, dict):
         # 畸形真值（字符串/对象等）：fb.get 会抛 AttributeError——模块契约
         # 是任何失败都返回原值，绝不把异常抛回评审链路（Sourcery #64）
-        logger.debug(f"[心弦] 麦麦 pfb 畸形（{type(fb).__name__}），增量不调制")
+        logger.debug(f"[八千代] 麦麦 pfb 畸形（{type(fb).__name__}），增量不调制")
         return delta
     try:
         pfb = int(fb.get("pfb") or 0)
@@ -94,10 +94,10 @@ async def notify_level_change(
         )
         if ok:
             logger.info(
-                f"[心弦] 等级跃迁 {before_level.name}→{after_level.name}，"
+                f"[八千代] 等级跃迁 {before_level.name}→{after_level.name}，"
                 f"已注入麦麦情绪事件「{word}」(强度 {intensity})"
             )
         return ok
     except Exception as e:
-        logger.debug(f"[心弦] 注入麦麦情绪事件失败（跃迁推送跳过）: {e}")
+        logger.debug(f"[八千代] 注入麦麦情绪事件失败（跃迁推送跳过）: {e}")
         return False

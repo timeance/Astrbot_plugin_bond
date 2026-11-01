@@ -169,10 +169,10 @@ class PageApi:
         except _PageRequestError:
             return self._error(ERROR_INVALID)
         except _PageOperationError:
-            logger.debug("[心弦] 面板接口操作失败", exc_info=True)
+            logger.debug("[八千代] 面板接口操作失败", exc_info=True)
             return self._error(ERROR_OPERATION, 500)
         except Exception:
-            logger.debug("[心弦] 面板接口异常", exc_info=True)
+            logger.debug("[八千代] 面板接口异常", exc_info=True)
             return self._error(ERROR_OPERATION, 500)
 
     def register(self, context) -> None:
@@ -180,6 +180,14 @@ class PageApi:
         reg = getattr(context, "register_web_api", None)
         if reg is None or jsonify is None:
             return
+        # 宿主只替换方法列表完全一致的路由；升级时 GET → GET/POST 会残留旧处理器。
+        registered = getattr(context, "registered_web_apis", None)
+        if isinstance(registered, list):
+            registered[:] = [
+                entry
+                for entry in registered
+                if not entry[0].startswith(f"/{PLUGIN_NAME}/")
+            ]
         for endpoint, handler, methods, label in (
             ("settings", self.handle_settings, ["GET", "POST"], "Bond 详细设置"),
             ("relation", self.handle_relation, ["POST"], "Bond 修改三维关系"),
