@@ -206,6 +206,10 @@ class StorageBackend(ABC):
     ) -> None:
         """写入成员印象与标签（不改好感数值）。tags 为展示顺序已定的标签列表。"""
 
+    async def set_profile_audited(self, group_id, user_id, impression, tags, actor):
+        """人工印象与标签修改须同事务留下审计流水。"""
+        raise NotImplementedError
+
     @abstractmethod
     async def impression_logs(
         self, group_id: str, user_id: str, limit: int
@@ -317,6 +321,7 @@ class StorageBackend(ABC):
         min_favor: float,
         effective=None,
         default_favor: float = 0.0,
+        actor: str = "",
     ) -> dict:
         """单事务撤销一条流水（X4）。
 

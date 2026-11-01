@@ -62,9 +62,9 @@ async def handle_set_relationship(
         return f"用法：/关系设置 QQ号 类型（可选：{keys}；留空清除）"
     await svc.set_relationship(event.get_group_id(), target, key)
     if not key:
-        return f"已清除 QQ {target} 与小千的关系标签。"
+        return f"已清除 QQ {target} 与当前 Bot的关系标签。"
     label = relationships.label_of(key) if relationships else key
-    return f"已将 QQ {target} 与小千的关系设为「{label}」。"
+    return f"已将 QQ {target} 与当前 Bot的关系设为「{label}」。"
 
 
 async def handle_set_tags(
@@ -131,16 +131,8 @@ async def rank_reply(
     rows_per_col: int = 12,
     text_limit: int = 10,
 ) -> tuple[str, str]:
-    """排行回复统一入口：优先图片（需 Pillow），未安装时降级文字排行。
-
-    返回 ("image", 图片路径) 或 ("text", 文本正文)。"""
-    if not event.get_group_id():
-        return "text", "请在群聊中查询本群排行。"
-    try:
-        from . import rank_image  # noqa: F401  探测 Pillow 可用性
-    except ImportError:
-        return "text", await handle_ranking(svc, event, text_limit)
-    return "image", await build_rank_image(svc, event, font_path, rows_per_col)
+    """公开排行统一输出不含分值的称谓，最多十人。"""
+    return "text", await handle_ranking(svc, event, min(10, text_limit))
 
 
 async def try_text_wake(

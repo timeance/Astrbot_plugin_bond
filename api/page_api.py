@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from astrbot.api import logger
+from dataclasses import asdict
+from uuid import uuid4
 
 from ..core.scope import account_id, scope_mode as validate_scope_mode
 
@@ -178,6 +180,13 @@ class PageApi:
         reg = getattr(context, "register_web_api", None)
         if reg is None or jsonify is None:
             return
+        for endpoint, handler, methods, label in (
+            ("relation", self.handle_relation, ["POST"], "Bond 修改三维关系"),
+            ("profile", self.handle_profile, ["POST"], "Bond 修改印象与标签"),
+            ("prompts", self.handle_prompts, ["GET", "POST"], "Bond 提示词设置"),
+            ("models", self.handle_models, ["GET", "POST"], "Bond 评估模型设置"),
+        ):
+            reg(f"/{PLUGIN_NAME}/{endpoint}", handler, methods, label)
         reg(
             f"/{PLUGIN_NAME}/assessment_stats",
             self.handle_assessment_stats,
@@ -382,7 +391,7 @@ class PageApi:
                 if dry:
                     info = await deps.favor.undo_preview(log_id)
                     return self._response({"success": True, "preview": info})
-                rec = await deps.favor.undo_log(log_id)
+                rec = await deps.favor.undo_log(log_id, actor=self._username())
             except (TypeError, ValueError):
                 return self._error(ERROR_UNDO)
             return self._response({"success": True, "favor": rec.favor})
@@ -432,5 +441,122 @@ class PageApi:
             return self._response(
                 {"success": True, "stats": await deps.assessment.stats()}
             )
+
+        return await self._invoke(run)
+
+    async def handle_relation(self):
+        async def run():
+            params = await self._params()
+            _, _, deps = await self._deps(params)
+            group = self._required_account(params, "group_id")
+            user = self._required_account(params, "user_id")
+            reason = params.get("reason", "管理员调整")
+            if not isinstance(reason, str) or len(reason) > 120:
+                raise _PageRequestError
+            try:
+                result = await deps.favor.set_relation(
+                    group,
+                    user,
+                    familiarity=params.get("familiarity"),
+                    affinity=params.get("affinity"),
+                    trust=params.get("trust"),
+                    event_id="admin:" + uuid4().hex,
+                    reason=f"Web 管理员 {self._username()}: {reason}",
+                )
+            except (ValueError, TypeError):
+                raise _PageRequestError from None
+            return self._response({"success": True, "relation": result["after"]})
+
+        return await self._invoke(run)
+
+    async def handle_profile(self):
+        async def run():
+            params = await self._params()
+            _, _, deps = await self._deps(params)
+            group = self._required_account(params, "group_id")
+            user = self._required_account(params, "user_id")
+            try:
+                await deps.favor.set_profile(
+                    group,
+                    user,
+                    impression=params.get("impression"),
+                    tags=params.get("tags"),
+                    actor=self._username(),
+                )
+            except (ValueError, TypeError):
+                raise _PageRequestError from None
+            return self._response({"success": True})
+
+        return await self._invoke(run)
+
+    async def handle_models(self):
+        async def run():
+            params = await self._params()
+            _, _, deps = await self._deps(params)
+            if request.method == "POST":
+                try:
+                    await self._runtime.save_assessment_settings(
+                        params.get("config"), params.get("max_concurrent_assessments")
+                    )
+                except (ValueError, TypeError):
+                    raise _PageRequestError from None
+                return self._response({"success": True, "restart_required": True})
+            configured, limit = self._runtime.assessment_settings()
+            return self._response(
+                {
+                    "success": True,
+                    "configured": configured,
+                    "active": asdict(deps.assessment.config),
+                    "max_concurrent_assessments": limit,
+                }
+            )
+
+        return await self._invoke(run)
+
+    async def handle_prompts(self):
+        async def run():
+            params = await self._params()
+            bot, _, deps = await self._deps(params)
+            kind = params.get("kind")
+            if not isinstance(kind, str) or kind not in {"assessment", "behavior"}:
+                raise _PageRequestError
+            level = params.get("level", "global")
+            if not isinstance(level, str) or level not in {"global", "group"}:
+                raise _PageRequestError
+            group = (
+                self._required_account(params, "group_id") if level == "group" else None
+            )
+            scope_bot = bot if group else None
+            try:
+                if request.method == "POST":
+                    action = params.get("action")
+                    if action == "reset":
+                        deps.prompts.reset(kind, scope_bot, group)
+                    elif action == "save":
+                        deps.prompts.set_template(
+                            kind,
+                            scope_bot,
+                            group,
+                            params.get("mode"),
+                            params.get("template", ""),
+                        )
+                    elif action == "preview":
+                        preview = deps.prompts.preview(
+                            kind,
+                            scope_bot,
+                            group,
+                            mode=params.get("mode"),
+                            template=params.get("template", ""),
+                        )
+                        return self._response({"success": True, "preview": preview})
+                    else:
+                        raise _PageRequestError
+                settings = deps.prompts.get_settings(kind, scope_bot, group)
+                resolved = deps.prompts.resolve(kind, scope_bot, group)
+                return self._response(
+                    {"success": True, "settings": settings, "resolved": resolved}
+                )
+            except (ValueError, TypeError):
+                raise _PageRequestError from None
 
         return await self._invoke(run)

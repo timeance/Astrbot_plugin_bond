@@ -97,6 +97,9 @@ class BondPlugin(Star):
 
         self._prompts = PromptService(data_dir / "prompts.json")
         self._registry = TaskRegistry()
+        # 所有 bundle 使用本次加载时的同一模型配置；面板保存后统一重载生效。
+        self._assessment_values = dict(config.get("assessment") or {})
+        self._assessment_values.pop("max_concurrent_assessments", None)
         self._assessment_capacity = AssessmentCapacity(
             (config.get("assessment") or {}).get("max_concurrent_assessments", 2)
         )
@@ -215,8 +218,7 @@ class BondPlugin(Star):
         )
         impressions.bind_summarizer(judge)
 
-        assessment_cfg = dict(config.get("assessment") or {})
-        assessment_cfg.pop("max_concurrent_assessments", None)
+        assessment_cfg = dict(self._assessment_values)
 
         async def budget_stores():
             return [
@@ -325,9 +327,18 @@ class BondPlugin(Star):
 
     # ---------------- 指令 ----------------
 
+    @filter.command("我的关系")
+    async def _cmd_self_relation(self, event: AstrMessageEvent):
+        """查看当前发言者自己的关系称谓。"""
+        if _group_entry_id(event) is None:
+            yield event.plain_result("请在群聊中查询自己的关系。")
+            return
+        deps = await self._runtime.for_event(event)
+        yield event.plain_result(await tools.tool_query_favor(deps.favor, event))
+
     @filter.command("好感排行")
     async def _cmd_rank(self, event: AstrMessageEvent):
-        """查看本群对小千的好感度排行（图片；未安装 Pillow 时降级文字）"""
+        """查看本群前十名关系称谓，不显示分值。"""
         if _group_entry_id(event) is None:
             yield event.plain_result(_RANKING_GROUP_REQUIRED)
             return
@@ -414,17 +425,19 @@ class BondPlugin(Star):
 
     @filter.llm_tool(name="query_favor")
     async def _tool_query(self, event: AstrMessageEvent, target: str = "") -> str:
-        """查询某群成员对小千的好感度与当前等级。
+        """查询当前发言者自己的关系称谓，不提供分值。
 
         Args:
-            target(str): 目标成员的 QQ 号，留空则查询发言人自己
+            target(str): 仅允许留空或当前发言者的账号
         """
+        if _group_entry_id(event) is None:
+            return "请在群聊中查询自己的关系。"
         deps = await self._runtime.for_event(event)
         return await tools.tool_query_favor(deps.favor, event, target)
 
     @filter.llm_tool(name="query_favor_ranking")
     async def _tool_rank(self, event: AstrMessageEvent) -> str:
-        """查询本群成员对小千的好感度排行榜"""
+        """查询本群前十名关系称谓，不提供分值。"""
         if _group_entry_id(event) is None:
             return _RANKING_GROUP_REQUIRED
         deps = await self._runtime.for_event(event)

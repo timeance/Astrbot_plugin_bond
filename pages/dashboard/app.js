@@ -22,6 +22,45 @@ createApp({
     const restoreName = ref("");
     const latestBackup = ref("");
     const restorePreview = ref(null);
+    const memberNotice = ref("");
+    const memberNoticeError = ref(false);
+    const memberSaveLoading = ref(false);
+    const relationForm = ref({ familiarity: 0, affinity: 0, trust: 0, reason: "管理员调整" });
+    const profileForm = ref({ impression: "", tagsText: "" });
+    const promptKind = ref("behavior");
+    const promptLevel = ref("global");
+    const promptGroupId = ref("");
+    const promptLoading = ref(false);
+    const promptSaving = ref(false);
+    const promptSettings = ref(null);
+    const promptMode = ref("default");
+    const promptTemplate = ref("");
+    const promptResolved = ref("");
+    const promptPreview = ref("");
+    const promptNotice = ref("");
+    const promptNoticeError = ref(false);
+    const promptRequestTarget = ref(null);
+    const memberRequestTarget = ref(null);
+    const evaluationLoading = ref(false);
+    const modelSaving = ref(false);
+    const modelConfig = ref({});
+    const activeModelConfig = ref({});
+    const maxConcurrentAssessments = ref(2);
+    const assessmentStats = ref({ calls: [], events: {}, currency_cost: null });
+    const modelNotice = ref("");
+    const modelNoticeError = ref(false);
+
+    const DEFAULT_MODEL_CONFIG = {
+      enabled: false,
+      small_provider_id: "",
+      large_provider_id: "",
+      assessment_mode: "tiered",
+      small_timeout_sec: 20,
+      large_timeout_sec: 30,
+      cooldown_sec: 120,
+      per_user_daily_large_cap: 2,
+      per_bot_daily_large_cap: 20,
+    };
 
     const selectedBotInfo = computed(() =>
       bots.value.find((item) => item.bot_id === selectedBot.value) || null
@@ -50,6 +89,7 @@ createApp({
       scopeRevision.value += 1;
       loading.value = false;
       memberLoading.value = false;
+      memberSaveLoading.value = false;
       backupLoading.value = false;
       restoreName.value = "";
       logs.value = [];
@@ -62,6 +102,26 @@ createApp({
       restorePreview.value = null;
       latestBackup.value = "";
       errorMsg.value = "";
+      memberNotice.value = "";
+      memberNoticeError.value = false;
+      relationForm.value = { familiarity: 0, affinity: 0, trust: 0, reason: "管理员调整" };
+      profileForm.value = { impression: "", tagsText: "" };
+      promptLoading.value = false;
+      promptSaving.value = false;
+      promptSettings.value = null;
+      promptResolved.value = "";
+      promptPreview.value = "";
+      promptNotice.value = "";
+      promptNoticeError.value = false;
+      promptRequestTarget.value = null;
+      memberRequestTarget.value = null;
+      evaluationLoading.value = false;
+      modelSaving.value = false;
+      modelConfig.value = {};
+      activeModelConfig.value = {};
+      assessmentStats.value = { calls: [], events: {}, currency_cost: null };
+      modelNotice.value = "";
+      modelNoticeError.value = false;
     };
 
     const pad = (n) => String(n).padStart(2, "0");
@@ -74,6 +134,7 @@ createApp({
       const n = Number(v || 0);
       return Number.isInteger(n) ? String(n) : n.toFixed(1);
     };
+    const fmtOptionalNum = (v) => (v == null || v === "" ? "-" : fmtNum(v));
     const fmtDelta = (v) => {
       const n = Number(v || 0);
       const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
@@ -81,6 +142,63 @@ createApp({
     };
     const fmtIdle = (d) =>
       d == null ? "从未" : d <= 0 ? "今天" : d === 1 ? "昨天" : `${d}天前`;
+    const isRealAccount = (value) => /^[1-9][0-9]{0,31}$/.test(String(value || ""));
+    const setMemberNotice = (message, failed = false) => {
+      memberNotice.value = message;
+      memberNoticeError.value = failed;
+    };
+    const setPromptNotice = (message, failed = false) => {
+      promptNotice.value = message;
+      promptNoticeError.value = failed;
+    };
+    const setModelNotice = (message, failed = false) => {
+      modelNotice.value = message;
+      modelNoticeError.value = failed;
+    };
+    const sameRequestTarget = (left, right, keys) => Boolean(left && right) &&
+      keys.every((key) => String(left[key] ?? "") === String(right[key] ?? ""));
+    const isCurrentPromptRequest = (target, revision) =>
+      isCurrentScope(target, revision) &&
+      sameRequestTarget(target, promptRequestTarget.value, ["kind", "level", "group_id"]);
+    const isCurrentMemberRequest = (target, revision) =>
+      isCurrentScope(target, revision) &&
+      sameRequestTarget(target, memberRequestTarget.value, ["group_id", "user_id"]);
+    const normalizeModelConfig = (config = {}) => ({
+      ...DEFAULT_MODEL_CONFIG,
+      ...(config && typeof config === "object" ? config : {}),
+    });
+    const promptGroupIsValid = () => isRealAccount(promptGroupId.value);
+    const promptRequest = () => {
+      const params = { kind: promptKind.value, level: promptLevel.value };
+      if (promptLevel.value === "group") {
+        if (!promptGroupIsValid()) throw new Error("群级覆盖请选择真实数字群");
+        params.group_id = String(promptGroupId.value);
+      }
+      return params;
+    };
+    const promptRecord = (settings) => {
+      if (!settings || typeof settings !== "object") return { mode: "default", template: "" };
+      if (promptLevel.value === "global") {
+        return settings.global || { mode: "default", template: "" };
+      }
+      const botGroups = settings.groups && settings.groups[selectedBot.value];
+      const groupSettings = botGroups && botGroups[String(promptGroupId.value)];
+      return (groupSettings && groupSettings[promptKind.value]) || { mode: "default", template: "" };
+    };
+    const syncPromptForm = (settings, resolved = "") => {
+      const record = promptRecord(settings);
+      promptSettings.value = settings || null;
+      promptMode.value = record.mode === "custom" ? "custom" : "default";
+      promptTemplate.value = record.mode === "custom" ? String(record.template || "") : "";
+      promptResolved.value = typeof resolved === "string" ? resolved : "";
+      promptPreview.value = "";
+    };
+    const parseTags = (value) => Array.from(new Set(
+      String(value || "")
+        .split(/[，,\n]+/)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    ));
     const fmtUser = (u) => {
       const id = u.user_id;
       const nick = (u.nickname || "").trim();
@@ -93,34 +211,8 @@ createApp({
       }
       return `${out} (${id})`;
     };
-    const SOURCE_LABEL = { rule: "规则", judge: "评估", admin: "管理员", tool: "工具", api: "API", set: "设定", undo: "撤销" };
+    const SOURCE_LABEL = { rule: "规则", judge: "评估", admin: "管理员", admin_profile: "管理员资料", tool: "工具", api: "API", set: "设定", undo: "撤销" };
     const sourceLabel = (s) => SOURCE_LABEL[s] || s || "-";
-
-    // 七级好感色温轴：冷蓝紫(厌恶) → 灰 → 玫瑰 → 绯红(挚爱)，与排行图千咲配色同源
-    const LEVEL_COLORS = {
-      "厌恶": "#5563b5",
-      "陌生": "#8f8a96",
-      "认识": "#9e7fa8",
-      "友好": "#b96b84",
-      "亲密": "#cd5067",
-      "挚友": "#ac2432",
-      "挚爱": "#7f1220",
-    };
-    const levelColor = (level) => LEVEL_COLORS[level] || "#8f8a96";
-    const levelChipStyle = (level) => {
-      const c = levelColor(level);
-      return { color: c, background: c + "14", borderColor: c + "38" };
-    };
-    // 好感度色温条：中线为原点，正值向右(暖)、负值向左(冷)，满刻度 ±100
-    const barStyle = (u) => {
-      const v = Number(u.favor || 0);
-      const w = Math.min(Math.abs(v), 100) / 2;
-      return {
-        width: w + "%",
-        background: levelColor(u.level),
-        ...(v >= 0 ? { left: "50%" } : { right: "50%" }),
-      };
-    };
 
     const undoPreview = ref(null);
     const openUndo = async (r) => {
@@ -148,13 +240,14 @@ createApp({
       errorMsg.value = "";
       try {
         const data = await scopedPost("undo", { id: preview.id }, preview.snapshot);
+        if (!isCurrentScope(preview.snapshot, preview.revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || "撤销失败";
         } else {
           await fetchLogs();
         }
       } catch (e) {
-        errorMsg.value = String(e);
+        if (isCurrentScope(preview.snapshot, preview.revision)) errorMsg.value = String(e);
       }
     };
 
@@ -165,13 +258,37 @@ createApp({
     // 成员详情弹窗（印象/标签/近期评审）
     const memberDetail = ref(null);
     const memberLoading = ref(false);
+    const syncMemberForms = (member) => {
+      const m = member || {};
+      relationForm.value = {
+        familiarity: Number(m.familiarity ?? 0),
+        affinity: Number(m.affinity ?? 0),
+        trust: Number(m.trust ?? 0),
+        reason: "管理员调整",
+      };
+      profileForm.value = {
+        impression: String(m.impression || ""),
+        tagsText: Array.isArray(m.tags) ? m.tags.join(", ") : "",
+      };
+    };
+    const loadMemberRecord = async (groupId, userId, snapshot, revision, target) => {
+      const data = await scopedGet("member", { group_id: groupId, user_id: userId }, snapshot);
+      if (!isCurrentMemberRequest(target, revision)) return false;
+      if (data && data.success === false) {
+        throw new Error(data.error || "加载成员详情失败");
+      }
+      memberDetail.value = data.member || null;
+      syncMemberForms(memberDetail.value);
+      return true;
+    };
     const openMember = async (u) => {
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
+      setMemberNotice("");
       const candidate = selectedMode.value === "global" ? filterGroup.value : u.group_id;
       const groupId = String(candidate || "");
-      if (!/^[1-9][0-9]{0,31}$/.test(groupId)) {
+      if (!isRealAccount(groupId)) {
         errorMsg.value = "全局空间请先选择真实群，再查看成员详情";
         return;
       }
@@ -181,42 +298,278 @@ createApp({
       }
       errorMsg.value = "";
       memberLoading.value = true;
+      const target = { ...snapshot, group_id: groupId, user_id: String(u.user_id) };
+      memberRequestTarget.value = target;
       try {
-        const data = await scopedGet("member", { group_id: groupId, user_id: u.user_id }, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
-        if (data && data.success === false) {
-          errorMsg.value = data.error || "加载成员详情失败";
-        } else {
-          memberDetail.value = data.member || null;
-        }
+        await loadMemberRecord(groupId, u.user_id, snapshot, revision, target);
       } catch (e) {
-        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
+        if (isCurrentMemberRequest(target, revision)) errorMsg.value = String(e);
       } finally {
-        if (isCurrentScope(snapshot, revision)) memberLoading.value = false;
+        if (isCurrentMemberRequest(target, revision)) memberLoading.value = false;
       }
     };
-    const closeMember = () => { memberDetail.value = null; };
+    const closeMember = () => {
+      memberRequestTarget.value = null;
+      memberDetail.value = null;
+    };
+    const saveRelation = async () => {
+      const member = memberDetail.value;
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!member || !snapshot) return;
+      const target = { ...snapshot, group_id: String(member.group_id), user_id: String(member.user_id) };
+      if (!isCurrentMemberRequest(target, revision)) memberRequestTarget.value = target;
+      const familiarity = Number(relationForm.value.familiarity);
+      const affinity = Number(relationForm.value.affinity);
+      const trust = Number(relationForm.value.trust);
+      if (![familiarity, affinity, trust].every(Number.isFinite) ||
+          familiarity < 0 || familiarity > 100 ||
+          affinity < -100 || affinity > 100 ||
+          trust < -100 || trust > 100) {
+        setMemberNotice("三维关系数值超出允许范围", true);
+        return;
+      }
+      memberSaveLoading.value = true;
+      setMemberNotice("");
+      try {
+        const data = await scopedPost("relation", {
+          group_id: String(member.group_id),
+          user_id: String(member.user_id),
+          familiarity,
+          affinity,
+          trust,
+          reason: String(relationForm.value.reason || "管理员调整").trim() || "管理员调整",
+        }, snapshot);
+        if (!isCurrentMemberRequest(target, revision)) return;
+        if (data && data.success === false) throw new Error(data.error || "三维关系保存失败");
+        if (!await loadMemberRecord(member.group_id, member.user_id, snapshot, revision, target)) return;
+        if (!isCurrentMemberRequest(target, revision)) return;
+        await fetchUsers();
+        if (!isCurrentMemberRequest(target, revision)) return;
+        setMemberNotice("三维关系已保存");
+      } catch (e) {
+        if (isCurrentMemberRequest(target, revision)) setMemberNotice(`三维关系保存失败：${String(e)}`, true);
+      } finally {
+        if (isCurrentMemberRequest(target, revision)) memberSaveLoading.value = false;
+      }
+    };
+    const saveProfile = async () => {
+      const member = memberDetail.value;
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!member || !snapshot) return;
+      const target = { ...snapshot, group_id: String(member.group_id), user_id: String(member.user_id) };
+      if (!isCurrentMemberRequest(target, revision)) memberRequestTarget.value = target;
+      memberSaveLoading.value = true;
+      setMemberNotice("");
+      try {
+        const data = await scopedPost("profile", {
+          group_id: String(member.group_id),
+          user_id: String(member.user_id),
+          impression: String(profileForm.value.impression || ""),
+          tags: parseTags(profileForm.value.tagsText),
+        }, snapshot);
+        if (!isCurrentMemberRequest(target, revision)) return;
+        if (data && data.success === false) throw new Error(data.error || "印象和标签保存失败");
+        if (!await loadMemberRecord(member.group_id, member.user_id, snapshot, revision, target)) return;
+        if (!isCurrentMemberRequest(target, revision)) return;
+        await fetchUsers();
+        if (!isCurrentMemberRequest(target, revision)) return;
+        setMemberNotice("印象和标签已保存");
+      } catch (e) {
+        if (isCurrentMemberRequest(target, revision)) setMemberNotice(`印象和标签保存失败：${String(e)}`, true);
+      } finally {
+        if (isCurrentMemberRequest(target, revision)) memberSaveLoading.value = false;
+      }
+    };
     const refreshImpression = async () => {
       const m = memberDetail.value;
       if (!m) return;
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
+      const target = { ...snapshot, group_id: String(m.group_id), user_id: String(m.user_id) };
+      if (!isCurrentMemberRequest(target, revision)) memberRequestTarget.value = target;
       errorMsg.value = "";
       memberLoading.value = true;
       try {
         const data = await scopedPost("refresh_impression", { group_id: m.group_id, user_id: m.user_id }, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
+        if (!isCurrentMemberRequest(target, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || data.message || "刷新失败";
         } else {
-          await openMember(m); // 重新拉取详情展示新印象
+          await loadMemberRecord(m.group_id, m.user_id, snapshot, revision, target);
+          if (!isCurrentMemberRequest(target, revision)) return;
           await fetchUsers();
         }
       } catch (e) {
-        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
+        if (isCurrentMemberRequest(target, revision)) errorMsg.value = String(e);
       } finally {
-        if (isCurrentScope(snapshot, revision)) memberLoading.value = false;
+        if (isCurrentMemberRequest(target, revision)) memberLoading.value = false;
+      }
+    };
+
+    const loadPrompts = async (snapshot = scopeSnapshot()) => {
+      if (!snapshot) return;
+      if (promptLevel.value === "group" && !promptGroupIsValid()) {
+        const firstGroup = groups.value.find((g) => isRealAccount(g.group_id));
+        if (firstGroup) promptGroupId.value = String(firstGroup.group_id);
+      }
+      const revision = scopeRevision.value;
+      let params;
+      try {
+        params = promptRequest();
+      } catch (e) {
+        if (isCurrentScope(snapshot, revision)) setPromptNotice(String(e), true);
+        return;
+      }
+      const target = { ...snapshot, ...params };
+      promptRequestTarget.value = target;
+      promptLoading.value = true;
+      setPromptNotice("");
+      try {
+        const data = await scopedGet("prompts", params, snapshot);
+        if (!isCurrentPromptRequest(target, revision)) return;
+        if (data && data.success === false) throw new Error(data.error || "加载提示词设置失败");
+        syncPromptForm(data.settings || {}, data.resolved || "");
+      } catch (e) {
+        if (isCurrentPromptRequest(target, revision)) {
+          promptSettings.value = null;
+          promptResolved.value = "";
+          setPromptNotice(String(e), true);
+        }
+      } finally {
+        if (isCurrentPromptRequest(target, revision)) promptLoading.value = false;
+      }
+    };
+
+    const savePrompt = async (action) => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
+      let params;
+      try {
+        params = promptRequest();
+      } catch (e) {
+        setPromptNotice(String(e), true);
+        return;
+      }
+      const isReset = action === "reset";
+      const body = {
+        ...params,
+        action,
+        mode: isReset ? "default" : promptMode.value,
+        template: isReset || promptMode.value === "default" ? "" : String(promptTemplate.value || ""),
+      };
+      const target = { ...snapshot, ...params };
+      promptRequestTarget.value = target;
+      promptSaving.value = true;
+      setPromptNotice("");
+      try {
+        const data = await scopedPost("prompts", body, snapshot);
+        if (!isCurrentPromptRequest(target, revision)) return;
+        if (data && data.success === false) throw new Error(data.error || "提示词操作失败");
+        if (action === "preview") {
+          promptPreview.value = String(data.preview || "");
+          setPromptNotice("预览已更新");
+          return;
+        }
+        await loadPrompts(snapshot);
+        if (!isCurrentPromptRequest(target, revision)) return;
+        setPromptNotice(action === "reset" ? "已恢复默认提示词" : "提示词已保存");
+      } catch (e) {
+        if (isCurrentPromptRequest(target, revision)) setPromptNotice(String(e), true);
+      } finally {
+        if (isCurrentPromptRequest(target, revision)) promptSaving.value = false;
+      }
+    };
+
+    const modelPayload = () => {
+      const raw = normalizeModelConfig(modelConfig.value);
+      const payload = {
+        ...raw,
+        enabled: Boolean(raw.enabled),
+        small_provider_id: String(raw.small_provider_id || ""),
+        large_provider_id: String(raw.large_provider_id || ""),
+        assessment_mode: raw.assessment_mode === "single" ? "single" : "tiered",
+        small_timeout_sec: Number(raw.small_timeout_sec),
+        large_timeout_sec: Number(raw.large_timeout_sec),
+        cooldown_sec: Number(raw.cooldown_sec),
+        per_user_daily_large_cap: Number(raw.per_user_daily_large_cap),
+        per_bot_daily_large_cap: Number(raw.per_bot_daily_large_cap),
+      };
+      const values = [
+        payload.small_timeout_sec,
+        payload.large_timeout_sec,
+        payload.cooldown_sec,
+        payload.per_user_daily_large_cap,
+        payload.per_bot_daily_large_cap,
+      ];
+      if (!values.slice(0, 3).every((value) => Number.isFinite(value) && value > 0) ||
+          !values.slice(3).every((value) => Number.isInteger(value) && value >= 0)) {
+        throw new Error("评估时间和次数必须是有效的非负数，其中超时与冷却必须大于 0");
+      }
+      const maxConcurrent = Number(maxConcurrentAssessments.value);
+      if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 32) {
+        throw new Error("并发评估上限必须是 1 到 32 的整数");
+      }
+      return { config: payload, max_concurrent_assessments: maxConcurrent };
+    };
+
+    const loadEvaluation = async (snapshot = scopeSnapshot()) => {
+      if (!snapshot) return;
+      const revision = scopeRevision.value;
+      evaluationLoading.value = true;
+      setModelNotice("");
+      try {
+        const [modelData, statsData] = await Promise.all([
+          scopedGet("models", {}, snapshot),
+          scopedGet("assessment_stats", {}, snapshot),
+        ]);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (modelData && modelData.success === false) throw new Error(modelData.error || "加载评估配置失败");
+        if (statsData && statsData.success === false) throw new Error(statsData.error || "加载评估统计失败");
+        modelConfig.value = normalizeModelConfig(modelData.configured);
+        activeModelConfig.value = normalizeModelConfig(modelData.active);
+        maxConcurrentAssessments.value = Number(modelData.max_concurrent_assessments || 2);
+        assessmentStats.value = {
+          calls: Array.isArray(statsData.stats && statsData.stats.calls) ? statsData.stats.calls : [],
+          events: statsData.stats && statsData.stats.events && typeof statsData.stats.events === "object" ? statsData.stats.events : {},
+          currency_cost: statsData.stats ? statsData.stats.currency_cost : null,
+        };
+      } catch (e) {
+        if (isCurrentScope(snapshot, revision)) setModelNotice(String(e), true);
+      } finally {
+        if (isCurrentScope(snapshot, revision)) evaluationLoading.value = false;
+      }
+    };
+
+    const saveModels = async () => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot) return;
+      let body;
+      try {
+        body = modelPayload();
+      } catch (e) {
+        setModelNotice(String(e), true);
+        return;
+      }
+      modelSaving.value = true;
+      setModelNotice("");
+      try {
+        const data = await scopedPost("models", body, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (data && data.success === false) throw new Error(data.error || "评估配置保存失败");
+        modelConfig.value = normalizeModelConfig(body.config);
+        maxConcurrentAssessments.value = body.max_concurrent_assessments;
+        setModelNotice(data && data.restart_required
+          ? "配置已保存，重载插件后生效。当前运行配置仍显示在右侧。"
+          : "评估配置已保存");
+      } catch (e) {
+        if (isCurrentScope(snapshot, revision)) setModelNotice(String(e), true);
+      } finally {
+        if (isCurrentScope(snapshot, revision)) modelSaving.value = false;
       }
     };
 
@@ -239,6 +592,8 @@ createApp({
         groups.value = (groupData && groupData.groups) || [];
         users.value = (userData && userData.users) || [];
         if (tab.value === "logs") await fetchLogs();
+        if (tab.value === "prompts") await loadPrompts(snapshot);
+        if (tab.value === "evaluation") await loadEvaluation(snapshot);
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) {
           errorMsg.value = String(e);
@@ -432,12 +787,19 @@ createApp({
       return q ? users.value.filter((u) => u.user_id.indexOf(q) !== -1) : users.value;
     });
 
-    const refresh = () => (tab.value === "logs" ? fetchLogs() : fetchUsers());
+    const refresh = () => {
+      if (tab.value === "logs") return fetchLogs();
+      if (tab.value === "prompts") return loadPrompts();
+      if (tab.value === "evaluation") return loadEvaluation();
+      return fetchUsers();
+    };
     const switchTab = (t) => {
       tab.value = t;
       errorMsg.value = "";
       if (t === "logs" && !logs.value.length) fetchLogs();
       if (t === "users" && !users.value.length) fetchUsers();
+      if (t === "prompts") loadPrompts();
+      if (t === "evaluation") loadEvaluation();
     };
 
     onMounted(async () => {
@@ -454,26 +816,34 @@ createApp({
       filterGroup, filterUser, filterLimit,
       bots, selectedBot, selectedMode, selectedBotInfo, scopeLabel,
       scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
-      fmtTime, fmtNum, fmtDelta, fmtIdle, fmtUser, sourceLabel,
-      levelColor, levelChipStyle, barStyle,
+      fmtTime, fmtNum, fmtOptionalNum, fmtDelta, fmtIdle, fmtUser, sourceLabel,
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, showDetail, closeDetail,
-      memberDetail, memberLoading, openMember, closeMember, refreshImpression,
+      memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
+      relationForm, profileForm, openMember, closeMember, saveRelation, saveProfile, refreshImpression,
       fetchBots, selectBot, applyMode, backupScope, prepareRestore,
       closeRestore, confirmRestore, fetchLogs, fetchUsers, refresh, switchTab,
       restorePreview,
+      promptKind, promptLevel, promptGroupId, promptLoading, promptSaving,
+      promptMode, promptTemplate, promptResolved, promptPreview, promptNotice, promptNoticeError,
+      loadPrompts, savePrompt,
+      evaluationLoading, modelSaving, modelConfig, activeModelConfig,
+      maxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
+      loadEvaluation, saveModels,
     };
   },
   template: `
     <div class="xx-page">
       <header class="xx-header">
         <div class="xx-title">
-          <h2>Bond 开发基线 · 关系面板</h2>
-          <p class="xx-sub">兼容关系状态与变动记录 · 3D 关系模型待后续演进</p>
+          <h2>Bond 关系面板</h2>
+          <p class="xx-sub">成员关系、提示词与评估设置</p>
         </div>
         <nav class="xx-tabs">
           <button class="xx-tab" :class="{ active: tab === 'users' }" @click="switchTab('users')">当前总览</button>
           <button class="xx-tab" :class="{ active: tab === 'logs' }" @click="switchTab('logs')">变动流水</button>
+          <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
+          <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
         </nav>
       </header>
       <div class="xx-string"></div>
@@ -509,7 +879,7 @@ createApp({
         <span v-if="latestBackup" class="xx-scope-note">最近备份：<code>{{ latestBackup }}</code></span>
       </section>
 
-      <div class="xx-filters">
+      <div v-if="tab === 'users' || tab === 'logs'" class="xx-filters">
         <select v-model="filterGroup" @change="refresh">
           <option value="">全部群</option>
           <option v-for="g in groups" :key="g.group_id" :value="g.group_id">
@@ -534,27 +904,20 @@ createApp({
         <table class="xx-table">
           <thead>
             <tr>
-              <th>群</th><th>QQ</th><th>好感(有效)</th><th>等级</th><th>关系</th><th>最近互动</th><th>状态</th><th>印象/标签</th><th></th>
+              <th>群</th><th>QQ</th><th>熟悉度</th><th>亲近度</th><th>信任度</th><th>关系称谓</th><th>最近互动</th><th>状态</th><th>印象/标签</th><th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!visibleUsers.length">
-              <td colspan="9" class="xx-empty">{{ loading ? "加载中…" : (users.length ? "无匹配成员" : "暂无成员") }}</td>
+              <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (users.length ? "无匹配成员" : "暂无成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
               <td class="xx-mono">{{ u.group_id }}</td>
               <td class="xx-mono">{{ fmtUser(u) }}</td>
-              <td>
-                <div class="xx-favor">
-                  <div class="xx-favor-top">
-                    <span class="xx-favor-num" :style="{ color: levelColor(u.level) }">{{ fmtNum(u.favor) }}</span>
-                    <span v-if="u.decayed" class="xx-tag" :title="'原 ' + fmtNum(u.stored_favor)">衰减</span>
-                  </div>
-                  <div class="xx-favor-bar"><i :style="barStyle(u)"></i></div>
-                </div>
-              </td>
-              <td><span class="xx-level-chip" :style="levelChipStyle(u.level)"><i></i>{{ u.level }}</span></td>
-              <td>{{ u.relationship || "-" }}</td>
+              <td>{{ fmtOptionalNum(u.familiarity) }}</td>
+              <td>{{ fmtOptionalNum(u.affinity) }}</td>
+              <td>{{ fmtOptionalNum(u.trust) }}</td>
+              <td>{{ u.relation_title || "-" }}</td>
               <td class="xx-mono">{{ fmtIdle(u.idle_days) }}</td>
               <td>
                 <span v-if="u.decayed" class="xx-tag">衰减中</span>
@@ -583,7 +946,7 @@ createApp({
         <table class="xx-table">
           <thead>
             <tr>
-              <th>时间</th><th>群</th><th>QQ</th><th>增减</th><th>变化</th><th>原因</th><th>来源</th><th>操作</th>
+              <th>时间</th><th>群</th><th>QQ</th><th>增减</th><th>旧亲近度变化</th><th>原因</th><th>来源</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -601,12 +964,150 @@ createApp({
               <td class="xx-actions">
                 <button class="xx-btn xx-btn-mini" @click="showDetail(r)">详情</button>
                 <span v-if="r.reversed" class="xx-tag xx-muted">已撤销</span>
+                <span v-else-if="r.source === 'admin_profile'" class="xx-tag xx-muted">资料变更不可撤销</span>
                 <button v-else class="xx-btn xx-btn-undo" @click="openUndo(r)" :disabled="loading">撤销</button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <!-- 提示词设置 -->
+      <section v-if="tab === 'prompts'" class="xx-panel">
+        <div class="xx-panel-head">
+          <div>
+            <h3>提示词设置</h3>
+            <p class="xx-help">全局设置对所有 Bot 生效；群级覆盖按当前 Bot 和所选群保存。</p>
+          </div>
+          <button class="xx-btn xx-btn-mini" @click="loadPrompts()" :disabled="promptLoading || promptSaving">
+            {{ promptLoading ? "加载中…" : "刷新" }}
+          </button>
+        </div>
+        <div class="xx-settings-toolbar">
+          <label class="xx-scope-field">
+            <span>提示词类型</span>
+            <select v-model="promptKind" @change="loadPrompts()" :disabled="promptLoading || promptSaving">
+              <option value="behavior">关系行为</option>
+              <option value="assessment">互动评估</option>
+            </select>
+          </label>
+          <label class="xx-scope-field">
+            <span>作用层级</span>
+            <select v-model="promptLevel" @change="loadPrompts()" :disabled="promptLoading || promptSaving">
+              <option value="global">全局</option>
+              <option value="group">群级覆盖</option>
+            </select>
+          </label>
+          <label v-if="promptLevel === 'group'" class="xx-scope-field">
+            <span>真实群</span>
+            <select v-model="promptGroupId" @change="loadPrompts()" :disabled="promptLoading || promptSaving || !groups.length">
+              <option value="">选择群</option>
+              <option v-for="g in groups" :key="g.group_id" :value="g.group_id">{{ g.group_id }}</option>
+            </select>
+          </label>
+        </div>
+        <p v-if="promptNotice" :class="['xx-status', promptNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ promptNotice }}</p>
+        <div class="xx-settings-grid">
+          <section class="xx-form-card">
+            <h4>编辑模板</h4>
+            <p class="xx-muted-text">assessment 的程序输出协议会在运行时追加，编辑框只显示可保存的模板。</p>
+            <label class="xx-form-row">
+              <span>模式</span>
+              <select v-model="promptMode" :disabled="promptLoading || promptSaving">
+                <option value="default">默认</option>
+                <option value="custom">自定义</option>
+              </select>
+            </label>
+            <label class="xx-form-row xx-form-row-block">
+              <span>模板</span>
+              <textarea class="xx-textarea xx-prompt-editor" v-model="promptTemplate" :disabled="promptMode === 'default' || promptLoading || promptSaving" placeholder="自定义模式下填写模板"></textarea>
+            </label>
+            <p v-if="promptKind === 'behavior'" class="xx-muted-text">行为模板可用：{relationship}、{impression}、{events}</p>
+            <div class="xx-modal-actions">
+              <button class="xx-btn xx-btn-mini" @click="savePrompt('reset')" :disabled="promptLoading || promptSaving">恢复默认</button>
+              <button class="xx-btn xx-btn-mini" @click="savePrompt('preview')" :disabled="promptLoading || promptSaving">预览未保存内容</button>
+              <button class="xx-btn" @click="savePrompt('save')" :disabled="promptLoading || promptSaving">
+                {{ promptSaving ? "保存中…" : "保存模板" }}
+              </button>
+            </div>
+          </section>
+          <section class="xx-form-card">
+            <h4>当前生效内容</h4>
+            <p class="xx-muted-text">{{ promptSettings && promptSettings.effective ? ('来源：' + promptSettings.effective.source) : '全局设置' }}</p>
+            <pre class="xx-preview">{{ promptResolved || "暂无内容" }}</pre>
+            <div v-if="promptPreview" class="xx-preview-block">
+              <h4>未保存预览</h4>
+              <pre class="xx-preview">{{ promptPreview }}</pre>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- 评估配置与统计 -->
+      <section v-if="tab === 'evaluation'" class="xx-panel">
+        <div class="xx-panel-head">
+          <div>
+            <h3>互动评估</h3>
+            <p class="xx-help">保存配置后需要重载插件才会应用；右侧仍显示当前运行中的配置。</p>
+          </div>
+          <button class="xx-btn xx-btn-mini" @click="loadEvaluation()" :disabled="evaluationLoading || modelSaving">
+            {{ evaluationLoading ? "加载中…" : "刷新" }}
+          </button>
+        </div>
+        <p v-if="modelNotice" :class="['xx-status', modelNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ modelNotice }}</p>
+        <div class="xx-settings-grid xx-evaluation-grid">
+          <section class="xx-form-card">
+            <h4>待保存配置</h4>
+            <label class="xx-check-row"><input type="checkbox" v-model="modelConfig.enabled"> 启用互动评估</label>
+            <label class="xx-form-row"><span>小模型 Provider ID</span><input class="xx-input" v-model="modelConfig.small_provider_id"></label>
+            <label class="xx-form-row"><span>复核 Provider ID</span><input class="xx-input" v-model="modelConfig.large_provider_id"></label>
+            <label class="xx-form-row"><span>评估模式</span><select v-model="modelConfig.assessment_mode"><option value="single">单模型</option><option value="tiered">分级复核</option></select></label>
+            <label class="xx-form-row"><span>小模型超时（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.small_timeout_sec"></label>
+            <label class="xx-form-row"><span>复核超时（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.large_timeout_sec"></label>
+            <label class="xx-form-row"><span>成员冷却（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.cooldown_sec"></label>
+            <label class="xx-form-row"><span>每用户每日复核</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_user_daily_large_cap"></label>
+            <label class="xx-form-row"><span>每 Bot 每日复核</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_bot_daily_large_cap"></label>
+            <label class="xx-form-row"><span>并发评估上限</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
+            <div class="xx-modal-actions">
+              <button class="xx-btn" @click="saveModels" :disabled="evaluationLoading || modelSaving">
+                {{ modelSaving ? "保存中…" : "保存配置" }}
+              </button>
+            </div>
+          </section>
+          <section class="xx-form-card">
+            <h4>当前运行配置</h4>
+            <dl class="xx-config-list">
+              <div><dt>状态</dt><dd>{{ activeModelConfig.enabled ? "已启用" : "未启用" }}</dd></div>
+              <div><dt>小模型</dt><dd class="xx-mono">{{ activeModelConfig.small_provider_id || "未设置" }}</dd></div>
+              <div><dt>复核模型</dt><dd class="xx-mono">{{ activeModelConfig.large_provider_id || "未设置" }}</dd></div>
+              <div><dt>模式</dt><dd>{{ activeModelConfig.assessment_mode === 'single' ? "单模型" : "分级复核" }}</dd></div>
+              <div><dt>超时</dt><dd>{{ activeModelConfig.small_timeout_sec || "-" }} / {{ activeModelConfig.large_timeout_sec || "-" }} 秒</dd></div>
+              <div><dt>并发上限</dt><dd>{{ maxConcurrentAssessments }}</dd></div>
+            </dl>
+          </section>
+        </div>
+        <section class="xx-stats-section">
+          <div class="xx-panel-head"><h3>调用统计</h3><span class="xx-muted-text">费用：{{ assessmentStats.currency_cost == null ? "未提供" : assessmentStats.currency_cost }}</span></div>
+          <div class="xx-stats-grid">
+            <div class="xx-stat-box"><span>调用分组</span><b>{{ assessmentStats.calls.length }}</b></div>
+            <div class="xx-stat-box"><span>事件状态</span><b>{{ Object.keys(assessmentStats.events).length }}</b></div>
+          </div>
+          <div class="xx-table-wrap">
+            <table class="xx-table">
+              <thead><tr><th>日期</th><th>群</th><th>层级</th><th>状态</th><th>次数</th><th>Token</th></tr></thead>
+              <tbody>
+                <tr v-if="!assessmentStats.calls.length"><td colspan="6" class="xx-empty">暂无调用记录</td></tr>
+                <tr v-for="call in assessmentStats.calls" :key="call.day + call.group_id + call.tier + call.status">
+                  <td class="xx-mono">{{ call.day }}</td><td class="xx-mono">{{ call.group_id }}</td><td>{{ call.tier }}</td><td>{{ call.status }}</td><td>{{ call.count }}</td><td>{{ call.tokens == null ? "未提供" : call.tokens }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="xx-event-list">
+            <span v-for="(count, status) in assessmentStats.events" :key="status" class="xx-tag">{{ status }}：{{ count }}</span>
+          </div>
+        </section>
+      </section>
 
       <!-- 变动详情弹窗：完整发言 + AI 原因 -->
       <div v-if="selectedLog" class="xx-modal" @click.self="closeDetail">
@@ -618,7 +1119,7 @@ createApp({
           <div class="xx-modal-meta xx-mono">
             {{ fmtTime(selectedLog.ts) }} · 群 {{ selectedLog.group_id }} · QQ {{ selectedLog.user_id }}
             · <span :class="selectedLog.delta > 0 ? 'xx-up' : (selectedLog.delta < 0 ? 'xx-down' : 'xx-zero')">{{ fmtDelta(selectedLog.delta) }}</span>
-            · {{ fmtNum(selectedLog.favor_before) }} → {{ fmtNum(selectedLog.favor_after) }}
+            · 旧亲近度 {{ fmtNum(selectedLog.favor_before) }} → {{ fmtNum(selectedLog.favor_after) }}
             · <span class="xx-tag">{{ sourceLabel(selectedLog.source) }}</span>
           </div>
           <section class="xx-modal-section">
@@ -632,7 +1133,7 @@ createApp({
         </div>
       </div>
 
-      <!-- 成员详情弹窗：印象 + 标签 + 近期评审 -->
+      <!-- 成员详情弹窗：三维关系 + profile 编辑 + 可展开历史 -->
       <div v-if="memberDetail" class="xx-modal" @click.self="closeMember">
         <div class="xx-modal-box">
           <header class="xx-modal-header">
@@ -643,31 +1144,47 @@ createApp({
             QQ {{ memberDetail.user_id }}
             <span v-if="memberDetail.nickname">（{{ memberDetail.nickname }}）</span>
             · 群 {{ memberDetail.group_id }}
-            <span v-if="memberDetail.is_master" class="xx-tag">主人</span>
           </div>
           <div class="xx-member-stats">
             <div class="xx-member-stat">
-              <label>好感</label>
-              <b :style="{ color: levelColor(memberDetail.level) }">{{ fmtNum(memberDetail.favor) }}</b>
+              <label>熟悉度</label>
+              <b>{{ fmtOptionalNum(memberDetail.familiarity) }}</b>
             </div>
             <div class="xx-member-stat">
-              <label>等级</label>
-              <span class="xx-level-chip" :style="levelChipStyle(memberDetail.level)"><i></i>{{ memberDetail.level }}</span>
+              <label>亲近度</label>
+              <b>{{ fmtOptionalNum(memberDetail.affinity) }}</b>
             </div>
             <div class="xx-member-stat">
-              <label>关系</label>
-              <span>{{ memberDetail.relationship || "-" }}</span>
+              <label>信任度</label>
+              <b>{{ fmtOptionalNum(memberDetail.trust) }}</b>
+            </div>
+            <div class="xx-member-stat">
+              <label>关系称谓</label>
+              <span>{{ memberDetail.relation_title || "-" }}</span>
             </div>
           </div>
-          <section class="xx-modal-section">
-            <h4>印象</h4>
-            <div v-if="memberDetail.tags && memberDetail.tags.length" class="xx-chips">
-              <span v-for="t in memberDetail.tags" :key="t" class="xx-chip">{{ t }}</span>
+          <p v-if="memberNotice" :class="['xx-status', memberNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ memberNotice }}</p>
+          <section class="xx-modal-section xx-edit-section">
+            <h4>编辑三维关系</h4>
+            <div class="xx-edit-grid">
+              <label><span>熟悉度</span><input class="xx-input" type="number" min="0" max="100" step="0.1" v-model.number="relationForm.familiarity"></label>
+              <label><span>亲近度</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.affinity"></label>
+              <label><span>信任度</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.trust"></label>
             </div>
-            <p class="xx-modal-text">{{ memberDetail.impression || "（尚未生成，点下方按钮立即刷新）" }}</p>
+            <label class="xx-form-row xx-form-row-block"><span>变更原因</span><input class="xx-input" v-model="relationForm.reason" placeholder="管理员调整"></label>
+            <div class="xx-modal-actions"><button class="xx-btn" @click="saveRelation" :disabled="memberSaveLoading">保存三维关系</button></div>
           </section>
-          <section class="xx-modal-section">
-            <h4>近期评审</h4>
+          <section class="xx-modal-section xx-edit-section">
+            <h4>编辑印象与标签</h4>
+            <label class="xx-form-row xx-form-row-block"><span>印象</span><textarea class="xx-textarea" v-model="profileForm.impression" placeholder="成员印象"></textarea></label>
+            <label class="xx-form-row xx-form-row-block"><span>标签</span><input class="xx-input" v-model="profileForm.tagsText" placeholder="用逗号分隔多个标签"></label>
+            <div class="xx-modal-actions">
+              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
+              <button class="xx-btn" @click="saveProfile" :disabled="memberSaveLoading">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
+            </div>
+          </section>
+          <details class="xx-member-history">
+            <summary>近期评审（{{ memberDetail.recent_judges ? memberDetail.recent_judges.length : 0 }}）</summary>
             <p v-if="!memberDetail.recent_judges || !memberDetail.recent_judges.length" class="xx-modal-text xx-muted-text">暂无评估记录</p>
             <ul v-else class="xx-judge-list">
               <li v-for="(j, i) in memberDetail.recent_judges" :key="i">
@@ -676,17 +1193,14 @@ createApp({
                 <span class="xx-judge-reason">{{ j.reason || "-" }}</span>
               </li>
             </ul>
-          </section>
+          </details>
           <div class="xx-modal-actions">
             <button class="xx-btn xx-btn-mini" @click="closeMember">关闭</button>
-            <button class="xx-btn" @click="refreshImpression" :disabled="memberLoading">
-              {{ memberLoading ? "处理中…" : "立即刷新印象" }}
-            </button>
           </div>
         </div>
       </div>
 
-      <!-- 撤销确认弹窗：预览撤销后好感 -->
+      <!-- 撤销确认弹窗：预览撤销后的旧亲近度 -->
       <div v-if="undoPreview" class="xx-modal" @click.self="closeUndo">
         <div class="xx-modal-box">
           <header class="xx-modal-header">
@@ -695,7 +1209,7 @@ createApp({
           </header>
           <section class="xx-modal-section">
             <p class="xx-modal-text">
-              撤销后好感度：<b class="xx-up" style="font-size:16px">{{ fmtNum(undoPreview.after) }}</b>
+              撤销后旧亲近度：<b class="xx-up" style="font-size:16px">{{ fmtNum(undoPreview.after) }}</b>
               <span class="xx-muted-text">（当前 {{ fmtNum(undoPreview.current) }}，本次 {{ fmtDelta(undoPreview.delta) }}）</span>
             </p>
             <p class="xx-modal-text xx-muted-text">原因：{{ undoPreview.reason || "-" }}</p>

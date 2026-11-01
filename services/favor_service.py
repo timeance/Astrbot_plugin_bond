@@ -198,18 +198,21 @@ class FavorService:
             familiarity=rec.familiarity, affinity=rec.favor, trust=rec.trust
         )
 
-    async def relation_title(self, group_id, user_id):
+    def _relation_title(self, familiarity, affinity, trust):
         from ..core.relation_policy import RelationState
 
-        rec = await self.get(group_id, user_id)
-        # 旧标量范围可超出新维度边界；只在称谓分类时饱和，不改原始数值。
+        # 历史值只在称谓分类时饱和，不改数据库中的旧标量。
         return self._relation_resolver.resolve(
             RelationState(
-                familiarity=rec.familiarity,
-                affinity=max(-100, min(100, rec.favor)),
-                trust=rec.trust,
+                familiarity=familiarity,
+                affinity=max(-100, min(100, affinity)),
+                trust=trust,
             )
         )
+
+    async def relation_title(self, group_id, user_id):
+        rec = await self.get(group_id, user_id)
+        return self._relation_title(rec.familiarity, rec.favor, rec.trust)
 
     @staticmethod
     def _validate_event_id(event_id):
@@ -306,6 +309,28 @@ class FavorService:
             default_favor=self.default_favor,
         )
 
+    async def set_profile(self, group_id, user_id, *, impression, tags, actor):
+        """管理员资料编辑；值校验与审计共用一个服务入口。"""
+        if not isinstance(impression, str) or len(impression) > 2000:
+            raise ValueError("印象须为不超过 2000 字的文本")
+        if (
+            not isinstance(tags, list)
+            or len(tags) > 3
+            or any(
+                not isinstance(t, str) or not 1 <= len(t.strip()) <= 20 for t in tags
+            )
+        ):
+            raise ValueError("标签最多 3 个，每个 1..20 字")
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("需要可信管理员身份")
+        await self._storage.set_profile_audited(
+            self.group_key(group_id),
+            user_id,
+            impression.strip(),
+            [t.strip() for t in tags],
+            actor,
+        )
+
     async def ranking(self, group_id: str, limit: int = 10) -> list[FavorRecord]:
         # 衰减后排序可能改变候选集，必须先按有效值重排再取前 N 名。
         if self.scope_mode == "global":
@@ -337,6 +362,10 @@ class FavorService:
                     "group_id": r.group_id,
                     "user_id": r.user_id,
                     "favor": eff,
+                    "affinity": eff,
+                    "familiarity": r.familiarity,
+                    "trust": r.trust,
+                    "relation_title": self._relation_title(r.familiarity, eff, r.trust),
                     "stored_favor": round1(r.favor),
                     "decayed": round1(r.favor) != eff,
                     "level": self.level_of(eff).name,
@@ -745,6 +774,8 @@ class FavorService:
             raise ValueError("记录不存在")
         if log.get("reversed"):
             raise ValueError("该变动已撤销")
+        if log.get("source") == "admin_profile":
+            raise ValueError("资料审计不是可撤销的数值变动")
         group_id, user_id = log["group_id"], log["user_id"]
         cur = (await self.get(group_id, user_id)).favor
         state = await self.get(group_id, user_id)
@@ -778,7 +809,7 @@ class FavorService:
             "message": log.get("message") or "",
         }
 
-    async def undo_log(self, log_id: int) -> FavorRecord:
+    async def undo_log(self, log_id: int, *, actor: str = "") -> FavorRecord:
         """撤销某条变动：反向 delta 落地（标准 undo，不影响之后的其它变动）。
 
         整个"校验未撤销→反向→记账→标记"在 storage.apply_undo 单事务内完成
@@ -793,6 +824,7 @@ class FavorService:
             min_favor=self.min_favor,
             effective=(self._effective if self._decay is not None else None),
             default_favor=self.default_favor,
+            actor=actor,
         )
         return await self.get(info["group_id"], info["user_id"])
 

@@ -735,6 +735,47 @@ class SQLiteBackend(StorageBackend):
                 },
             )
 
+    async def set_profile_audited(self, group_id, user_id, impression, tags, actor):
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                now = time.time()
+                row = conn.execute(
+                    "SELECT favor FROM favor WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ).fetchone()
+                value = row[0] if row else self._initial_favor
+                conn.execute(
+                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,impression,tags,impression_at) VALUES(?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(group_id,user_id) DO UPDATE SET impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at",
+                    (
+                        group_id,
+                        user_id,
+                        value,
+                        now,
+                        self._initial_half_life,
+                        impression,
+                        json.dumps(tags, ensure_ascii=False),
+                        now,
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts) VALUES(?,?,0,?,?,?,'admin_profile',?)",
+                    (
+                        group_id,
+                        user_id,
+                        value,
+                        value,
+                        f"Web 管理员 {actor} 修改印象与标签"[:200],
+                        now,
+                    ),
+                )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
     async def impression_logs(self, group_id, user_id, limit):
         with self._lock:
             cursor = (
@@ -1236,6 +1277,7 @@ class SQLiteBackend(StorageBackend):
         min_favor: float,
         effective=None,
         default_favor: float = 0.0,
+        actor: str = "",
     ) -> dict:
         """单事务撤销（契约见 base.py）：校验→反向→流水→标记，一个 commit。"""
         now = time.time()
@@ -1244,11 +1286,13 @@ class SQLiteBackend(StorageBackend):
             try:
                 conn.execute("BEGIN")
                 row = conn.execute(
-                    "SELECT group_id, user_id, delta, reversed, relation_delta FROM favor_log WHERE id=?",
+                    "SELECT group_id, user_id, delta, reversed, relation_delta, source FROM favor_log WHERE id=?",
                     (int(log_id),),
                 ).fetchone()
                 if row is None:
                     raise ValueError("记录不存在")
+                if row[5] == "admin_profile":
+                    raise ValueError("资料审计不是可撤销的数值变动")
                 if row[3]:
                     raise ValueError("该变动已撤销")
                 group_id, user_id, delta = row[0], row[1], float(row[2])
@@ -1300,7 +1344,7 @@ class SQLiteBackend(StorageBackend):
                         (extra["familiarity"], extra["trust"], group_id, user_id),
                     )
                     extra["affinity"] = real
-                if real != 0 or any(extra.values()):
+                if real != 0 or any(extra.values()) or actor:
                     conn.execute(
                         "INSERT INTO favor_log(group_id, user_id, delta, favor_before, "
                         "favor_after, reason, source, ts, relation_delta) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -1310,7 +1354,11 @@ class SQLiteBackend(StorageBackend):
                             real,
                             round1(cur),
                             target,
-                            f"撤销#{int(log_id)}",
+                            (
+                                f"Web 管理员 {actor} 撤销#{int(log_id)}"
+                                if actor
+                                else f"撤销#{int(log_id)}"
+                            )[:200],
                             "undo",
                             now,
                             json.dumps(extra),
