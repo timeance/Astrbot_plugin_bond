@@ -57,6 +57,13 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     schema = json.loads((plugin_dir / "_conf_schema.json").read_text(encoding="utf-8"))
     config_path = runtime_dir / "bond_config.json"
     config = AstrBotConfig(str(config_path), schema=schema)
+    # 隐藏字段仍由 AstrBot 的 schema 加载、保存和重载，不能被清理。
+    config["judge"]["roster"] = "synthetic-preserved"
+    config["inject"]["memory_days"] = 9
+    config.save_config()
+    config = AstrBotConfig(str(config_path), schema=schema)
+    assert config["judge"]["roster"] == "synthetic-preserved"
+    assert config["inject"]["memory_days"] == 9
     context = _context(Context, config)
     plugin = BondPlugin(context, config)
     await plugin.initialize()
@@ -66,7 +73,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 16
+    assert len(routes) == 17
     assert set(route_names) == {
         "logs",
         "livingmemory",
@@ -74,6 +81,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         "profile",
         "prompts",
         "models",
+        "settings",
         "assessment_stats",
         "groups",
         "users",
@@ -246,6 +254,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             "profile",
             "prompts",
             "models",
+            "settings",
             "undo",
             "refresh_impression",
             "mode",
@@ -382,6 +391,32 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         ranking = await llm_tools.tool_query_ranking(old_deps.favor, public_event, 100)
         assert len(ranking.splitlines()) == 11 and "51.7" not in ranking
         assert "小千" not in ranking
+        status, settings = await call(
+            page.handle_settings,
+            f"/astrbot_plugin_bond/settings?bot_id={BOT_IDS[0]}&scope_mode=per_group",
+            username="dashboard-admin",
+        )
+        assert status == 200 and settings["values"]["inject.memory_days"] == 9
+        status, saved = await call(
+            page.handle_settings,
+            "/astrbot_plugin_bond/settings",
+            "POST",
+            dict(
+                target, values={"inject.memory_days": 10}, revision=settings["revision"]
+            ),
+            "dashboard-admin",
+        )
+        assert status == 200 and saved["restart_required"]
+        assert config["inject"]["memory_days"] == 10
+        assert plugin._dependency_config["inject"]["memory_days"] == 9
+        status, rejected = await call(
+            page.handle_settings,
+            "/astrbot_plugin_bond/settings",
+            "POST",
+            dict(target, values={"bot_scope_modes": "{}"}, revision=saved["revision"]),
+            "dashboard-admin",
+        )
+        assert status == 400 and not rejected["success"]
         status, body = await call(
             page.handle_models,
             f"/astrbot_plugin_bond/models?bot_id={BOT_IDS[0]}&scope_mode=per_group",
@@ -606,7 +641,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 16
+        assert len(context2.registered_web_apis) == 17
         assert plugin2._prompts.load_error
         deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
         assert (await deps2.favor.get(OLD_GROUP, OLD_USER)).favor == 12
@@ -645,7 +680,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、16 路 WebUI、认证、备份恢复、损坏提示词降级、卸载。"
+        "scope 持久化、冻结 listener、17 路 WebUI、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

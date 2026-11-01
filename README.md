@@ -2,7 +2,7 @@
 
 Bond 是面向 AstrBot 的关系记忆插件。它按 Bot 和数据作用域保存成员关系、印象与变动流水，并把关系称谓和经过校验的资料用于后续对话。
 
-当前版本为 `0.2.0-dev`。PR0 至 PR7 按依赖顺序审核，最终验收记录见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。截至本次文档更新，`main` 仍只有许可证提交，不能作为用户安装来源。完成全部审核前不要自动合并或发布；试用代码位于 [`feat/pr7-release-readiness`](https://github.com/timeance/Astrbot_plugin_bond/tree/feat/pr7-release-readiness)，安装时使用该分支快照或审核版 ZIP。
+当前版本为 `0.2.0-dev`，可从本仓库 main 安装试用。已完成的验证及待验项目见 [验收记录](docs/ACCEPTANCE.md)。
 
 ## 兼容性
 
@@ -46,18 +46,15 @@ Bond 只追加当前会话的关系资料，保留 AstrBot 当前人格，不替
 
 ### LivingMemory
 
-LivingMemory 是可选增强，不是运行依赖。当前调查基线为公开仓库提交 `a1e9c20`，版本 `2.8.2`。调查未发现能够证明真实 Bot 和群作用域的公开 API，因此 Bond 只保留动态发现、配置状态和 `unsupported_scope` 降级，不声称完成真实召回、外部写入或持久去重。
+LivingMemory 无需安装，Bond 可以独立运行。当前版本不读取或写入 LivingMemory：已调查的公开接口无法确认记忆属于哪个 Bot 和群。
 
-`livingmemory.enabled`、`livingmemory.read_enabled`、`livingmemory.write_enabled` 独立控制：
+在 Bond 插件页面打开“可选集成”，点击“检查插件状态”，可查看是否安装、是否启用及接口限制。检查只查询插件注册状态，不调用记忆接口、不修改配置。未安装、停用、卸载或检查失败时，关系、印象和历史记录继续保存在 Bond 本地，已有数据不删除、不迁移。
 
-- 关闭总开关时不探测缺失实例、不读取、不写入，也不报可选插件错误；
-- 启用后每次按需重新发现实例，不缓存旧对象；缺失、禁用、接口变化或错误时回到本地 standalone；
-- Bond 不读取 LivingMemory 内部数据库，不导入、不迁移、不删除其历史，也不要求安装 LivingMemory；
-- 外部记忆文本不能直接修改 Bond 的三维关系、印象或流水。
+旧版保存的三个 LivingMemory 开关保留在配置中，但不再显示为可操作选项。它们不会让当前版本获得读写能力。当前调查基线为 LivingMemory `2.8.2`，提交 `a1e9c20`。
 
 ## 安装与配置
 
-1. 审核链为 #1 → #2 → #3 → #4（审查修复）→ #5 → #6 → #7 → #8 → #9。合并前试用时下载 `feat/pr7-release-readiness` 分支 ZIP，解压后将顶层目录改名为 `astrbot_plugin_bond`。当前 `main` 不能安装。
+1. 在 AstrBot 插件市场通过仓库地址安装，或下载 main 的 ZIP，解压后将顶层目录改名为 `astrbot_plugin_bond`。
 2. 将插件放入 AstrBot 的 `data/plugins/astrbot_plugin_bond/` 目录，保持目录名为 `astrbot_plugin_bond`，再重载插件。
 3. 首次收到可信 Bot 的群事件后，Bond 才会为该 Bot 初始化 `group.db` 和 `global.db`。面板只显示已经产生可信事件的 Bot。
 4. 初次运行保持以下开关关闭，确认本地管理和公开称谓查询正常后再单独启用需要的功能。
@@ -68,9 +65,15 @@ LivingMemory 是可选增强，不是运行依赖。当前调查基线为公开�
 | `assessment.small_provider_id` | 空 | 启用评估时必填 |
 | `assessment.large_provider_id` | 空 | 可选的复核模型 |
 | `inject.enabled` | `false` | 是否向回复追加关系资料 |
-| `livingmemory.enabled` | `false` | LivingMemory 总开关 |
-| `livingmemory.read_enabled` | `false` | 独立读取开关 |
-| `livingmemory.write_enabled` | `false` | 独立写入开关 |
+
+插件配置只保留自动评估、关系注入、模型选择和忽略机器人账号。详细设置请打开 Bond 插件页面：
+
+- **提示词**：分别设置互动评估和回复行为，支持全局默认、指定 Bot 的群级覆盖、校验、预览与恢复。
+- **评估**：调整评估模式、冷却、超时、并发和每日复核次数，查看调用统计。
+- **详细设置**：调整关系增长、时间衰减、印象、近期事件和排行。各组默认折叠，对所有 Bot 生效。
+- **可选集成**：查看 LivingMemory 状态，当前不提供记忆读写开关。
+
+基础和详细配置保存后需要重载插件；提示词保存后立即生效。配置仍由 AstrBot 保存，隐藏字段及已有值保留，不复制到第二份配置文件。旧标量评估和旧人格指引不再显示为设置入口。详细设置若被其他管理员修改，保存会被拒绝，请刷新后重新编辑。
 
 启用评估或手动刷新印象时，消息文本、配置允许的上下文或有限流水可能发送给所选 AstrBot Provider。不要把真实聊天记录、账号标识、数据库或密钥提交到 Issue、截图或 PR。
 

@@ -94,6 +94,11 @@ class BondPlugin(Star):
                 # 本次运行已用上内存中的新值；文件未写入则下次加载重试
                 logger.warning("[心弦] 配置默认值迁移后保存失败，将在下次加载时重试")
 
+        from copy import deepcopy
+
+        # 设置保存后统一重载生效，后创建的 Bot/空间也使用本次加载快照。
+        self._dependency_config = deepcopy(dict(config))
+
         data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
 
         self._prompts = PromptService(data_dir / "prompts.json")
@@ -134,7 +139,7 @@ class BondPlugin(Star):
         self._page_api.register(context)
 
     def _build_deps(self, storage, scope_mode):
-        config, context = self.config, self.context
+        config, context = self._dependency_config, self.context
         max_favor = float(config.get("max_favor", 100))
         min_favor = float(config.get("min_favor", -100))
         levels = LevelTable.from_config(config)

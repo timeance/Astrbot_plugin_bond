@@ -187,6 +187,7 @@ class PageApi:
                 ["GET", "POST"],
                 "Bond 可选记忆集成状态",
             ),
+            ("settings", self.handle_settings, ["GET", "POST"], "Bond 详细设置"),
             ("relation", self.handle_relation, ["POST"], "Bond 修改三维关系"),
             ("profile", self.handle_profile, ["POST"], "Bond 修改印象与标签"),
             ("prompts", self.handle_prompts, ["GET", "POST"], "Bond 提示词设置"),
@@ -569,6 +570,27 @@ class PageApi:
 
         return await self._invoke(run)
 
+    async def handle_settings(self):
+        async def run():
+            params = await self._params()
+            self._target(params)
+            if request.method == "POST":
+                try:
+                    await self._runtime.save_detailed_settings(
+                        params.get("values"), params.get("revision")
+                    )
+                except (ValueError, TypeError, KeyError):
+                    return self._error("设置无效或已被修改，请刷新页面并检查输入")
+            return self._response(
+                {
+                    "success": True,
+                    **self._runtime.detailed_settings(),
+                    "restart_required": request.method == "POST",
+                }
+            )
+
+        return await self._invoke(run)
+
     async def handle_livingmemory(self):
         async def run():
             params = await self._params()
@@ -581,7 +603,7 @@ class PageApi:
                     await self._runtime.save_livingmemory_settings(values)
                 except (ValueError, TypeError):
                     raise _PageRequestError from None
-            state = self._runtime.livingmemory.status()
+            state = self._runtime.livingmemory.status(check=params.get("check") == "1")
             return self._response(
                 {"success": True, "config": state["config"], "state": state}
             )

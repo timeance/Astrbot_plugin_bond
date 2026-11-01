@@ -51,7 +51,35 @@ createApp({
     const modelNotice = ref("");
     const modelNoticeError = ref(false);
     const integrationState = ref(null);
-    const integrationConfig = ref({enabled:false, read_enabled:false, write_enabled:false});
+    const detailSettings = ref(null);
+    const detailValues = ref({});
+    const detailLoading = ref(false);
+    const detailNotice = ref("");
+    const detailGroups = computed(() => detailSettings.value ? [...new Set(detailSettings.value.fields.map(f => f.group))].map(group => ({group, title: detailSettings.value.fields.find(f => f.group === group).title, fields: detailSettings.value.fields.filter(f => f.group === group)})) : []);
+    const settingsRequest = async (save = false) => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      if (!snapshot || detailLoading.value || (save && !detailSettings.value)) return;
+      detailLoading.value = true;
+      detailNotice.value = "";
+      try {
+        const values = Object.fromEntries(Object.entries(detailValues.value).filter(([key,value]) => value !== detailSettings.value?.values[key]));
+        if (save && !Object.keys(values).length) { detailNotice.value = "没有需要保存的修改"; return; }
+        const data = save ? await scopedPost("settings", {values, revision: detailSettings.value.revision}, snapshot) : await scopedGet("settings", {}, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (!data.success) throw new Error(data.error || "设置读取失败，请重试");
+        detailSettings.value = data;
+        detailValues.value = {...data.values};
+        if (save) detailNotice.value = "设置已保存，重载插件后生效。";
+      } catch(error) {
+        if (isCurrentScope(snapshot, revision)) detailNotice.value = String(error);
+      } finally {
+        if (isCurrentScope(snapshot, revision)) detailLoading.value = false;
+      }
+    };
+    const loadSettings = () => settingsRequest();
+    const saveSettings = () => settingsRequest(true);
+    const integrationLabel = computed(() => ({plugin_missing:"未安装", plugin_disabled:"插件已停用", instance_unavailable:"插件实例暂不可用", public_api_missing:"接口暂不支持", discovery_error:"检查失败，请稍后重试", config_disabled:"尚未检查", invalid_config:"原有配置无效"}[integrationState.value?.reason_code] || "尚未检查"));
     const integrationLoading = ref(false);
     const integrationNotice = ref("");
 
@@ -93,7 +121,7 @@ createApp({
     const clearScopeState = () => {
       scopeRevision.value += 1;
       integrationState.value = null;
-      integrationConfig.value = {enabled:false, read_enabled:false, write_enabled:false};
+      detailSettings.value = null; detailValues.value = {}; detailLoading.value = false; detailNotice.value = "";
       integrationLoading.value = false;
       integrationNotice.value = "";
       loading.value = false;
@@ -537,6 +565,9 @@ createApp({
       if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 32) {
         throw new Error("并发评估上限必须是 1 到 32 的整数");
       }
+      delete payload.enabled;
+      delete payload.small_provider_id;
+      delete payload.large_provider_id;
       return { config: payload, max_concurrent_assessments: maxConcurrent };
     };
 
@@ -585,7 +616,7 @@ createApp({
         const data = await scopedPost("models", body, snapshot);
         if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) throw new Error(data.error || "评估配置保存失败");
-        modelConfig.value = normalizeModelConfig(body.config);
+        modelConfig.value = normalizeModelConfig({...modelConfig.value, ...body.config});
         maxConcurrentAssessments.value = body.max_concurrent_assessments;
         setModelNotice(data && data.restart_required
           ? "配置已保存，重载插件后生效。当前运行配置仍显示在右侧。"
@@ -618,6 +649,8 @@ createApp({
         if (tab.value === "logs") await fetchLogs();
         if (tab.value === "prompts") await loadPrompts(snapshot);
         if (tab.value === "evaluation") await loadEvaluation(snapshot);
+        if (tab.value === "settings") await loadSettings();
+        if (tab.value === "integrations") await loadIntegration();
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) {
           errorMsg.value = String(e);
@@ -806,29 +839,24 @@ createApp({
       }
     };
 
-    const integrationRequest = async (save = false) => {
+    const loadIntegration = async (check = false) => {
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot || integrationLoading.value) return;
       integrationLoading.value = true;
       integrationNotice.value = "";
+      integrationState.value = null;
       try {
-        const data = save
-          ? await scopedPost("livingmemory", {config:{...integrationConfig.value}}, snapshot)
-          : await scopedGet("livingmemory", {}, snapshot);
+        const data = await scopedGet("livingmemory", check ? {check:"1"} : {}, snapshot);
         if (!isCurrentScope(snapshot, revision)) return;
-        if (!data.success) throw new Error(data.error || "可选集成状态读取失败");
+        if (!data.success) throw new Error("检查失败，请稍后重试");
         integrationState.value = data.state;
-        integrationConfig.value = {...data.config};
-        if (save) integrationNotice.value = "配置已保存，当前运行方式见下方状态。";
       } catch (error) {
-        if (isCurrentScope(snapshot, revision)) integrationNotice.value = String(error);
+        if (isCurrentScope(snapshot, revision)) integrationNotice.value = "检查失败，请稍后重试。Bond 继续独立运行。";
       } finally {
         if (isCurrentScope(snapshot, revision)) integrationLoading.value = false;
       }
     };
-    const loadIntegration = () => integrationRequest();
-    const saveIntegration = () => integrationRequest(true);
 
     const visibleUsers = computed(() => {
       const q = filterUser.value.trim();
@@ -840,6 +868,7 @@ createApp({
       if (tab.value === "prompts") return loadPrompts();
       if (tab.value === "evaluation") return loadEvaluation();
       if (tab.value === "integrations") return loadIntegration();
+      if (tab.value === "settings") return loadSettings();
       return fetchUsers();
     };
     const switchTab = (t) => {
@@ -850,6 +879,7 @@ createApp({
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
       if (t === "integrations") loadIntegration();
+      if (t === "settings") loadSettings();
     };
 
     onMounted(async () => {
@@ -880,7 +910,8 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
-      integrationState, integrationConfig, integrationLoading, integrationNotice, loadIntegration, saveIntegration,
+      integrationState, integrationLoading, integrationNotice, loadIntegration, integrationLabel,
+      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings,
     };
   },
   template: `
@@ -895,6 +926,7 @@ createApp({
           <button class="xx-tab" :class="{ active: tab === 'logs' }" @click="switchTab('logs')">变动流水</button>
           <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
           <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
+          <button class="xx-tab" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">详细设置</button>
           <button class="xx-tab" :class="{ active: tab === 'integrations' }" @click="switchTab('integrations')">可选集成</button>
         </nav>
       </header>
@@ -1109,17 +1141,21 @@ createApp({
         <p v-if="modelNotice" :class="['xx-status', modelNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ modelNotice }}</p>
         <div class="xx-settings-grid xx-evaluation-grid">
           <section class="xx-form-card">
-            <h4>待保存配置</h4>
-            <label class="xx-check-row"><input type="checkbox" v-model="modelConfig.enabled"> 启用互动评估</label>
-            <label class="xx-form-row"><span>小模型 Provider ID</span><input class="xx-input" v-model="modelConfig.small_provider_id"></label>
-            <label class="xx-form-row"><span>复核 Provider ID</span><input class="xx-input" v-model="modelConfig.large_provider_id"></label>
+            <h4>评估详细设置</h4>
+            <p class="xx-help">自动评估开关和模型选择在 AstrBot 的 Bond 插件配置中修改。以下设置对所有 Bot 生效。</p>
+            <details><summary>调整冷却、超时和调用限额</summary>
+
+
+
             <label class="xx-form-row"><span>评估模式</span><select v-model="modelConfig.assessment_mode"><option value="single">单模型</option><option value="tiered">分级复核</option></select></label>
             <label class="xx-form-row"><span>小模型超时（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.small_timeout_sec"></label>
             <label class="xx-form-row"><span>复核超时（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.large_timeout_sec"></label>
-            <label class="xx-form-row"><span>成员冷却（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.cooldown_sec"></label>
-            <label class="xx-form-row"><span>每用户每日复核</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_user_daily_large_cap"></label>
-            <label class="xx-form-row"><span>每 Bot 每日复核</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_bot_daily_large_cap"></label>
+            <label class="xx-form-row"><span>同一成员评估间隔（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.cooldown_sec"></label>
+            <label class="xx-form-row"><span>每成员每日复核次数</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_user_daily_large_cap"></label>
+            <label class="xx-form-row"><span>每 Bot 每日复核次数</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_bot_daily_large_cap"></label>
             <label class="xx-form-row"><span>并发评估上限</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
+            </details>
+            <p class="xx-help">每日复核次数按 UTC 换日。达到限额后跳过复核；并发已满时跳过本次评估，不排队。</p>
             <div class="xx-modal-actions">
               <button class="xx-btn" @click="saveModels" :disabled="evaluationLoading || modelSaving">
                 {{ modelSaving ? "保存中…" : "保存配置" }}
@@ -1161,6 +1197,27 @@ createApp({
         </section>
       </section>
 
+      <section v-if="tab === 'settings'" class="xx-panel">
+        <h3>详细设置</h3>
+        <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
+        <p class="xx-help">自动评估、回复中的关系信息和模型选择，请在 AstrBot 的 Bond 插件配置中修改。</p>
+        <p v-if="detailNotice" role="status">{{ detailNotice }}</p>
+        <div class="xx-actions">
+          <button class="xx-btn" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
+          <button class="xx-btn" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
+        </div>
+        <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
+          <summary>{{ group.title }}</summary>
+          <label v-for="field in group.fields" :key="field.path" class="xx-form-row">
+            <span>{{ field.label }}<small class="xx-help">{{ field.hint }}</small></span>
+            <input v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
+            <select v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"增长较快",realistic:"增长较慢"})[option] || option }}</option></select>
+            <input v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
+            <input v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
+          </label>
+        </details>
+      </section>
+
       <!-- 变动详情弹窗：完整发言 + AI 原因 -->
       <div v-if="selectedLog" class="xx-modal" @click.self="closeDetail">
         <div class="xx-modal-box">
@@ -1187,22 +1244,18 @@ createApp({
 
       <!-- 成员详情弹窗：三维关系 + profile 编辑 + 可展开历史 -->
       <section v-if="tab === 'integrations'" class="xx-panel">
-        <h3>LivingMemory 可选增强</h3>
-        <p class="xx-help">开关对所有 Bot 生效。当前上游缺少可验证 Bot／群来源的公开接口，Bond 继续独立运行，实际外部读写保持关闭。</p>
-        <label><input type="checkbox" v-model="integrationConfig.enabled" :disabled="integrationLoading">启用集成探测</label>
-        <label><input type="checkbox" v-model="integrationConfig.read_enabled" :disabled="integrationLoading">允许读取（仍需接口可用）</label>
-        <label><input type="checkbox" v-model="integrationConfig.write_enabled" :disabled="integrationLoading">允许写入（仍需接口可用）</label>
+        <h3>LivingMemory</h3>
+        <p>当前版本暂不支持读取或写入 LivingMemory。</p>
+        <p>Bond 正在独立运行，关系、印象和历史记录保存在本地。</p>
         <div class="xx-actions">
-          <button class="xx-btn" @click="saveIntegration()" :disabled="integrationLoading">保存集成设置</button>
-          <button class="xx-btn" @click="loadIntegration()" :disabled="integrationLoading">刷新状态</button>
+          <button class="xx-btn" @click="loadIntegration(true)" :disabled="integrationLoading">{{ integrationLoading ? "检查中…" : "检查插件状态" }}</button>
         </div>
         <p v-if="integrationNotice" role="status">{{ integrationNotice }}</p>
-        <div v-if="integrationState">
-          <p>运行方式：{{ integrationState.mode }} · {{ integrationState.status }}</p>
-          <p>{{ integrationState.reason }}</p>
-          <p>外部读取：{{ integrationState.read.available ? "可用" : "未执行" }}；外部写入：{{ integrationState.write.available ? "可用" : "未执行" }}</p>
-        </div>
-        <p class="xx-help">关闭、卸载或重新安装 LivingMemory 均不删除或迁移 Bond 的关系、印象和流水，也不删除外部已有记忆。</p>
+        <p v-if="integrationState" role="status">插件状态：{{ integrationLabel }}</p>
+        <details class="xx-form-card"><summary>查看原因</summary>
+          <p>当前接口无法确认记忆属于哪个 Bot 和群，因此 Bond 暂不接入。检查插件状态只查询安装和启用情况，不读取或写入记忆。</p>
+          <p>停用或卸载 LivingMemory 不会删除 Bond 的关系、印象和历史记录，也不会删除 LivingMemory 的已有记忆。</p>
+        </details>
       </section>
 
       <div v-if="memberDetail" class="xx-modal" @click.self="closeMember">

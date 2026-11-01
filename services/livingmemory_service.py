@@ -31,7 +31,7 @@ class LivingMemoryService:
                 raise ValueError(f"livingmemory.{name} 必须是 bool")
         return switches
 
-    def status(self) -> dict[str, Any]:
+    def status(self, *, check: bool = False) -> dict[str, Any]:
         try:
             switches = self.validate_config(self.config)
         except ValueError as exc:
@@ -42,7 +42,7 @@ class LivingMemoryService:
                 reason=str(exc),
                 capability_reason=str(exc),
             )
-        if switches["enabled"]:
+        if check or switches["enabled"]:
             return self._state(switches, **self._discover())
         return self._state(
             switches,
