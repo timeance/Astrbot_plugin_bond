@@ -343,3 +343,39 @@ def test_cancelled_assessment_releases_capacity_and_preserves_dedup(tmp_path):
             await store.close()
 
     asyncio.run(run())
+
+
+def test_admission_cooldown_is_independent_of_model_latency(tmp_path, monkeypatch):
+    from dataclasses import replace
+    import astrbot_plugin_bond.storage.sqlite_backend as backend
+
+    async def run():
+        clock = [1000.0]
+        monkeypatch.setattr(backend.time, "time", lambda: clock[0])
+
+        class LatencyProvider(Provider):
+            async def text_chat(self, prompt):
+                clock[0] += 20 if self.calls == 0 else 1
+                return await super().text_chat(prompt)
+
+        store, favor, service, providers = await setup(tmp_path, LatencyProvider())
+        service.config = replace(service.config, cooldown_sec=120)
+        try:
+            assert await service.assess(interaction(), directed=True) == "accepted"
+            clock[0] = 1119
+            assert (
+                await service.assess(interaction(message="early"), directed=True)
+                == "duplicate_or_cooldown"
+            )
+            assert providers["small"].calls == 1
+            clock[0] = 1121
+            assert (
+                await service.assess(interaction(message="second"), directed=True)
+                == "accepted"
+            )
+            assert providers["small"].calls == 2
+            assert len(await favor.query_logs("789", "456")) == 2
+        finally:
+            await store.close()
+
+    asyncio.run(run())

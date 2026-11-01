@@ -185,7 +185,9 @@ class AssessmentService:
                         event_id=interaction.event_id,
                         reason=verdict.event_type,
                         message=verdict.evidence,
-                        cooldown_sec=cfg.cooldown_sec,
+                        # 自动评估以 claim_assessment 的入场时间为唯一冷却边界。
+                        # 提交仍检查事件去重和每日限幅，不按推理完成时间二次拒绝。
+                        cooldown_sec=0,
                     )
                     status = (
                         "accepted"
