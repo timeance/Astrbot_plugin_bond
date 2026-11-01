@@ -41,6 +41,7 @@ createApp({
     const promptNoticeError = ref(false);
     const promptRequestTarget = ref(null);
     const memberRequestTarget = ref(null);
+    let memberSession = 0;
     const evaluationLoading = ref(false);
     const modelSaving = ref(false);
     const modelConfig = ref({});
@@ -168,7 +169,7 @@ createApp({
       sameRequestTarget(target, currentPromptFields(), ["kind", "level", "group_id"]);
     const isCurrentMemberRequest = (target, revision) =>
       isCurrentScope(target, revision) &&
-      sameRequestTarget(target, memberRequestTarget.value, ["group_id", "user_id"]);
+      sameRequestTarget(target, memberRequestTarget.value, ["group_id", "user_id", "session"]);
     const normalizeModelConfig = (config = {}) => ({
       ...DEFAULT_MODEL_CONFIG,
       ...(config && typeof config === "object" ? config : {}),
@@ -303,8 +304,11 @@ createApp({
         return;
       }
       errorMsg.value = "";
+      memberDetail.value = null;
+      memberSaveLoading.value = false;
       memberLoading.value = true;
-      const target = { ...snapshot, group_id: groupId, user_id: String(u.user_id) };
+      memberSession += 1;
+      const target = { ...snapshot, group_id: groupId, user_id: String(u.user_id), session: memberSession };
       memberRequestTarget.value = target;
       try {
         await loadMemberRecord(groupId, u.user_id, snapshot, revision, target);
@@ -315,15 +319,19 @@ createApp({
       }
     };
     const closeMember = () => {
+      memberSession += 1;
       memberRequestTarget.value = null;
       memberDetail.value = null;
+      memberLoading.value = false;
+      memberSaveLoading.value = false;
+      setMemberNotice("");
     };
     const saveRelation = async () => {
       const member = memberDetail.value;
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!member || !snapshot) return;
-      const target = { ...snapshot, group_id: String(member.group_id), user_id: String(member.user_id) };
+      const target = { ...snapshot, group_id: String(member.group_id), user_id: String(member.user_id), session: memberSession };
       if (!isCurrentMemberRequest(target, revision)) memberRequestTarget.value = target;
       const familiarity = Number(relationForm.value.familiarity);
       const affinity = Number(relationForm.value.affinity);
@@ -364,7 +372,7 @@ createApp({
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!member || !snapshot) return;
-      const target = { ...snapshot, group_id: String(member.group_id), user_id: String(member.user_id) };
+      const target = { ...snapshot, group_id: String(member.group_id), user_id: String(member.user_id), session: memberSession };
       if (!isCurrentMemberRequest(target, revision)) memberRequestTarget.value = target;
       memberSaveLoading.value = true;
       setMemberNotice("");
@@ -394,7 +402,7 @@ createApp({
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
-      const target = { ...snapshot, group_id: String(m.group_id), user_id: String(m.user_id) };
+      const target = { ...snapshot, group_id: String(m.group_id), user_id: String(m.user_id), session: memberSession };
       if (!isCurrentMemberRequest(target, revision)) memberRequestTarget.value = target;
       errorMsg.value = "";
       memberLoading.value = true;

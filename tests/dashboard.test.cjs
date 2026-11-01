@@ -109,3 +109,20 @@ for(const operation of ['switch','restore']) test(`log tab reloads after ${opera
  assert.ok(request);assert.equal(request.params.bot_id,ui.selectedBot.value);
  assert.equal(ui.logs.value[0].id,ui.selectedBot.value);assert.equal(ui.tab.value,'logs');
 });
+
+for(const operation of ['saveRelation','saveProfile','refreshImpression']) test(`closing during ${operation} releases the editor and ignores the old session`,async()=>{
+ const {ui,pending,pendingGets}=harness();
+ const member={group_id:'10001',user_id:'u-same',familiarity:4,affinity:5,trust:6,tags:[],impression:''};
+ const first=ui.openMember(member);pendingGets[0].resolve({success:true,member});await first;
+ const old=ui[operation]();
+ assert.equal(ui.memberSaveLoading.value || ui.memberLoading.value,true);
+ ui.closeMember();
+ assert.equal(ui.memberSaveLoading.value,false);assert.equal(ui.memberLoading.value,false);
+ const reopened=ui.openMember(member);pendingGets[1].resolve({success:true,member});await reopened;
+ const current=ui.saveProfile();assert.equal(ui.memberSaveLoading.value,true);
+ pending[0].resolve({success:false,error:'stale failure'});await old;
+ assert.equal(ui.memberSaveLoading.value,true);assert.equal(ui.memberNotice.value,'');assert.equal(ui.errorMsg.value,'');
+ pending[1].resolve({success:true});await new Promise(resolve=>setImmediate(resolve));
+ pendingGets[2].resolve({success:true,member});await current;
+ assert.equal(ui.memberSaveLoading.value,false);assert.equal(ui.memberNotice.value,'印象和标签已保存');
+});
