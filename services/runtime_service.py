@@ -17,6 +17,8 @@ class RuntimeService:
         self._bundles = {}
         self._lock = asyncio.Lock()
         self._observed_bot_ids = set()
+        self._names_lock = asyncio.Lock()
+        self._names_refreshed = {}
         self._default_mode = scope_mode(config.get("default_scope_mode", "per_group"))
         whitelist = config.get("group_whitelist", [])
         if not isinstance(whitelist, list):
@@ -157,3 +159,27 @@ class RuntimeService:
             {"bot_id": bot_id, "scope_mode": self.current_mode(bot_id)}
             for bot_id in self.known_bot_ids()
         ]
+
+    async def refresh_names(self, bot_id, mode, group_id, user_id):
+        import time
+
+        if self._names_lock.locked():
+            raise ValueError("正在刷新昵称，请稍后重试")
+        key = (bot_id, mode, group_id, user_id)
+        async with self._names_lock:
+            if time.monotonic() - self._names_refreshed.get(key, -100) < 30:
+                raise ValueError("请间隔 30 秒再刷新")
+            if self._bot_discovery is None:
+                raise ValueError("平台资料查询不可用")
+            result = await self._bot_discovery.fetch_names(bot_id, group_id, user_id)
+            nickname = result.get("nickname")
+            card = result.get("card") if group_id else None
+            if nickname is not None and not isinstance(nickname, str):
+                raise ValueError("平台昵称格式无效")
+            if card is not None and not isinstance(card, str):
+                raise ValueError("平台群名片格式无效")
+            deps = await self.select(bot_id, mode)
+            await deps.favor.update_member_names(group_id, user_id, nickname, card)
+            if len(self._names_refreshed) >= 4096:
+                self._names_refreshed.clear()
+            self._names_refreshed[key] = time.monotonic()

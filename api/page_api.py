@@ -6,7 +6,7 @@ from astrbot.api import logger
 from dataclasses import asdict
 from uuid import uuid4
 
-from ..core.scope import account_id, scope_mode as validate_scope_mode
+from ..core.scope import GLOBAL_GROUP, account_id, scope_mode as validate_scope_mode
 
 PLUGIN_NAME = "astrbot_plugin_bond"
 
@@ -211,7 +211,7 @@ class PageApi:
         reg(
             f"/{PLUGIN_NAME}/member",
             self.handle_member,
-            ["GET"],
+            ["GET", "POST"],
             "Bond 成员详情（印象/标签/近期评审）",
         )
         reg(
@@ -321,22 +321,41 @@ class PageApi:
 
         return await self._invoke(run)
 
+    @staticmethod
+    def _relation_group(params, mode):
+        if mode == "global" and not params.get("group_id"):
+            return GLOBAL_GROUP
+        return PageApi._required_account(params, "group_id")
+
     async def handle_member(self):
         async def run():
             params = await self._params()
             _bot_id, _mode, deps = await self._deps(params)
-            group_id = self._required_account(params, "group_id")
+            group_id = self._relation_group(params, _mode)
             user_id = self._required_account(params, "user_id")
+            if request is not None and request.method == "POST":
+                await self._runtime.refresh_names(
+                    _bot_id,
+                    _mode,
+                    "" if group_id == GLOBAL_GROUP else group_id,
+                    user_id,
+                )
             rec = await deps.favor.get(group_id, user_id)
-            logs = await deps.favor.query_logs(group_id, user_id, limit=30)
+            logs = (
+                await deps.favor.query_logs(group_id, user_id, limit=30)
+                if group_id != GLOBAL_GROUP
+                else []
+            )
             judged = [row for row in logs if row.get("source") == "judge"][:10]
             return self._response(
                 {
                     "success": True,
                     "member": {
-                        "group_id": group_id,
+                        "group_id": "" if group_id == GLOBAL_GROUP else group_id,
                         "user_id": user_id,
-                        "nickname": rec.nickname or "",
+                        "nickname": await deps.favor.member_name(
+                            None if group_id == GLOBAL_GROUP else group_id, user_id
+                        ),
                         "favor": rec.favor,
                         "affinity": rec.affinity,
                         "familiarity": rec.familiarity,
@@ -448,8 +467,8 @@ class PageApi:
     async def handle_relation(self):
         async def run():
             params = await self._params()
-            _, _, deps = await self._deps(params)
-            group = self._required_account(params, "group_id")
+            _, mode, deps = await self._deps(params)
+            group = self._relation_group(params, mode)
             user = self._required_account(params, "user_id")
             reason = params.get("reason", "管理员调整")
             if not isinstance(reason, str) or len(reason) > 120:
