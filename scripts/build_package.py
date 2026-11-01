@@ -47,6 +47,7 @@ def validate_archive(archive: Path) -> None:
             "pages/dashboard/index.html",
             "resources/prompts/judge_prompt.txt",
             "resources/prompts/inject_template.txt",
+            "resources/prompts/bond_behavior.txt",
         }
         missing = required - names
         if missing:

@@ -379,3 +379,68 @@ def test_admission_cooldown_is_independent_of_model_latency(tmp_path, monkeypatc
             await store.close()
 
     asyncio.run(run())
+
+
+def test_corrupt_prompts_skip_model_and_keep_local_relation_service(tmp_path):
+    from astrbot_plugin_bond.services.prompt_service import PromptService
+
+    async def run():
+        store, favor, service, providers = await setup(tmp_path)
+        try:
+            path = tmp_path / "prompts.json"
+            path.write_text("{broken", encoding="utf-8")
+            service.prompts = PromptService(path)
+            assert await service.assess(interaction(), directed=True) == "failed"
+            assert providers["small"].calls == 0
+            assert providers["large"].calls == 0
+            assert (await service.stats())["calls"] == []
+            assert service.capacity.active == 0
+            await favor.set_favor("789", "456", 5)
+            assert (await favor.get_relation("789", "456")).affinity == 5
+            assert path.read_text(encoding="utf-8") == "{broken"
+        finally:
+            await store.close()
+
+    asyncio.run(run())
+
+
+def test_small_and_large_share_one_prompt_snapshot(tmp_path):
+    from astrbot_plugin_bond.services.prompt_service import PromptService
+
+    async def run():
+        prompts = PromptService(tmp_path / "prompts.json")
+        prompts.set_template("assessment", mode="custom", template="第一份评估规则")
+        seen = []
+
+        class ChangingProvider:
+            async def text_chat(self, prompt):
+                seen.append(prompt)
+                prompts.set_template(
+                    "assessment", mode="custom", template="第二份评估规则"
+                )
+                return SimpleNamespace(
+                    completion_text=verdict(kind="criticism", confidence=0.5),
+                    usage=None,
+                )
+
+        class ReviewProvider:
+            async def text_chat(self, prompt):
+                seen.append(prompt)
+                return SimpleNamespace(completion_text=verdict(), usage=None)
+
+        store, favor, service, _ = await setup(
+            tmp_path,
+            small=ChangingProvider(),
+            large=ReviewProvider(),
+            large_provider_id="large",
+        )
+        service.prompts = prompts
+        try:
+            assert await service.assess(interaction(), directed=True) == "accepted"
+            assert len(seen) == 2
+            assert all(text.startswith("第一份评估规则") for text in seen)
+            assert prompts.resolve("assessment").startswith("第二份评估规则")
+        finally:
+            await store.close()
+
+    asyncio.run(run())

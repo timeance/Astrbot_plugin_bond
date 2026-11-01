@@ -1,87 +1,99 @@
 # Bond
 
-面向 AstrBot 的社交关系插件，根据持续互动记录成员印象，让机器人在当前人格下表现出不同的熟悉程度、亲近态度和信任。
+Bond 是面向 AstrBot 的关系记忆插件。它按 Bot 和数据作用域保存成员关系、印象与变动流水，并把关系称谓和经过校验的资料用于后续对话。
 
-**项目正在开发，当前为开发版，不建议用于正式群聊。** 已实现按 Bot 与作用域分库及三维关系服务；隐藏分值的群聊查询仍待实施。现有评估、人格注入及麦麦联动默认关闭。
+当前版本为 `0.2.0-dev`。PR0 至 PR7 按依赖顺序审核，最终验收记录见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。截至本次文档更新，`main` 仍只有许可证提交，不能作为用户安装来源。完成全部审核前不要自动合并或发布；试用代码位于 [`feat/pr7-release-readiness`](https://github.com/timeance/Astrbot_plugin_bond/tree/feat/pr7-release-readiness)，安装时使用该分支快照或审核版 ZIP。
 
-基于 [Xinxian](https://github.com/yiwuerxin/astrbot_plugin_xinxian) 增量开发，原作者为 yiwuerxin，Bond 由 Timeance 和贡献者维护。
+## 兼容性
 
-## 目前能做什么
+- AstrBot `4.28.0` 已完成插件装配实测，元数据兼容范围为 `>=4.28,<5`。
+- 离线 CI 覆盖 Python `3.10` 和 `3.12`；AstrBot `4.28.0` 装配检查使用 Python `3.12`。
+- 目标平台为 `aiocqhttp`。真实 QQ 群聊、同时安装 Angel Heart 的聊天链路、联网模型效果和完整 Dashboard 浏览器流程仍待最终验收。
 
-当前版本可以在 AstrBot 4.28.0 中加载，保存本地关系记录，并注册成员、流水和撤销等管理接口。新增熟悉度、亲近度和信任度的独立存储、本地事件规则及三维撤销。聊天评估统一使用三维事件协议：本地过滤、小模型分类、受限复核、本地规则和原子写入。模型无法指定分数。
+## 功能边界
 
-| 能力 | 当前状态 |
-| --- | --- |
-| 本地记录、变动流水、撤销、成员印象 | 已保留上游实现；自动评估默认关闭 |
-| 原生插件面板 | 已验证接口注册和空库查询；完整页面登录与操作待验收 |
-| 熟悉度、亲近度、信任度 | 已实现存储、规则、独立限幅、撤销和模型事件接入 |
-| 按 Bot 账号及群独立／全局模式隔离数据 | 已实现独立文件、模式路由和本群成员索引 |
-| 个人关系称谓、本群前 10 名且不公开分数 | 计划中；当前排行仍可能显示具体分值 |
-| 分级模型评估 | 已实现 Provider ID 选择、限流、持久去重与复核预算；真实模型效果待验收 |
-| 自定义提示词与人格适配 | 计划中 |
-| LivingMemory 可选增强 | 尚未接入，无需安装 |
+### 关系与数据
 
-Bond 的关系状态将用于调整语气和互动方式，当前 AstrBot 人格仍是依据；是否参与群聊由 AstrBot 或 Angel Heart 等插件决定。这部分联动尚未完成验收。
+- 关系由熟悉度 `familiarity`、亲近度 `affinity`、信任度 `trust` 三个维度组成，不压缩成总分。熟悉度范围为 `0..100`，亲近度和信任度范围为 `-100..100`。
+- 数据目录为 `data/plugin_data/astrbot_plugin_bond/`。每个真实 Bot 独立拥有 `bots/{bot_id}/group.db` 和 `bots/{bot_id}/global.db`。
+- `per_group` 与 `global` 只是数据空间路由。切换模式不会迁移、复制、合并或删除历史；全局排行仍只列出当前群已经观察到的成员。
+- 普通群友可使用 `/我的关系` 查询自己的关系称谓，使用 `/好感排行` 查询本群前 10 名的称谓。公开查询不显示任何关系分值，也不能查询他人的私有数值。
 
-## 开发版安装
+### 管理面板
 
-需要 **Python 3.12+、AstrBot 4.28+**。目前仅验证 AstrBot 4.28.0 的插件装配，目标平台为 aiocqhttp；其他版本和平台尚未验收。
+Bond 使用 AstrBot 原生 Dashboard 的页面接口，写操作要求宿主认证。管理功能包括：
 
-1. 在独立测试环境中，将本仓库的 `feat/pr3-tiered-assessment` 分支检出到 `data/plugins/astrbot_plugin_bond/`。安装目录使用全小写的插件标识。
-2. 在 AstrBot 中加载插件，打开插件配置，核对以下开关保持关闭。
-3. 查看加载日志。若要检查管理页面，从 AstrBot 原生插件视图进入；请使用测试数据。
+- 选择 Bot、`per_group/global` 数据空间和群号；
+- 编辑熟悉度、亲近度、信任度，保存理由并写入审计流水；
+- 编辑成员印象和标签，查看关系流水、评估结果与撤销预览；
+- 查看评估调用次数、Token 用量和失败状态；Provider 未提供用量时显示未知，货币费用不作估算；
+- 分别管理评估提示词和行为提示词，支持全局设置、Bot 群级覆盖、预览和恢复上级设置；
+- 保存模型配置后重载插件，所有 Bot 和作用域重新使用同一份配置。重载前已经开始的任务继续使用旧配置。
 
-| 配置项 | 基线默认值 | 含义 |
+### 自动评估与成本
+
+自动评估默认关闭。启用 `assessment.enabled` 时必须配置 `assessment.small_provider_id`，`assessment.large_provider_id` 可留空。小模型输出事件建议，三维变化由本地规则、限幅和 SQLite 事务决定；模型不能直接写入分值。
+
+空文本、寒暄、重复消息和不满足触发条件的消息会被本地过滤。小模型失败、超时、解析失败、复核预算耗尽或结果不确定时，本次不改变关系，正常对话继续。达到在途并发上限时候选直接记为 `busy` 并丢弃，不排队，也不把多条消息合并成一次模型调用。
+
+统计包含调用数、Token 用量和失败状态。Provider 没有返回 Token 时用量为未知；当前没有可靠的货币单价和费用计算，不能把插件描述为免费或零成本。
+
+### 提示词
+
+提示词保存在独立文件 `data/plugin_data/astrbot_plugin_bond/prompts.json`，与 AstrBot 插件配置分开。评估提示词和行为提示词分别管理，群级覆盖按真实 Bot ID 和群 ID 保存。保存成功后当前进程立即使用新模板；评估模板始终保留程序的结构化输出协议，未知占位符会被拒绝。文件损坏时保留原文件，面板提示修复或恢复 `prompts.json` 后重载；自动评估和关系注入暂停，本地关系查询与管理继续运行。
+
+Bond 只追加当前会话的关系资料，保留 AstrBot 当前人格，不替换人格、输入或历史。全局关系模式不召回其他群的印象和聊天流水。
+
+### LivingMemory
+
+LivingMemory 是可选增强，不是运行依赖。当前调查基线为公开仓库提交 `a1e9c20`，版本 `2.8.2`。调查未发现能够证明真实 Bot 和群作用域的公开 API，因此 Bond 只保留动态发现、配置状态和 `unsupported_scope` 降级，不声称完成真实召回、外部写入或持久去重。
+
+`livingmemory.enabled`、`livingmemory.read_enabled`、`livingmemory.write_enabled` 独立控制：
+
+- 关闭总开关时不探测缺失实例、不读取、不写入，也不报可选插件错误；
+- 启用后每次按需重新发现实例，不缓存旧对象；缺失、禁用、接口变化或错误时回到本地 standalone；
+- Bond 不读取 LivingMemory 内部数据库，不导入、不迁移、不删除其历史，也不要求安装 LivingMemory；
+- 外部记忆文本不能直接修改 Bond 的三维关系、印象或流水。
+
+## 安装与配置
+
+1. 审核链为 #1 → #2 → #3 → #4（审查修复）→ #5 → #6 → #7 → #8 → #9。合并前试用时下载 `feat/pr7-release-readiness` 分支 ZIP，解压后将顶层目录改名为 `astrbot_plugin_bond`。当前 `main` 不能安装。
+2. 将插件放入 AstrBot 的 `data/plugins/astrbot_plugin_bond/` 目录，保持目录名为 `astrbot_plugin_bond`，再重载插件。
+3. 首次收到可信 Bot 的群事件后，Bond 才会为该 Bot 初始化 `group.db` 和 `global.db`。面板只显示已经产生可信事件的 Bot。
+4. 初次运行保持以下开关关闭，确认本地管理和公开称谓查询正常后再单独启用需要的功能。
+
+| 配置项 | 默认建议 | 说明 |
 | --- | --- | --- |
-| `assessment.enabled` | 关闭 | 自动调用模型评估三维互动 |
-| `inject.enabled` | 关闭 | 向回复提示词追加关系信息 |
-| `judge.follow_maisoul_replyer` | 关闭 | 跟随麦麦插件所用的回复模型 |
-| `coupling.enabled` | 关闭 | 与麦麦插件交换数值情绪事件 |
+| `assessment.enabled` | `false` | 自动调用模型评估三维互动 |
+| `assessment.small_provider_id` | 空 | 启用评估时必填 |
+| `assessment.large_provider_id` | 空 | 可选的复核模型 |
+| `inject.enabled` | `false` | 是否向回复追加关系资料 |
+| `livingmemory.enabled` | `false` | LivingMemory 总开关 |
+| `livingmemory.read_enabled` | `false` | 独立读取开关 |
+| `livingmemory.write_enabled` | `false` | 独立写入开关 |
 
-自动评估由 `assessment.enabled` 控制，默认关闭。启用前指定 `assessment.small_provider_id`；可选指定 `large_provider_id`。旧 `judge.enabled` 不再启动标量评分，保留旧配置供升级核对。印象汇总模型继续由旧 `judge.provider_id` 选择，手动刷新仍可能调用模型。
-
-评估配置、预算范围与回放结果见 [PR-3 说明](docs/PR3_ASSESSMENT.md)。
-
-完整配置通过 AstrBot 的插件配置页修改。当前不提供生产用推荐参数；关系模型与评估安全策略完成前，请勿在正式环境启用本开发版，也不要与 Xinxian 同时启用评估和注入。群聊命令仍是上游行为，完成隐私与权限改造前，不建议向群友开放。
-
-模式选择、备份恢复和本阶段限制见 [分库说明](docs/PR1_ISOLATION.md)。首次启动等待可信 Bot 事件后，面板才会显示该 Bot；`ignored_bot_ids` 可补充其他机器人账号。
-
-## 三维关系
-
-熟悉度为 0～100，亲近度和信任度为 -100～100，均保留一位小数。称谓按三维条件组合，例如“熟悉、亲近但戒备”，不会合成一个总分。亲近度沿用上游 `favor` 数据列；升级后已有分值保留，熟悉度和信任度从 0 开始，不推测历史互动。
-
-服务层支持经过验证的互动事件和管理员调整，默认每日正向限幅分别为熟悉度 +2、亲近度 +3、信任度 +1，亲近度与信任度的负向限幅分别为 -6、-4。后台配置入口与完整三维编辑页面由后续阶段提供；当前认证成员查询接口可返回三维状态。
-
-实现范围和配置接口见 [PR-2 说明](docs/PR2_RELATIONS.md)。
-
-## 数据与隐私
-
-本地数据保存在 `data/plugin_data/astrbot_plugin_bond/`，数据库为 `bots/{bot_id}/group.db` 与 `bots/{bot_id}/global.db`。模式切换只选择空间，不复制或合并数据；不会自动读取旧 `bond.db` 或 Xinxian 的数据。
-
-启用评估后，消息文本及配置允许的近期会话上下文会发送给选定的 AstrBot 模型提供商；手动刷新成员印象也可能调用模型，并发送当前印象刷新批次的相关评审流水（数量由 `impression.interval` 决定）。关闭自动评估不等于禁用所有手动模型调用，请按需操作。
-
-请勿在 Issue、截图或 PR 中提交真实聊天记录、用户数据库、账号标识或密钥。
-
-## LivingMemory
-
-当前没有接入 LivingMemory，未安装、禁用或卸载它均不影响 Bond 的本地运行。
-
-后续集成会默认关闭，读取与写入分别控制。Bond 将继续以自己的本地数据库保存关系、印象和流水；关闭集成不删除这些记录，也不删除 LivingMemory 的记忆。无法确认记忆属于当前 Bot 和允许作用域时，跳过读取。外部记忆写入另行验收。
+启用评估或手动刷新印象时，消息文本、配置允许的上下文或有限流水可能发送给所选 AstrBot Provider。不要把真实聊天记录、账号标识、数据库或密钥提交到 Issue、截图或 PR。
 
 ## 升级与回滚
 
-升级前停用插件，备份代码、AstrBot 保存的插件配置和整个 Bond 数据目录，再替换代码并重新加载。复制 SQLite 文件前应确保插件已停止写入；在线备份须使用 SQLite backup API。
+升级前停用插件并备份：
 
-回滚时先停用插件，再恢复同一版本的代码、配置及数据库备份。不要让旧代码直接打开不支持的新数据库结构。当前没有从 Xinxian 导入历史数据的功能，Bond 的升级与回滚也不会修改 LivingMemory 数据。
+- 插件代码；
+- AstrBot 保存的插件配置；
+- `data/plugin_data/astrbot_plugin_bond/` 整个数据目录。
 
-## 反馈与参与开发
+复制 SQLite 文件前必须停止写入，在线备份使用插件提供的 SQLite backup API。回滚时恢复同一版本的代码、配置和数据备份；旧 schema 的备份只能交给支持该 schema 的旧代码读取，不能让老代码直接打开新数据库。Bond 不自动导入旧 `bond.db` 或 Xinxian 数据，也不因切换 `per_group/global` 自动迁移关系。
 
-请在 [Issues](https://github.com/timeance/Astrbot_plugin_bond/issues) 中提供插件版本、AstrBot 版本、复现步骤及脱敏日志。说明预期结果和实际结果即可。
+## 许可与来源
 
-测试、CI、发布检查和开发约定见 [开发指南](docs/DEVELOPMENT.md)。功能需求与实施阶段见 [需求文档](docs/PRD.md)，当前差距与验证范围见 [工程审查](docs/PR0_AUDIT.md)。
+本仓库包含 GNU AGPL v3 许可证全文，来源和修改归属见 [NOTICE](NOTICE)。Bond 源自 yiwuerxin 的 `astrbot_plugin_xinxian`，保留上游说明和原作者署名；上游固定基线 README 明确声明 `AGPL-3.0`，该基线没有独立 LICENSE。Bond 补齐标准许可证全文并沿用该声明，不声称取得额外授权或 GitHub 原生 Fork 关系。修改后通过网络提供服务时，应依许可证向使用者提供实际运行版本的对应源码。
 
-## 开源许可
+相关文档：
 
-使用 [AGPL-3.0](LICENSE)。上游来源、原作者署名和修改说明见 [NOTICE](NOTICE)，原说明保留在 [上游 README](docs/upstream/README.xinxian.md)。
-
-本项目的对应源码位于 [timeance/Astrbot_plugin_bond](https://github.com/timeance/Astrbot_plugin_bond)。向用户提供修改版网络服务时，应提供实际运行版本的对应源码，包括本地修改；分发时保留许可证与来源信息。
+- [需求与阶段](docs/PRD.md)
+- [PR0 工程审查](docs/PR0_AUDIT.md)
+- [提示词说明](docs/PROMPTS.md)
+- [管理面板说明](docs/PR5_MANAGEMENT.md)
+- [LivingMemory 调查](docs/LIVINGMEMORY.md)
+- [PR0–PR7 验收证据与限制](docs/ACCEPTANCE.md)
+- [开发与交付](docs/DEVELOPMENT.md)

@@ -206,3 +206,33 @@ def test_global_resolve_uses_the_same_immutable_assessment_contract(tmp_path):
     service.set_template("assessment", mode="custom", template="补充判断条件")
     assert service.resolve("assessment") == service.resolve("assessment", "123", "456")
     assert service.resolve("assessment").endswith(ASSESSMENT_OUTPUT_CONTRACT)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"{broken",
+        b'{"version":99}',
+        b'{"version":1,"global":{"behavior":{"mode":"custom","template":"{unknown}"}}}',
+        b"\xff",
+    ],
+)
+def test_corrupt_persisted_prompts_disable_service_without_replacing_file(
+    tmp_path, content
+):
+    path = tmp_path / "prompts.json"
+    path.write_bytes(content)
+    service = PromptService(path)
+    assert service.load_error
+    for operation in (
+        lambda: service.resolve("behavior", "123", "456"),
+        lambda: service.get_settings(),
+        lambda: service.preview("behavior", mode="custom", template="草稿"),
+        lambda: service.set_template("behavior", mode="custom", template="新内容"),
+        lambda: service.reset(),
+    ):
+        with pytest.raises(ValueError, match="修复或恢复"):
+            operation()
+        assert path.read_bytes() == content
+    path.unlink()
+    assert PromptService(path).load_error is None

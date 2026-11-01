@@ -53,10 +53,19 @@ class PromptService:
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
         self.path = Path(path)
-        if self.path.exists() and not self.path.is_file():
-            raise ValueError("提示词持久化路径必须是文件")
         self._lock = threading.RLock()
-        self._settings = self._load()
+        self.load_error: str | None = None
+        self._settings: dict[str, Any] | None = None
+        try:
+            self._settings = self._load()
+        except (ValueError, TypeError, OSError):
+            self.load_error = (
+                "提示词文件无法读取或校验失败；请修复或恢复 prompts.json 后重载插件"
+            )
+
+    def _require_available(self) -> None:
+        if self.load_error:
+            raise ValueError(self.load_error)
 
     # ---------- public contract ----------
 
@@ -64,6 +73,7 @@ class PromptService:
         self, kind: str, bot_id: str | None = None, group_id: str | None = None
     ) -> str:
         """返回指定 Bot 在指定真实群中的最终提示词。"""
+        self._require_available()
         kind = self._validate_kind(kind)
         bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
         with self._lock:
@@ -91,6 +101,7 @@ class PromptService:
         - `get_settings(kind)` 返回该类的默认模板、全局设置和群覆盖。
         - `get_settings(kind, bot_id, group_id)` 追加 `effective` 结果。
         """
+        self._require_available()
         if kind is not None:
             kind = self._validate_kind(kind)
         bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
@@ -124,6 +135,7 @@ class PromptService:
         template: str = "",
     ) -> None:
         """设置全局或群级模板，并在成功持久化后立即更新当前实例。"""
+        self._require_available()
         kind = self._validate_kind(kind)
         bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
         mode = self._validate_mode(mode)
@@ -147,6 +159,7 @@ class PromptService:
         group_id: str | None = None,
     ) -> None:
         """恢复默认配置；可只清除一个全局类或一个群级覆盖。"""
+        self._require_available()
         if kind is not None:
             kind = self._validate_kind(kind)
         bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
@@ -182,6 +195,7 @@ class PromptService:
         template: str | None = None,
     ) -> str:
         """用固定合成样本渲染已保存模板或未保存草稿，不写入文件。"""
+        self._require_available()
         kind = self._validate_kind(kind)
         bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
         if (bot_id is None) != (group_id is None):
