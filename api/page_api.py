@@ -178,6 +178,12 @@ class PageApi:
         reg = getattr(context, "register_web_api", None)
         if reg is None or jsonify is None:
             return
+        reg(
+            f"/{PLUGIN_NAME}/assessment_stats",
+            self.handle_assessment_stats,
+            ["GET"],
+            "Bond 评估调用统计",
+        )
         reg(f"/{PLUGIN_NAME}/logs", self.handle_logs, ["GET"], "Bond 关系变动记录")
         reg(
             f"/{PLUGIN_NAME}/groups",
@@ -416,6 +422,15 @@ class PageApi:
                 raise _PageOperationError from exc
             return self._response(
                 {"success": True, "bot_id": bot_id, "scope_mode": mode}
+            )
+
+        return await self._invoke(run)
+
+    async def handle_assessment_stats(self):
+        async def run():
+            _bot_id, _mode, deps = await self._deps(await self._params())
+            return self._response(
+                {"success": True, "stats": await deps.assessment.stats()}
             )
 
         return await self._invoke(run)

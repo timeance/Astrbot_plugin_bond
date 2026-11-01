@@ -66,9 +66,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 10
+    assert len(routes) == 11
     assert set(route_names) == {
         "logs",
+        "assessment_stats",
         "groups",
         "users",
         "undo",
@@ -104,21 +105,31 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         release = asyncio.Event()
         seen = {}
 
+        from astrbot_plugin_bond.services.assessment_service import AssessmentConfig
+
+        old_deps.assessment.config = AssessmentConfig(
+            enabled=True, small_provider_id="smoke"
+        )
+
         class GateProvider:
-            async def judge(self, event, text, **kwargs):
-                seen["identity"] = (
-                    event.get_group_id(),
-                    event.get_sender_id(),
-                    event.get_self_id(),
-                    event.unified_msg_origin,
-                    event.get_platform_name(),
-                    event.message_id,
-                )
+            async def text_chat(self, prompt):
+                seen["payload"] = json.loads(prompt.split("输入：", 1)[1])
                 entered.set()
                 await release.wait()
-                return SimpleNamespace(delta=1.0, reason="smoke", attitude="友好")
+                return SimpleNamespace(
+                    completion_text=json.dumps(
+                        {
+                            "event_type": "friendly",
+                            "confidence": 0.95,
+                            "evidence": "冻结身份测试",
+                        }
+                    ),
+                    usage=None,
+                )
 
-        old_deps.judge.judge = GateProvider().judge
+        old_deps.assessment.context = SimpleNamespace(
+            get_provider_by_id=lambda _: GateProvider()
+        )
 
         class FakeEvent:
             def __init__(self):
@@ -130,7 +141,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
                 self.message_id = "message-old"
                 self.message_str = "冻结身份测试"
                 self.message_obj = SimpleNamespace(
-                    message=[], message_id=self.message_id
+                    message=[At(qq=BOT_IDS[0])], message_id=self.message_id
                 )
 
             def get_group_id(self):
@@ -152,6 +163,8 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             def unified_msg_origin(self):
                 return self.umo
 
+        from astrbot.api.message_components import At
+
         event = FakeEvent()
         dispatch = asyncio.create_task(_drain(plugin._on_group_msg(event)))
         await asyncio.wait_for(entered.wait(), timeout=2)
@@ -172,14 +185,11 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         release.set()
         await asyncio.wait_for(dispatch, timeout=2)
         await asyncio.wait_for(judge_task, timeout=2)
-        assert seen["identity"] == (
-            OLD_GROUP,
-            OLD_USER,
-            BOT_IDS[0],
-            "mock:old",
-            "mock",
-            "message-old",
-        )
+        assert seen["payload"] == {
+            "target_bot": BOT_IDS[0],
+            "sender": OLD_USER,
+            "text": "冻结身份测试",
+        }
         old_record = await old_deps.favor.get(OLD_GROUP, OLD_USER)
         assert old_record is not None and old_record.favor > 0
         mutated_record = await old_deps.favor.get("9001", "9002")
@@ -218,6 +228,16 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
                 if username is not None:
                     g.username = username
                 return await _response_parts(await handler())
+
+        for username, expected in ((None, 401), ("dashboard-admin", 200)):
+            status, body = await call(
+                page.handle_assessment_stats,
+                f"/astrbot_plugin_bond/assessment_stats?bot_id={BOT_IDS[0]}&scope_mode=per_group",
+                username=username,
+            )
+            assert status == expected
+            if expected == 200:
+                assert body["stats"]["events"]["accepted"] == 1
 
         status, body = await call(
             page.handle_users,
@@ -327,14 +347,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 10
+        assert len(context2.registered_web_apis) == 11
     finally:
         await plugin2.terminate()
     assert plugin2._storage._closed is True
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、10 路 WebUI、认证、备份恢复、卸载。"
+        "scope 持久化、冻结 listener、11 路 WebUI、认证、备份恢复、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

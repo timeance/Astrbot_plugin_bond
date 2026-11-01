@@ -36,6 +36,11 @@ from .core.taskregistry import TaskRegistry
 from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
 from .services.inject_service import InjectService
+from .services.assessment_service import (
+    AssessmentConfig,
+    AssessmentCapacity,
+    AssessmentService,
+)
 from .services.judge_service import JudgeService
 from .storage.router import BotScopeStorageRouter
 from .services.runtime_service import RuntimeService
@@ -90,6 +95,9 @@ class BondPlugin(Star):
         data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
 
         self._registry = TaskRegistry()
+        self._assessment_capacity = AssessmentCapacity(
+            (config.get("assessment") or {}).get("max_concurrent_assessments", 2)
+        )
         self._storage = BotScopeStorageRouter(data_dir)
         self._runtime = RuntimeService(self._storage, config, self._build_deps)
         self._relationships = None
@@ -191,7 +199,7 @@ class BondPlugin(Star):
         judge = JudgeService(
             context,
             storage,
-            enabled=bool(judge_cfg.get("enabled", False)),
+            enabled=False,
             provider_id=(judge_cfg.get("provider_id") or "").strip() or None,
             cooldown_sec=int(judge_cfg.get("cooldown_sec", 120)),
             max_abs_delta=float(judge_cfg.get("max_abs_delta", 3)),
@@ -229,7 +237,26 @@ class BondPlugin(Star):
         )
         impressions.bind_summarizer(judge)
 
+        assessment_cfg = dict(config.get("assessment") or {})
+        assessment_cfg.pop("max_concurrent_assessments", None)
+
+        async def budget_stores():
+            return [
+                await self._storage.get(storage.bot_id, mode)
+                for mode in ("per_group", "global")
+            ]
+
+        assessment = AssessmentService(
+            storage,
+            favor,
+            context,
+            AssessmentConfig(**assessment_cfg),
+            self._assessment_capacity,
+            budget_stores=budget_stores,
+        )
+
         return Deps(
+            assessment=assessment,
             favor=favor,
             judge=judge,
             inject=inject,

@@ -15,11 +15,9 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.provider import ProviderRequest
 
-from ..core.decimal import fmt
-from ..core.sanitize import sanitize_text
+from ..core.assessment import Interaction
 from ..core.taskregistry import TaskRegistry
 from ..services.favor_service import FavorService
-from . import emotion_bridge
 from ..services.impression_service import ImpressionService
 from ..services.inject_service import InjectService
 from ..services.judge_service import JudgeService
@@ -48,6 +46,7 @@ class Deps:
     # 开关只控本侧调用，麦麦侧两个总开关任一关闭桥也自动空转
     context: object | None = None
     emotion_coupling: bool = True
+    assessment: object | None = None
 
 
 @dataclass(frozen=True)
@@ -112,8 +111,8 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     except Exception:
         # 部分适配器无该访问器/抛错：昵称缺席只影响显示名,不阻断评审
         _nick = None
-    # P-F：引用前缀/转发占位不冒充发言人本人，清洗后再进评审
-    text = sanitize_text(event.message_str or "")
+    # 保留平台原文用于证据校验，不把清洗后的字符串伪装成原始证据。
+    text = event.message_str or ""
     has_at_bot, is_reply_bot = _chain_flags(event)
     event = AssessmentEvent(
         str(group_id),
@@ -129,50 +128,30 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
             await deps.favor.observe_member(group_id, user_id)
             if _nick:
                 await deps.favor.touch_nickname(group_id, user_id, _nick)
-            result = await deps.judge.judge(
-                event, text, has_at_bot=has_at_bot, is_reply_bot=is_reply_bot
-            )
-            if result is not None and result.delta:
-                # §6.6 方向①：评审增量先按麦麦连续情绪（pfb）调制——同向
-                # 放大/异向缩小（调制在经济学层之前，防通胀仍由后者收口）
-                delta = result.delta
-                coupled = deps.emotion_coupling and deps.context is not None
-                if coupled:
-                    delta = await emotion_bridge.modulate_delta(
-                        deps.context, group_id, delta
-                    )
-                change = await deps.favor.apply_judge(
-                    group_id,
-                    user_id,
-                    delta,
-                    reason=result.reason or f"judge:{result.attitude}",
-                    message=text,
+            if (
+                deps.assessment is not None
+                and deps.assessment.config.enabled
+                and text.strip()
+            ):
+                interaction = Interaction(
+                    event.bot_id,
+                    event.group_id,
+                    event.user_id,
+                    event.platform_name,
+                    event.message_id,
+                    text,
                 )
-                if change.delta:
-                    logger.info(
-                        f"[心弦] {group_id}/{user_id} 评估[{result.attitude}] "
-                        f"{change.delta:+.1f} -> {fmt(change.favor_after)}"
+                status = await deps.assessment.assess(
+                    interaction, directed=has_at_bot or is_reply_bot
+                )
+                if (
+                    status == "accepted"
+                    and deps.impressions is not None
+                    and deps.favor.scope_mode == "per_group"
+                ):
+                    await deps.impressions.maybe_refresh(
+                        group_id, user_id, umo=event.unified_msg_origin
                     )
-                    # §6.6 方向②：等级跃迁向麦麦注入情绪事件（失败静默）。
-                    # 基线用 apply_judge 回传的同事务 favor_before——事务外
-                    # 预读会被并发的其他好感更新夹在中间，判定成陈旧等级
-                    if coupled and change.favor_before is not None:
-                        await emotion_bridge.notify_level_change(
-                            deps.context,
-                            group_id,
-                            deps.favor.level_of(change.favor_before),
-                            deps.favor.level_of(change.favor_after),
-                            deps.favor.level_order(),
-                        )
-                    if (
-                        deps.impressions is not None
-                        and deps.favor.scope_mode == "per_group"
-                    ):
-                        await deps.impressions.maybe_refresh(
-                            group_id,
-                            user_id,
-                            umo=getattr(event, "unified_msg_origin", "") or "",
-                        )
         except Exception:
             # 意外异常属疑难：warning 必须带堆栈，否则后台静默死因不可查
             logger.warning("[心弦] 后台评估任务异常（忽略，不影响对话）", exc_info=True)

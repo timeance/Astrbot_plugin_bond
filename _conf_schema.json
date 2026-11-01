@@ -36,12 +36,12 @@
   },
   "judge": {
     "type": "object",
-    "description": "LLM 情绪评估：对当前助手说的话由模型判断态度并微调好感度",
+    "description": "上游评估配置留档；仅摘要模型解析继续使用，自动评分使用 assessment",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "开发基线默认关闭；多 Bot 隔离和结构化事件评估完成前请勿在生产启用"
+        "description": "已停用的旧标量开关；请使用 assessment.enabled"
       },
       "provider_id": {
         "type": "string",
@@ -693,5 +693,65 @@
     "type": "list",
     "default": [],
     "hint": "结构化发送者账号命中时跳过关系记录与评估；不按昵称或正文识别。"
+  },
+  "assessment": {
+    "type": "object",
+    "description": "三维互动评估",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "default": false,
+        "description": "启用三维互动评估"
+      },
+      "small_provider_id": {
+        "type": "string",
+        "default": "",
+        "description": "小模型 AstrBot Provider ID"
+      },
+      "large_provider_id": {
+        "type": "string",
+        "default": "",
+        "description": "复核 Provider ID；留空时不调用复核模型"
+      },
+      "assessment_mode": {
+        "type": "string",
+        "default": "tiered",
+        "options": [
+          "single",
+          "tiered"
+        ],
+        "description": "评估模式"
+      },
+      "small_timeout_sec": {
+        "type": "float",
+        "default": 20,
+        "description": "小模型超时秒数"
+      },
+      "large_timeout_sec": {
+        "type": "float",
+        "default": 30,
+        "description": "复核超时秒数"
+      },
+      "cooldown_sec": {
+        "type": "float",
+        "default": 120,
+        "description": "成员评估冷却秒数"
+      },
+      "per_user_daily_large_cap": {
+        "type": "int",
+        "default": 2,
+        "description": "当前 Bot 每用户每日复核次数上限（UTC，跨两个空间）"
+      },
+      "per_bot_daily_large_cap": {
+        "type": "int",
+        "default": 20,
+        "description": "当前 Bot 每日复核次数上限（UTC，跨两个空间）"
+      },
+      "max_concurrent_assessments": {
+        "type": "int",
+        "default": 2,
+        "description": "所有 Bot 共用的在途评估上限，无等待队列"
+      }
+    }
   }
 }

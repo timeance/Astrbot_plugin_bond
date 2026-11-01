@@ -1336,3 +1336,145 @@ class SQLiteBackend(StorageBackend):
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None
+
+    @property
+    def bot_id(self):
+        """物理分库路径由路由器构造，评估只能服务此账号。"""
+        from ..core.scope import account_id
+
+        return account_id(self._db_path.parent.name)
+
+    async def claim_assessment(self, event_id, group_id, user_id, cooldown):
+        now = time.time()
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                last = conn.execute(
+                    "SELECT last_ts FROM cooldown WHERE group_id=? AND user_id=? AND key='assessment'",
+                    (group_id, user_id),
+                ).fetchone()
+                if last and now - last[0] < cooldown:
+                    conn.rollback()
+                    return False
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO assessment_attempt VALUES(?,?,?,?,?)",
+                    (event_id, group_id, user_id, now, "pending"),
+                )
+                if not cur.rowcount:
+                    conn.rollback()
+                    return False
+                conn.execute(
+                    "INSERT INTO cooldown VALUES(?,?,?,?) ON CONFLICT(group_id,user_id,key) DO UPDATE SET last_ts=excluded.last_ts",
+                    (group_id, user_id, "assessment", now),
+                )
+                conn.commit()
+                return True
+            except BaseException:
+                conn.rollback()
+                raise
+
+    async def finish_assessment(self, event_id, status):
+        with self._lock:
+            self._c().execute(
+                "UPDATE assessment_attempt SET status=? WHERE event_id=?",
+                (status, event_id),
+            )
+            self._c().commit()
+
+    async def begin_assessment_call(
+        self, event_id, group_id, user_id, tier, provider_id, user_cap, bot_cap
+    ):
+        from datetime import datetime, timezone
+
+        day = datetime.now(timezone.utc).date().isoformat()
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                if tier == "large":
+                    total, member = conn.execute(
+                        "SELECT COUNT(*),COALESCE(SUM(user_id=?),0) FROM assessment_call WHERE day=? AND tier='large'",
+                        (user_id, day),
+                    ).fetchone()
+                    if total >= bot_cap or member >= user_cap:
+                        conn.rollback()
+                        return None
+                cursor = conn.execute(
+                    "INSERT INTO assessment_call(event_id,group_id,user_id,day,tier,provider_id,status) VALUES(?,?,?,?,?,?,?)",
+                    (event_id, group_id, user_id, day, tier, provider_id, "pending"),
+                )
+                conn.commit()
+                return cursor.lastrowid
+            except BaseException:
+                conn.rollback()
+                raise
+
+    async def finish_assessment_call(self, call_id, status, tokens):
+        if tokens is not None and (type(tokens) is not int or tokens < 0):
+            tokens = None
+        with self._lock:
+            self._c().execute(
+                "UPDATE assessment_call SET status=?,tokens=? WHERE id=?",
+                (status, tokens, call_id),
+            )
+            self._c().commit()
+
+    async def assessment_stats(self):
+        """无用量的调用保持 NULL，不能汇总成免费或零 Token。"""
+        with self._lock:
+            calls = (
+                self._c()
+                .execute(
+                    "SELECT day,group_id,tier,status,COUNT(*),CASE WHEN COUNT(tokens)=COUNT(*) THEN SUM(tokens) ELSE NULL END FROM assessment_call GROUP BY day,group_id,tier,status"
+                )
+                .fetchall()
+            )
+            events = (
+                self._c()
+                .execute(
+                    "SELECT status,COUNT(*) FROM assessment_attempt GROUP BY status"
+                )
+                .fetchall()
+            )
+            return {
+                "calls": [
+                    dict(
+                        zip(
+                            ("day", "group_id", "tier", "status", "count", "tokens"),
+                            row,
+                        )
+                    )
+                    for row in calls
+                ],
+                "events": dict(events),
+                "currency_cost": None,
+            }
+
+    async def record_assessment_skip(self, interaction, status):
+        with self._lock:
+            self._c().execute(
+                "INSERT OR IGNORE INTO assessment_attempt VALUES(?,?,?,?,?)",
+                (
+                    interaction.event_id,
+                    interaction.group_id,
+                    interaction.user_id,
+                    time.time(),
+                    status,
+                ),
+            )
+            self._c().commit()
+
+    async def large_call_counts(self, user_id):
+        from datetime import datetime, timezone
+
+        day = datetime.now(timezone.utc).date().isoformat()
+        with self._lock:
+            return (
+                self._c()
+                .execute(
+                    "SELECT COUNT(*),COALESCE(SUM(user_id=?),0) FROM assessment_call WHERE day=? AND tier='large'",
+                    (user_id, day),
+                )
+                .fetchone()
+            )

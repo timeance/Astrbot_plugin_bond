@@ -16,6 +16,18 @@ from .sqlite_backend import SQLiteBackend
 _DB_NAMES = {"per_group": "group.db", "global": "global.db"}
 _BACKUP_NAME = re.compile(r"(?:per_group|global)-[0-9]+-[0-9a-f]{32}\.db\Z")
 _REQUIRED_COLUMNS = {
+    "assessment_attempt": {"event_id", "group_id", "user_id", "ts", "status"},
+    "assessment_call": {
+        "id",
+        "event_id",
+        "group_id",
+        "user_id",
+        "day",
+        "tier",
+        "provider_id",
+        "status",
+        "tokens",
+    },
     "favor": {
         "group_id",
         "user_id",
@@ -59,6 +71,8 @@ _REQUIRED_COLUMNS = {
     "observed_members": {"group_id", "user_id", "last_seen_at"},
 }
 _TABLE_INFO_SQL = {
+    "assessment_attempt": "PRAGMA table_info(assessment_attempt)",
+    "assessment_call": "PRAGMA table_info(assessment_call)",
     "favor": "PRAGMA table_info(favor)",
     "daily_gain": "PRAGMA table_info(daily_gain)",
     "cooldown": "PRAGMA table_info(cooldown)",
