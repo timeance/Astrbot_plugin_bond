@@ -88,7 +88,12 @@ class ImpressionService:
 
             async def run():
                 try:
-                    await self._refresh_inner(group_id, user_id, umo, evidence=logs)
+                    await self._refresh_inner(
+                        group_id,
+                        user_id,
+                        umo,
+                        evidence_ids=tuple(r["id"] for r in logs),
+                    )
                 finally:
                     self._pending.discard(key)
 
@@ -129,7 +134,7 @@ class ImpressionService:
         user_id: str,
         umo: str = "",
         *,
-        evidence: list[dict] | None = None,
+        evidence_ids: tuple[int, ...] | None = None,
     ) -> tuple[bool, str]:
         """收集流水 → 构造汇总提示 → 调 provider → 解析落库。"""
         group_id = self.group_key(group_id)
@@ -139,13 +144,14 @@ class ImpressionService:
             rec = await self._storage.get(group_id, user_id)
             nickname = (rec.nickname if rec else "") or user_id
             old_impression = (rec.impression if rec else "") or ""
-            logs = (
-                evidence
-                if evidence is not None
-                else await self._storage.impression_logs(
-                    group_id, user_id, self._interval
-                )
+            logs = await self._storage.impression_logs(
+                group_id, user_id, self._interval
             )
+            if (
+                evidence_ids is not None
+                and tuple(r["id"] for r in logs) != evidence_ids
+            ):
+                return False, "调度批次已失效，保留原印象"
             judged = [
                 r for r in logs if r.get("source") == "judge" and not r.get("reversed")
             ]

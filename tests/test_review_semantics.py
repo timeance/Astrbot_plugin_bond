@@ -24,7 +24,8 @@ def backend(tmp_path):
     asyncio.run(storage.close())
 
 
-def test_impression_interval_consumes_the_full_scheduled_batch(backend, monkeypatch):
+@pytest.fixture(autouse=True)
+def offline_logger(monkeypatch):
     api_module = ModuleType("astrbot.api")
     api_module.logger = SimpleNamespace(
         debug=lambda *args, **kwargs: None,
@@ -36,6 +37,8 @@ def test_impression_interval_consumes_the_full_scheduled_batch(backend, monkeypa
     monkeypatch.setitem(sys.modules, "astrbot", astrbot_module)
     monkeypatch.setitem(sys.modules, "astrbot.api", api_module)
 
+
+def test_impression_interval_consumes_the_full_scheduled_batch(backend):
     async def run():
         prompts = []
 
@@ -186,5 +189,43 @@ def test_main_ranking_entries_reject_private_event_before_runtime(method_name):
             ]
         else:
             assert await plugin._tool_rank(Event()) == "请在群聊中查询本群排行。"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("points_mode", [False, True])
+def test_revoked_scheduled_evidence_never_calls_summary(backend, points_mode):
+    async def run():
+        calls = []
+
+        class Summary:
+            async def resolve_display_name(self, umo):
+                return "测试"
+
+            async def resolve_summary_provider(self):
+                return self
+
+            async def text_chat(self, *, prompt):
+                calls.append(prompt)
+                raise AssertionError("已撤销调度证据不得发送给模型")
+
+        service = ImpressionService(
+            backend, interval=1, summarizer=Summary(), points_mode=points_mode
+        )
+        await backend.add_log(
+            "g", "u", 1, 0, 1, "测试", "judge", 1, message="被撤销的证据"
+        )
+        log = (await backend.query_logs("g", "u"))[0]
+        await service.maybe_refresh("g", "u")
+        await FavorService(backend, LevelTable.from_config(None)).undo_log(log["id"])
+        await asyncio.gather(*tuple(service._tasks))
+        assert calls == []
+        assert (await backend.get("g", "u")).impression == ""
+        assert (
+            backend._c()
+            .execute("SELECT COUNT(*) FROM impression_progress")
+            .fetchone()[0]
+            == 0
+        )
 
     asyncio.run(run())
