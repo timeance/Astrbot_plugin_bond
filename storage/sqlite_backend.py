@@ -20,6 +20,7 @@ from pathlib import Path
 from ..core.decay import consolidate_half_life, effective_favor
 from ..core.decimal import round1
 from ..core.models import FavorRecord
+from ..core.relation_policy import affinity_bounds_for_undo
 from ..core.scope import GLOBAL_GROUP
 from .base import StorageBackend, clamp_daily
 from .migrations import SCHEMA_VERSION, migrate
@@ -1265,7 +1266,15 @@ class SQLiteBackend(StorageBackend):
                         self._initial_half_life,
                     )
                 cur = effective(stored, ts, h) if effective else round1(stored)
-                target = round1(max(min_favor, min(max_favor, round1(cur - delta))))
+                vector = json.loads(row[4])
+                # 三维关系流水的亲近度值域固定为 -100..100；旧标量流水
+                # 继续遵循 FavorService 配置的扩展范围。
+                affinity_min, affinity_max = affinity_bounds_for_undo(
+                    vector, legacy_min=min_favor, legacy_max=max_favor
+                )
+                target = round1(
+                    max(affinity_min, min(affinity_max, round1(cur - delta)))
+                )
                 real = round1(target - cur)
                 conn.execute(
                     "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
@@ -1273,7 +1282,6 @@ class SQLiteBackend(StorageBackend):
                     "favor=excluded.favor, updated_at=excluded.updated_at",
                     (group_id, user_id, target, now, h),
                 )
-                vector = json.loads(row[4])
                 extra = {}
                 if vector:
                     state = conn.execute(
