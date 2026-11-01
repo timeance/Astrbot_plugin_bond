@@ -188,3 +188,21 @@ def test_default_behavior_prompt_keeps_persona_and_speaking_boundaries():
     assert "主人" in DEFAULT_BEHAVIOR_PROMPT
     assert "恋爱" in DEFAULT_BEHAVIOR_PROMPT
     assert "回复频率" in DEFAULT_BEHAVIOR_PROMPT
+
+
+def test_default_group_draft_preview_inherits_global_without_saving(tmp_path):
+    service = PromptService(tmp_path / "prompts.json")
+    service.set_template("behavior", mode="custom", template="全局 {relationship}")
+    service.set_template("behavior", "123", "456", "custom", "当前群 {relationship}")
+    before = service.path.read_bytes()
+    preview = service.preview("behavior", "123", "456", mode="default", template="")
+    assert preview == "全局 熟悉的群友"
+    assert service.path.read_bytes() == before
+    assert service.resolve("behavior", "123", "456") == "当前群 {relationship}"
+
+
+def test_global_resolve_uses_the_same_immutable_assessment_contract(tmp_path):
+    service = PromptService(tmp_path / "prompts.json")
+    service.set_template("assessment", mode="custom", template="补充判断条件")
+    assert service.resolve("assessment") == service.resolve("assessment", "123", "456")
+    assert service.resolve("assessment").endswith(ASSESSMENT_OUTPUT_CONTRACT)

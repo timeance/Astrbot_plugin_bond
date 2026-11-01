@@ -71,6 +71,34 @@ class RuntimeService:
             if bundle is not None:
                 bundle.favor.invalidate_cache()
 
+    def assessment_settings(self):
+        from .assessment_service import AssessmentConfig
+        from dataclasses import asdict
+
+        raw = dict(self._config.get("assessment") or {})
+        limit = raw.pop("max_concurrent_assessments", 2)
+        return asdict(AssessmentConfig(**raw)), limit
+
+    async def save_assessment_settings(self, values, limit):
+        from .assessment_service import AssessmentConfig, AssessmentCapacity
+        from dataclasses import asdict
+
+        if not isinstance(values, dict):
+            raise ValueError("评估设置须为对象")
+        validated = asdict(AssessmentConfig(**values))
+        AssessmentCapacity(limit)
+        async with self._lock:
+            previous = self._config.get("assessment")
+            self._config["assessment"] = dict(
+                validated, max_concurrent_assessments=limit
+            )
+            try:
+                self._config.save_config()
+            except BaseException:
+                self._config["assessment"] = previous
+                raise
+        # 已捕获的在途任务继续使用旧配置。插件重载后统一生效。
+
     async def describe(self) -> list[dict]:
         return [
             {"bot_id": bot_id, "scope_mode": self.current_mode(bot_id)}

@@ -66,9 +66,13 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 11
+    assert len(routes) == 15
     assert set(route_names) == {
         "logs",
+        "relation",
+        "profile",
+        "prompts",
+        "models",
         "assessment_stats",
         "groups",
         "users",
@@ -229,6 +233,173 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
                     g.username = username
                 return await _response_parts(await handler())
 
+        target = {
+            "bot_id": BOT_IDS[0],
+            "scope_mode": "per_group",
+            "group_id": OLD_GROUP,
+            "user_id": OLD_USER,
+        }
+        for endpoint in (
+            "relation",
+            "profile",
+            "prompts",
+            "models",
+            "undo",
+            "refresh_impression",
+            "mode",
+            "backup",
+            "restore",
+        ):
+            status, body = await call(
+                getattr(page, "handle_" + endpoint),
+                "/astrbot_plugin_bond/" + endpoint,
+                "POST",
+                {},
+                None,
+            )
+            assert status == 401, (endpoint, body)
+
+        status, body = await call(
+            page.handle_relation,
+            "/astrbot_plugin_bond/relation",
+            "POST",
+            dict(
+                target,
+                familiarity=80,
+                affinity=41.7,
+                trust=-30,
+                reason="smoke adjustment",
+            ),
+            "dashboard-admin",
+        )
+        assert status == 200 and body["relation"]["trust"] == -30
+        adjustment = (await old_deps.favor.query_logs(OLD_GROUP, OLD_USER))[0]
+        assert "dashboard-admin" in adjustment["reason"]
+        status, body = await call(
+            page.handle_relation,
+            "/astrbot_plugin_bond/relation",
+            "POST",
+            dict(target, familiarity=101, affinity=0, trust=0),
+            "dashboard-admin",
+        )
+        assert status == 400
+        status, body = await call(
+            page.handle_profile,
+            "/astrbot_plugin_bond/profile",
+            "POST",
+            dict(target, impression="本地印象", tags=["直率"]),
+            "dashboard-admin",
+        )
+        assert status == 200
+        profile_log = (await old_deps.favor.query_logs(OLD_GROUP, OLD_USER))[0]
+        assert profile_log["source"] == "admin_profile"
+        status, body = await call(
+            page.handle_undo,
+            "/astrbot_plugin_bond/undo",
+            "POST",
+            dict(target, id=profile_log["id"]),
+            "dashboard-admin",
+        )
+        assert status == 400
+        status, body = await call(
+            page.handle_undo,
+            "/astrbot_plugin_bond/undo",
+            "POST",
+            dict(target, id=adjustment["id"]),
+            "dashboard-admin",
+        )
+        assert status == 200
+        assert (
+            "dashboard-admin"
+            in (await old_deps.favor.query_logs(OLD_GROUP, OLD_USER))[0]["reason"]
+        )
+
+        prompt_target = dict(target, kind="behavior", level="group")
+        status, body = await call(
+            page.handle_prompts,
+            "/astrbot_plugin_bond/prompts",
+            "POST",
+            dict(
+                prompt_target,
+                action="preview",
+                mode="custom",
+                template="关系：{relationship}",
+            ),
+            "dashboard-admin",
+        )
+        assert status == 200 and "熟悉的群友" in body["preview"]
+        status, body = await call(
+            page.handle_prompts,
+            "/astrbot_plugin_bond/prompts",
+            "POST",
+            dict(
+                prompt_target,
+                action="save",
+                mode="custom",
+                template="关系：{relationship}",
+            ),
+            "dashboard-admin",
+        )
+        assert status == 200 and body["settings"]["effective"]["source"] == "group"
+        status, body = await call(
+            page.handle_prompts,
+            "/astrbot_plugin_bond/prompts",
+            "POST",
+            dict(prompt_target, action="save", mode="custom", template="{unknown}"),
+            "dashboard-admin",
+        )
+        assert status == 400
+        status, body = await call(
+            page.handle_prompts,
+            "/astrbot_plugin_bond/prompts",
+            "POST",
+            dict(target, action="reset"),
+            "dashboard-admin",
+        )
+        assert status == 400
+
+        from astrbot_plugin_bond.api import llm_tools
+
+        public_event = SimpleNamespace(
+            get_group_id=lambda: OLD_GROUP, get_sender_id=lambda: OLD_USER
+        )
+        assert "只能查询" in await llm_tools.tool_query_favor(
+            old_deps.favor, public_event, "999"
+        )
+        public = await llm_tools.tool_query_favor(old_deps.favor, public_event)
+        assert "分值" not in public and "41.7" not in public and "小千" not in public
+        for index in range(12):
+            await old_deps.favor.set_relation(
+                OLD_GROUP,
+                str(9000 + index),
+                familiarity=50,
+                affinity=51.7,
+                trust=-20,
+                event_id=f"rank:{index}",
+            )
+        ranking = await llm_tools.tool_query_ranking(old_deps.favor, public_event, 100)
+        assert len(ranking.splitlines()) == 11 and "51.7" not in ranking
+        assert "小千" not in ranking
+        status, body = await call(
+            page.handle_models,
+            f"/astrbot_plugin_bond/models?bot_id={BOT_IDS[0]}&scope_mode=per_group",
+            username="dashboard-admin",
+        )
+        assert status == 200 and "active" in body and "configured" in body
+        configured = dict(body["configured"], small_provider_id="new-provider")
+        status, body = await call(
+            page.handle_models,
+            "/astrbot_plugin_bond/models",
+            "POST",
+            dict(target, config=configured, max_concurrent_assessments=3),
+            "dashboard-admin",
+        )
+        assert status == 200 and body["restart_required"]
+        assert old_deps.assessment.config.small_provider_id == "smoke"
+        assert (
+            await plugin._runtime.select(BOT_IDS[1], "global")
+        ).assessment.config.small_provider_id == ""
+
         for username, expected in ((None, 401), ("dashboard-admin", 200)):
             status, body = await call(
                 page.handle_assessment_stats,
@@ -347,14 +518,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 11
+        assert len(context2.registered_web_apis) == 15
     finally:
         await plugin2.terminate()
     assert plugin2._storage._closed is True
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、11 路 WebUI、认证、备份恢复、卸载。"
+        "scope 持久化、冻结 listener、15 路 WebUI、认证、备份恢复、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

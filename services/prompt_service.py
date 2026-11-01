@@ -60,11 +60,12 @@ class PromptService:
 
     # ---------- public contract ----------
 
-    def resolve(self, kind: str, bot_id: str, group_id: str) -> str:
+    def resolve(
+        self, kind: str, bot_id: str | None = None, group_id: str | None = None
+    ) -> str:
         """返回指定 Bot 在指定真实群中的最终提示词。"""
         kind = self._validate_kind(kind)
-        bot_id = self._validate_identity(bot_id, "bot_id")
-        group_id = self._validate_identity(group_id, "group_id")
+        bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
         with self._lock:
             record, source = self._effective_record(kind, bot_id, group_id)
             template = (
@@ -191,11 +192,18 @@ class PromptService:
         if mode is not None and template is not None:
             mode = self._validate_mode(mode)
             self._validate_template(kind, template, mode=mode)
+            # 群关闭覆盖后的预览与保存后的继承规则一致。
+            selected_mode = mode
+            if mode == "default" and bot_id is not None:
+                with self._lock:
+                    inherited = self._settings["global"][kind]
+                    selected_mode = inherited["mode"]
+                    template = inherited["template"]
             rendered = self._render_preview(
                 kind,
-                _DEFAULT_TEMPLATES[kind] if mode == "default" else template,
+                _DEFAULT_TEMPLATES[kind] if selected_mode == "default" else template,
             )
-            if kind == "assessment" and mode == "custom":
+            if kind == "assessment" and selected_mode == "custom":
                 rendered = f"{rendered.rstrip()}\n\n{ASSESSMENT_OUTPUT_CONTRACT}"
             return rendered
 

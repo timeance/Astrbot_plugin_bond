@@ -23,7 +23,7 @@ class BondFacade:
             "scope_mode": mode,
             "group_id": group_id,
             "user_id": user_id,
-            "level": deps.favor.level_of(rec.favor).name,
+            "relation_title": await deps.favor.relation_title(group_id, user_id),
         }
 
     async def get_ranking(self, bot_id, mode, group_id, limit=10):
@@ -34,6 +34,9 @@ class BondFacade:
         deps = await self._runtime.select(bot_id, mode)
         rows = await deps.favor.ranking(group_id, min(10, max(1, int(limit))))
         return [
-            {"user_id": r.user_id, "level": deps.favor.level_of(r.favor).name}
+            {
+                "user_id": r.user_id,
+                "relation_title": await deps.favor.relation_title(group_id, r.user_id),
+            }
             for r in rows
         ]

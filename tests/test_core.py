@@ -1393,7 +1393,8 @@ class TestSanitizeAndFacade:
         prof = asyncio.run(
             fac.get_profile("10000001", "per_group", "123456789", "123456780")
         )
-        assert prof["level"] == "友好" and prof["bot_id"] == "10000001"
+        assert prof["relation_title"] and prof["bot_id"] == "10000001"
+        assert "level" not in prof and "affinity" not in prof and "trust" not in prof
         assert not {"favor", "impression", "guidance"}.intersection(prof)
         assert not hasattr(fac, "set_favor")
         with pytest.raises(ValueError):
