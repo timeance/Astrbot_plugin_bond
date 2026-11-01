@@ -239,7 +239,7 @@ createApp({
     const fmtUser = (u) => {
       const id = u.user_id;
       const nick = (u.nickname || "").trim();
-      if (!nick) return `(${id})`;
+      if (!nick) return `昵称未知（${id}）`;
       let w = 0, out = "";
       for (const ch of nick) {
         const cw = ch.codePointAt(0) > 0x2e80 ? 2 : 1;
@@ -325,11 +325,11 @@ createApp({
       setMemberNotice("");
       const candidate = selectedMode.value === "global" ? filterGroup.value : u.group_id;
       const groupId = String(candidate || "");
-      if (!isRealAccount(groupId)) {
+      if (selectedMode.value !== "global" && !isRealAccount(groupId)) {
         errorMsg.value = "全局空间请先选择真实群，再查看成员详情";
         return;
       }
-      if (selectedMode.value === "global" && !groups.value.some((g) => g.group_id === groupId)) {
+      if (selectedMode.value === "global" && groupId && !groups.value.some((g) => g.group_id === groupId)) {
         errorMsg.value = "请选择当前空间中的真实群";
         return;
       }
@@ -355,6 +355,24 @@ createApp({
       memberLoading.value = false;
       memberSaveLoading.value = false;
       setMemberNotice("");
+    };
+    const refreshNames = async () => {
+      const member = memberDetail.value, snapshot = scopeSnapshot(), revision = scopeRevision.value;
+      const target = memberRequestTarget.value;
+      if (!member || !snapshot || memberSaveLoading.value) return;
+      memberSaveLoading.value = true;
+      try {
+        const data = await scopedPost("member", {group_id:member.group_id,user_id:member.user_id}, snapshot);
+        if (!isCurrentMemberRequest(target, revision)) return;
+        if (!data.success) throw new Error(data.error || "刷新昵称失败");
+        memberDetail.value.nickname = data.member.nickname;
+        await fetchUsers();
+        if (isCurrentMemberRequest(target, revision)) setMemberNotice("昵称已刷新");
+      } catch (e) {
+        if (isCurrentMemberRequest(target, revision)) setMemberNotice(String(e), true);
+      } finally {
+        if (isCurrentMemberRequest(target, revision)) memberSaveLoading.value = false;
+      }
     };
     const saveRelation = async () => {
       const member = memberDetail.value;
@@ -872,7 +890,7 @@ createApp({
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, showDetail, closeDetail,
       memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
-      relationForm, profileForm, openMember, closeMember, saveRelation, saveProfile, refreshImpression,
+      relationForm, profileForm, openMember, closeMember, refreshNames, saveRelation, saveProfile, refreshImpression,
       fetchBots, selectBot, applyMode, backupScope, prepareRestore,
       closeRestore, confirmRestore, fetchLogs, fetchUsers, refresh, switchTab,
       restorePreview,
@@ -967,8 +985,8 @@ createApp({
               <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (users.length ? "无匹配成员" : "暂无成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
-              <td class="xx-mono">{{ u.group_id }}</td>
-              <td class="xx-mono">{{ fmtUser(u) }}</td>
+              <td class="xx-mono">{{ selectedMode === 'global' ? '全局共享' : u.group_id }}</td>
+              <td class="xx-mono" :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">{{ fmtUser(u) }}</td>
               <td>{{ fmtOptionalNum(u.familiarity) }}</td>
               <td>{{ fmtOptionalNum(u.affinity) }}</td>
               <td>{{ fmtOptionalNum(u.trust) }}</td>
@@ -989,7 +1007,7 @@ createApp({
                 </div>
               </td>
               <td class="xx-actions">
-                <button class="xx-btn xx-btn-mini" @click="openMember(u)" :disabled="selectedMode === 'global' && !filterGroup" :title="selectedMode === 'global' && !filterGroup ? '请先选择真实群' : '查看成员详情'">详情</button>
+                <button class="xx-btn xx-btn-mini" @click="openMember(u)" title="查看成员详情">详情</button>
               </td>
             </tr>
           </tbody>
@@ -1249,6 +1267,7 @@ createApp({
           </div>
           <p v-if="memberNotice" :class="['xx-status', memberNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ memberNotice }}</p>
           <section class="xx-modal-section xx-edit-section">
+            <button class="xx-btn xx-btn-mini" @click="refreshNames" :disabled="memberSaveLoading">刷新昵称</button>
             <h4>编辑三维关系</h4>
             <div class="xx-edit-grid">
               <label><span>熟悉度</span><input class="xx-input" type="number" min="0" max="100" step="0.1" v-model.number="relationForm.familiarity"></label>
@@ -1260,11 +1279,12 @@ createApp({
           </section>
           <section class="xx-modal-section xx-edit-section">
             <h4>编辑印象与标签</h4>
+            <p v-if="!memberDetail.group_id">请先选择真实群再修改群资料。</p>
             <label class="xx-form-row xx-form-row-block"><span>印象</span><textarea class="xx-textarea" v-model="profileForm.impression" placeholder="成员印象"></textarea></label>
             <label class="xx-form-row xx-form-row-block"><span>标签</span><input class="xx-input" v-model="profileForm.tagsText" placeholder="用逗号分隔多个标签"></label>
             <div class="xx-modal-actions">
-              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
-              <button class="xx-btn" @click="saveProfile" :disabled="memberSaveLoading">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
+              <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading || !memberDetail.group_id">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
+              <button class="xx-btn" @click="saveProfile" :disabled="memberSaveLoading || !memberDetail.group_id">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
             </div>
           </section>
           <details class="xx-member-history">

@@ -113,6 +113,9 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     except Exception:
         # 部分适配器无该访问器/抛错：昵称缺席只影响显示名,不阻断评审
         _nick = None
+    from ..core.member_names import event_names
+
+    nickname, card = event_names(event)
     # 保留平台原文用于证据校验，不把清洗后的字符串伪装成原始证据。
     text = event.message_str or ""
     has_at_bot, is_reply_bot = _chain_flags(event)
@@ -128,8 +131,9 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     async def _bg() -> None:
         try:
             await deps.favor.observe_member(group_id, user_id)
-            if _nick:
-                await deps.favor.touch_nickname(group_id, user_id, _nick)
+            await deps.favor.update_member_names(
+                str(group_id), str(user_id), nickname, card
+            )
             if (
                 deps.assessment is not None
                 and deps.assessment.config.enabled

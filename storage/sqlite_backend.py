@@ -1526,3 +1526,21 @@ class SQLiteBackend(StorageBackend):
                 )
                 .fetchone()
             )
+
+    async def update_member_names(self, group_id, user_id, nickname=None, card=None):
+        with self._lock, self._c():
+            for key, value in (("", nickname), (group_id, card)):
+                if value is not None:
+                    self._c().execute(
+                        "INSERT INTO member_names VALUES(?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET nickname=excluded.nickname,updated_at=excluded.updated_at",
+                        (key, user_id, value[:256], time.time()),
+                    )
+
+    async def member_names(self):
+        with self._lock:
+            return {
+                (g, u): n
+                for g, u, n in self._c()
+                .execute("SELECT group_id,user_id,nickname FROM member_names")
+                .fetchall()
+            }

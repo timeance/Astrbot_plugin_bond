@@ -126,7 +126,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     assert route_names["logs"] == ["GET"]
     assert route_names["groups"] == ["GET"]
     assert route_names["users"] == ["GET"]
-    assert route_names["member"] == ["GET"]
+    assert route_names["member"] == ["GET", "POST"]
     assert route_names["bots"] == ["GET"]
     assert all(
         route_names[name] == ["POST"]

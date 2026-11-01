@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -141,6 +141,9 @@ MIGRATIONS: dict[int, list[str]] = {
         "CREATE TABLE assessment_attempt (event_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, user_id TEXT NOT NULL, ts REAL NOT NULL, status TEXT NOT NULL)",
         "CREATE TABLE assessment_call (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, group_id TEXT NOT NULL, user_id TEXT NOT NULL, day TEXT NOT NULL, tier TEXT NOT NULL, provider_id TEXT NOT NULL, status TEXT NOT NULL, tokens INTEGER)",
         "CREATE INDEX idx_assessment_budget ON assessment_call(day,tier,user_id)",
+    ],
+    14: [
+        "CREATE TABLE member_names (group_id TEXT NOT NULL, user_id TEXT NOT NULL, nickname TEXT NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY(group_id,user_id))"
     ],
 }
 

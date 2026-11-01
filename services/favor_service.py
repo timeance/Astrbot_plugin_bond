@@ -354,6 +354,7 @@ class FavorService:
             recs = await self._storage.list_favor(self.group_key(group_id), -1)
         now = time.time()
         out: list[dict] = []
+        names = await self._storage.member_names()
         for r in recs:
             eff = self._effective(r.favor, r.updated_at, r.half_life)
             idle = int((now - r.updated_at) // 86400) if r.updated_at > 0 else None
@@ -374,7 +375,8 @@ class FavorService:
                         if r.relationship
                         else ""
                     ),
-                    "nickname": r.nickname or "",
+                    "nickname": (names.get((group_id, r.user_id)) if group_id else "")
+                    or names.get(("", r.user_id), ""),
                     "impression": r.impression or "",
                     "tags": r.parsed_tags(),
                     "impression_at": r.impression_at,
@@ -431,6 +433,7 @@ class FavorService:
         if await self._storage.get(group_id, user_id) is None:
             await self._storage.set_value(group_id, user_id, self.default_favor)
         await self._storage.set_nickname(group_id, user_id, nick)
+        await self._storage.update_member_names(group_id, user_id, card=nick)
         self._nick_cache[key] = nick
 
     async def distinct_groups(self) -> list[dict]:
@@ -831,3 +834,12 @@ class FavorService:
     async def reset(self, group_id: str, user_id: str | None = None) -> None:
         group_id = self.group_key(group_id)
         await self._storage.reset(group_id, user_id)
+
+    async def update_member_names(self, group_id, user_id, nickname=None, card=None):
+        await self._storage.update_member_names(group_id, user_id, nickname, card)
+
+    async def member_name(self, group_id, user_id):
+        names = await self._storage.member_names()
+        return (names.get((group_id, user_id)) if group_id else "") or names.get(
+            ("", user_id), ""
+        )
