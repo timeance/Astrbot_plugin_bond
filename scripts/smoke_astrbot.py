@@ -595,7 +595,11 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     assert not plugin._registry._tasks
 
     # 从同一配置文件重新装配，确认 scope 选择持久化且已知 Bot 仍来自 router。
+    prompts_path = data_dir / "prompts.json"
+    saved_prompts = prompts_path.read_bytes()
+    prompts_path.write_text("{broken", encoding="utf-8")
     config2 = AstrBotConfig(str(config_path), schema=schema)
+    config2["inject"]["enabled"] = True
     context2 = _context(Context, config2)
     plugin2 = BondPlugin(context2, config2)
     await plugin2.initialize()
@@ -603,13 +607,45 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
         assert len(context2.registered_web_apis) == 16
+        assert plugin2._prompts.load_error
+        deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
+        assert (await deps2.favor.get(OLD_GROUP, OLD_USER)).favor == 12
+        event2 = SimpleNamespace(
+            get_group_id=lambda: OLD_GROUP,
+            get_sender_id=lambda: OLD_USER,
+            get_self_id=lambda: BOT_IDS[0],
+        )
+        req2 = SimpleNamespace(system_prompt="当前人格", prompt="输入", contexts=[])
+        await plugin2._on_llm_req(event2, req2)
+        assert req2.system_prompt == "当前人格" and req2.prompt == "输入"
+        prompt_url = "/astrbot_plugin_bond/prompts"
+        target2 = dict(
+            bot_id=BOT_IDS[0], scope_mode="per_group", kind="behavior", level="global"
+        )
+        status, body = await call(
+            plugin2._page_api.handle_prompts,
+            prompt_url,
+            "POST",
+            dict(target2, action="reset"),
+            "dashboard-admin",
+        )
+        assert status == 503 and "修复或恢复" in body["error"]
+        status, _ = await call(
+            plugin2._page_api.handle_prompts,
+            prompt_url,
+            "POST",
+            dict(target2, action="reset"),
+        )
+        assert status == 401
+        assert prompts_path.read_text(encoding="utf-8") == "{broken"
     finally:
         await plugin2.terminate()
+        prompts_path.write_bytes(saved_prompts)
     assert plugin2._storage._closed is True
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、16 路 WebUI、认证、备份恢复、卸载。"
+        "scope 持久化、冻结 listener、16 路 WebUI、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

@@ -53,6 +53,7 @@ def package(tmp_path, *, missing=None, extra=None):
         "pages/dashboard/index.html",
         "resources/prompts/judge_prompt.txt",
         "resources/prompts/inject_template.txt",
+        "resources/prompts/bond_behavior.txt",
     ]
     with zipfile.ZipFile(path, "w") as archive:
         for name in files:
@@ -81,3 +82,10 @@ def test_runtime_package_is_accepted(tmp_path):
 def test_release_rejects_mismatched_tag():
     with pytest.raises(ValueError, match="版本不一致"):
         validate_tag("v9.9.9", "0.1.0-dev")
+
+
+def test_package_requires_behavior_prompt_resource(tmp_path):
+    with pytest.raises(ValueError, match="缺少文件.*bond_behavior"):
+        validate_archive(
+            package(tmp_path, missing="resources/prompts/bond_behavior.txt")
+        )

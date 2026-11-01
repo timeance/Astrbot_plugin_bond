@@ -1,7 +1,7 @@
 name: astrbot_plugin_bond
-display_name: Bond 关系系统开发基线
-short_desc: Bond 关系状态与变动面板
-desc: Bond 关系系统兼容开发基线：保留上游现有数值与评审能力，供后续关系模型演进使用。
+display_name: Bond 关系系统
+short_desc: 按 Bot 隔离的三维关系与成员印象
+desc: 保存熟悉度、亲近度、信任度与成员印象，支持分级评估、人格适配及管理面板。
 version: 0.2.0-dev
 author: yiwuerxin, Timeance
 repo: https://github.com/timeance/Astrbot_plugin_bond

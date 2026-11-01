@@ -8,6 +8,7 @@
 python -m pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 python -m black --check .
+node --test tests/dashboard.test.cjs
 python scripts/check_project.py
 python scripts/build_package.py --output /tmp/bond-check.zip
 ```
@@ -42,7 +43,7 @@ python scripts/smoke_astrbot.py --session-dir <本次测试目录> --runtime-dir
 
 ## 发布
 
-当前开发基线不发布正式版。未来发版先由维护者合并 PR，再同步 `metadata.yaml` 与 `main.py` 的版本，创建带说明的 annotated tag，如版本 `0.2.0` 对应 `v0.2.0`。预发布版本使用带连字符的版本与 tag，Release 自动标为 prerelease。
+当前 `0.2.0-dev` 只交付审核分支与验证 ZIP，不发布正式版。未来发版先由维护者合并 PR，再同步 `metadata.yaml` 与 `main.py` 的版本，创建带说明的 annotated tag，如版本 `0.2.0` 对应 `v0.2.0`。预发布版本使用带连字符的版本与 tag，Release 自动标为 prerelease。
 
 发布仅接受 main 历史中的提交，tag 版本须与两个元数据入口一致。工作流先完成检查，再生成归档、校验文件及 SHA-256 校验和，最后创建 GitHub Release。普通 PR 和分支推送只做验证，不发版。
 
@@ -51,3 +52,9 @@ python scripts/smoke_astrbot.py --session-dir <本次测试目录> --runtime-dir
 ## 印象汇总进度
 
 Schema 11 将成功汇总的流水 ID 保存在本地，并与印象、标签和点集原子提交。失败不推进进度；提交前再次检查评审是否被撤销。版本 10 保留 PR-1 已使用的群成员索引结构，避免同一版本号出现两种数据库结构。升级与回滚前均须备份整个数据目录。
+
+## 当前关系与可选集成
+
+Schema 12 增加三维关系和事件去重，Schema 13 保存评估事件、调用状态与预算。`affinity` 继续使用单一 `favor` 列，熟悉度和信任度各有独立列；不维护第二份亲近度或三维总分。管理员资料修改也通过 `FavorService`，资料与审计流水原子提交，资料流水不能当作数值撤销。
+
+`PromptService` 管理独立 JSON；`LivingMemoryService` 管理可选插件的发现与不可用状态。后者当前不执行外部读写，也没有强制依赖。集成范围和待验项目见 [验收记录](ACCEPTANCE.md)。

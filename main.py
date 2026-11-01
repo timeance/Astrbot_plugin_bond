@@ -73,12 +73,12 @@ def _group_entry_id(event) -> str | None:
 @register(
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
-    "Bond 关系系统开发基线",
+    "Bond 三维关系与成员印象",
     "0.2.0-dev",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
-    """Bond 关系系统开发基线。"""
+    """Bond 三维关系与成员印象。"""
 
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
@@ -97,6 +97,10 @@ class BondPlugin(Star):
         data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
 
         self._prompts = PromptService(data_dir / "prompts.json")
+        if self._prompts.load_error:
+            logger.warning(
+                f"[Bond] {self._prompts.load_error}；已暂停关系提示词和自动评估"
+            )
         self._registry = TaskRegistry()
         # 所有 bundle 使用本次加载时的同一模型配置；面板保存后统一重载生效。
         self._assessment_values = dict(config.get("assessment") or {})

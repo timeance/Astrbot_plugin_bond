@@ -533,6 +533,8 @@ class PageApi:
                 self._required_account(params, "group_id") if level == "group" else None
             )
             scope_bot = bot if group else None
+            if deps.prompts.load_error:
+                return self._error(deps.prompts.load_error, 503)
             try:
                 if request.method == "POST":
                     action = params.get("action")

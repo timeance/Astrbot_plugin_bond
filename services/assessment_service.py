@@ -89,7 +89,7 @@ class AssessmentService:
                 event_id, group_id, user_id, tier, provider_id, user_cap, bot_cap
             )
 
-    async def _call(self, provider_id, timeout, interaction, tier):
+    async def _call(self, provider_id, timeout, interaction, tier, instructions):
         # 调用尝试先持久化，异常/超时也消耗调用预算。
         call_id = await self._reserve_call(
             interaction.event_id,
@@ -113,13 +113,6 @@ class AssessmentService:
                     "text": interaction.text,
                 },
                 ensure_ascii=False,
-            )
-            instructions = (
-                self.prompts.resolve(
-                    "assessment", interaction.bot_id, interaction.group_id
-                )
-                if self.prompts
-                else SYSTEM_PROMPT
             )
             response = await asyncio.wait_for(
                 provider.text_chat(prompt=instructions + "\n输入：" + payload), timeout
@@ -163,8 +156,20 @@ class AssessmentService:
             )
             if not claimed:
                 return "duplicate_or_cooldown"
+            # 同一事件的小模型与复核共享一次模板快照；损坏配置不触发调用。
+            instructions = (
+                self.prompts.resolve(
+                    "assessment", interaction.bot_id, interaction.group_id
+                )
+                if self.prompts is not None
+                else SYSTEM_PROMPT
+            )
             verdict = await self._call(
-                cfg.small_provider_id, cfg.small_timeout_sec, interaction, "small"
+                cfg.small_provider_id,
+                cfg.small_timeout_sec,
+                interaction,
+                "small",
+                instructions,
             )
             if verdict is None:
                 status = "failed"
@@ -177,6 +182,7 @@ class AssessmentService:
                             cfg.large_timeout_sec,
                             interaction,
                             "large",
+                            instructions,
                         )
                         if cfg.assessment_mode == "tiered" and cfg.large_provider_id
                         else None
