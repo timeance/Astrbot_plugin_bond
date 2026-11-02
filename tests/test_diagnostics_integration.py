@@ -163,3 +163,81 @@ def test_real_writer_and_unwritable_path_preserve_business_results(tmp_path):
         assert not (tmp_path / "off" / "diagnostics").exists()
 
     asyncio.run(run())
+
+
+def test_observation_exception_does_not_fail_committed_change(tmp_path, monkeypatch):
+    from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+    from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+
+    async def run():
+        store = SQLiteBackend(tmp_path / "10001" / "group.db")
+        await store.init()
+        sink = DiagnosticRecorder(tmp_path / "diagnostics", TaskRegistry(), True)
+        favor = FavorService(store, LevelTable.from_config(None), diagnostics=sink)
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("synthetic-secret-error")
+
+        monkeypatch.setattr(favor, "describe_relation", broken)
+        try:
+            result = await favor.set_relation(
+                "20001",
+                "30001",
+                familiarity=10,
+                affinity=20,
+                trust=30,
+                event_id="synthetic-one",
+            )
+            assert result["after"]["trust"] == 30
+            assert (await favor.get_relation("20001", "30001")).trust == 30
+            assert sink.stats()["counters"]["dropped"] == 1
+            monkeypatch.setattr(sink, "emit", broken)
+            favor.record_diagnostic("20001", "30001", "entry", status="ok")
+            assert sink.stats()["counters"]["dropped"] == 2
+            assert "synthetic-secret-error" not in json.dumps(sink.stats())
+        finally:
+            await sink.close()
+            await store.close()
+
+    asyncio.run(run())
+
+
+def test_global_reset_preserves_origin_and_undo_never_links_unknown_group(tmp_path):
+    from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+    from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+
+    async def run():
+        store = SQLiteBackend(tmp_path / "10001" / "global.db")
+        await store.init()
+        sink = DiagnosticRecorder(tmp_path / "diagnostics", TaskRegistry(), True)
+        favor = FavorService(
+            store, LevelTable.from_config(None), diagnostics=sink, scope_mode="global"
+        )
+        try:
+            for group in ("20001", "20002"):
+                await favor.set_relation(
+                    group,
+                    "30001",
+                    familiarity=10,
+                    affinity=20,
+                    trust=30,
+                    event_id="synthetic-" + group,
+                )
+                log = (await favor.query_logs(group, "30001"))[0]
+                await favor.undo_log(log["id"])
+                await favor.reset(group, "30001")
+            data = await sink.export("10001", "global")
+            resets = [r for r in data["rows"] if r["fields"].get("reason") == "reset"]
+            assert len(resets) == 2
+            assert len({r["partition"] for r in resets}) == 2
+            assert len({r["member"] for r in resets}) == 2
+            assert not any(r["fields"].get("reason") == "undo" for r in data["rows"])
+            assert data["stats"]["counters"]["dropped"] == 2
+            assert (await favor.get_relation("20001", "30001")).as_dict() == dict(
+                familiarity=0, affinity=0, trust=0
+            )
+        finally:
+            await sink.close()
+            await store.close()
+
+    asyncio.run(run())

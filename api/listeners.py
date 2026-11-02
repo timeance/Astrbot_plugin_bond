@@ -242,6 +242,6 @@ async def _on_llm_request_inner(
         "render",
         status="injected",
         after=dict(familiarity=rec.familiarity, affinity=rec.favor, trust=rec.trust),
-        bands_after=description.bands,
+        bands_after=description.bands or None,
         term_after=description.key,
     )

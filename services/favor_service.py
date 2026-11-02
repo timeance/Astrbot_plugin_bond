@@ -149,52 +149,71 @@ class FavorService:
     def diagnostics_enabled(self):
         return self.diagnostics is not None and self.diagnostics.enabled
 
-    def record_diagnostic(self, group_id, user_id, kind, **fields):
-        if self.diagnostics_enabled:
-            if fields.get("event_id") is not None:
-                import hashlib
+    def _diagnostic_failure(self):
+        try:
+            if self.diagnostics_enabled:
+                self.diagnostics.note_failure(self._storage.bot_id, self.scope_mode)
+        except Exception:
+            pass  # 观察点本身不可用时也不能改变已提交业务结果。
 
-                fields["event_id"] = hashlib.sha256(
-                    str(fields["event_id"]).encode()
-                ).hexdigest()
-            fields = {
-                key: value
-                for key, value in fields.items()
-                if value is not None or key == "tokens"
-            }
-            self.diagnostics.emit(
-                self._storage.bot_id,
-                self.scope_mode,
-                group_id,
-                user_id,
-                kind,
-                **self._diagnostic_config,
-                **fields,
-            )
+    def record_diagnostic(self, group_id, user_id, kind, **fields):
+        try:
+            if self.diagnostics_enabled:
+                if fields.get("event_id") is not None:
+                    import hashlib
+
+                    fields["event_id"] = hashlib.sha256(
+                        str(fields["event_id"]).encode()
+                    ).hexdigest()
+                fields = {
+                    key: value
+                    for key, value in fields.items()
+                    if value is not None or key == "tokens"
+                }
+                from ..core.scope import is_account_id
+
+                # 合成全局键不能当来源群，缺来源只计记录缺口。
+                if not is_account_id(str(group_id or "")):
+                    self._diagnostic_failure()
+                    return
+                self.diagnostics.emit(
+                    self._storage.bot_id,
+                    self.scope_mode,
+                    group_id,
+                    user_id,
+                    kind,
+                    **self._diagnostic_config,
+                    **fields,
+                )
+        except Exception:
+            self._diagnostic_failure()
 
     def _diagnose_change(
         self, group_id, user_id, result, reason, event_id, event_type=None
     ):
-        if not self.diagnostics_enabled:
-            return
-        before = self.describe_relation(**result["before"])
-        after = self.describe_relation(**result["after"])
-        self.record_diagnostic(
-            group_id,
-            user_id,
-            "relation",
-            reason=reason,
-            event_id=event_id,
-            event_type=event_type,
-            before=result["before"],
-            after=result["after"],
-            delta=result["delta"],
-            bands_before=before.bands,
-            bands_after=after.bands,
-            term_before=before.key,
-            term_after=after.key,
-            status=result["skipped"] or "committed",
-        )
+        try:
+            if not self.diagnostics_enabled:
+                return
+            before = self.describe_relation(**result["before"])
+            after = self.describe_relation(**result["after"])
+            self.record_diagnostic(
+                group_id,
+                user_id,
+                "relation",
+                reason=reason,
+                event_id=event_id,
+                event_type=event_type,
+                before=result["before"],
+                after=result["after"],
+                delta=result["delta"],
+                bands_before=before.bands or None,
+                bands_after=after.bands or None,
+                term_before=before.key,
+                term_after=after.key,
+                status=result["skipped"] or "committed",
+            )
+        except Exception:
+            self._diagnostic_failure()
 
     def invalidate_cache(self):
         """恢复数据库后重新核对成员是否存在及昵称。"""
@@ -957,8 +976,7 @@ class FavorService:
         return await self.get(info["group_id"], info["user_id"])
 
     async def reset(self, group_id: str, user_id: str | None = None) -> None:
-        group_id = self.group_key(group_id)
-        await self._storage.reset(group_id, user_id)
+        await self._storage.reset(self.group_key(group_id), user_id)
         self.record_diagnostic(
             group_id,
             user_id or "all-members",

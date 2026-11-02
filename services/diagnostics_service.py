@@ -170,6 +170,16 @@ class DiagnosticRecorder:
         self._note(selector, "dropped")
         return False
 
+    def note_failure(self, bot_id, mode):
+        """观察点准备失败只记缺口，不保存异常或不确定身份。"""
+        if not self.enabled:
+            return
+        try:
+            selector = self._selector(bot_id, mode)
+        except Exception:
+            selector = None
+        self._reject(selector, "invalid")
+
     def emit(self, bot_id, scope_mode, group_id, user_id, kind, **fields):
         """同步无磁盘 IO；身份来自可信事件，返回是否入队。"""
         if not self.enabled:

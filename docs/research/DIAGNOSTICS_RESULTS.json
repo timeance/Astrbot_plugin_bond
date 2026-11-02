@@ -173,21 +173,21 @@
   "offline_hook_latency_ms": {
     "off": {
       "samples": 1201,
-      "p50": 1.5544999623671174,
-      "p95": 1.997399958781898
+      "p50": 1.5822999412193894,
+      "p95": 1.8975000130012631
     },
     "on": {
       "samples": 1201,
-      "p50": 1.9647999433800578,
-      "p95": 3.221499966457486
+      "p50": 1.8649999983608723,
+      "p95": 2.2726000752300024
     }
   },
   "limits": "单机单次合成测量，无真实Provider或主回复；延迟不是性能保证。轮转/丢弃见diagnostics。",
   "base_commit": "6caafd8f800dd9ce5a20b85decb732343fba07d6",
   "source_sha256": {
-    "services/favor_service.py": "18d81a2a856b96aff2d42845b2ce32058cccae0b309e9ec64bb66392b220ecdd",
+    "services/favor_service.py": "4317b9ac4185916ab929e5c7b2ba8aa3fba5c483b058e70d1a5380d20ee07a83",
     "services/assessment_service.py": "d2e6aea2a38b1eb06d73ab559b477ebdb48daba999205e47eb55da1266d0b844",
-    "services/diagnostics_service.py": "4ec476a814a64312fd6e434bb4c71db25e5077bc415462297f9c6ff9b31a4112",
+    "services/diagnostics_service.py": "1d5c146fb7d20206912383d96d4b9e86c183960c60b95bbeb17103c504984e2f",
     "scripts/replay_diagnostics.py": "634f3195550fe6c6b4949a9170fd5a501c18d94a4f76df5eb5008463cfbcb679"
   }
 }
