@@ -217,6 +217,102 @@ LivingMemory 集成已移除，不再探测、读取或写入其记忆。本地�
 
 ## 许可与来源
 
-Bond 源自 yiwuerxin 的 `astrbot_plugin_xinxian`，保留原作者署名与上游说明。上游基线 README 声明 `AGPL-3.0`，但没有独立 LICENSE；本仓库补齐许可证全文并沿用声明，不声称取得额外授权或原生 GitHub Fork 关系。来源与修改归属见 [NOTICE](NOTICE)，许可证见 [LICENSE](LICENSE)。通过网络提供修改后的服务时，应按许可证提供对应源码。
+Bond 基于 [yiwuerxin/astrbot_plugin_xinxian](https://github.com/yiwuerxin/astrbot_plugin_xinxian) 开发，保留原作者署名，并沿用 **GNU AGPL v3** 许可证。完整条款见 [LICENSE](LICENSE)，上游来源和修改记录见 [NOTICE](NOTICE)。
 
-Logo 为以《超时空辉夜姬！》八千代为灵感、经 AI 辅助绘制的非官方同人设计。它作为项目视觉使用，Bond 的对话人格仍由 AstrBot 当前配置决定。
+如果你修改了 Bond，并通过网络向他人提供服务，请依照许可证向使用者提供所运行版本的对应源码。
+
+Logo 是以《超时空辉夜姬！》八千代为灵感、由 AI 辅助绘制的非官方同人设计。它用于项目展示；Bot 的对话人格由 AstrBot 中的配置决定。
+
+<a id="references"></a>
+
+## References / 参考资料
+
+关于情感与关系建模的设计、实现和合成实验，见图文短论文 [《AstrBot Bond：群聊中的情感与社会关系建模》](docs/research/EMOTION_MODEL_PAPER.md)。原始研究输入、文献用途和未采纳结论见 [研究来源与证据边界](docs/research/RESEARCH_SOURCES.md)。
+
+项目依据包括 [PRD](docs/PRD.md)、[架构说明](ARCHITECTURE.md)、[研究 RFC](docs/research/RFC_PHASE0.md) 与 [阶段验收记录](docs/research/DELIVERY.md)。PRD 及研究报告保留设计历史；当前能力以源码和对应版本的验证记录为准。工程来源与许可见前文“许可与来源”。
+
+以下文献用于界定构念、比较机制和设计评价方法，不能证明 Bond 具有真实情感，也不能直接给出关系分值、阈值、修复比例或真实群聊效果。条目按主题编排，编号供短论文引用；来源核对日期为 2026-11-03。
+
+### 关系、情感与信任
+
+<a id="ref-01"></a>
+
+1. Berscheid, E., Snyder, M., & Omoto, A. M. (1989). **The Relationship Closeness Inventory: Assessing the Closeness of Interpersonal Relationships.** *Journal of Personality and Social Psychology, 57*(5), 792–807. [DOI: 10.1037/0022-3514.57.5.792](https://doi.org/10.1037/0022-3514.57.5.792)。用于区分互动接触与主观亲近。
+
+<a id="ref-02"></a>
+
+2. Laurenceau, J.-P., Barrett, L. F., & Pietromonaco, P. R. (1998). **Intimacy as an Interpersonal Process: The Importance of Self-Disclosure, Partner Disclosure, and Perceived Partner Responsiveness in Interpersonal Exchanges.** *Journal of Personality and Social Psychology, 74*(5), 1238–1251. [DOI: 10.1037/0022-3514.74.5.1238](https://doi.org/10.1037/0022-3514.74.5.1238)。用于理解互动质量与回应性，不能据此推断用户内心。
+
+<a id="ref-03"></a>
+
+3. Mayer, R. C., Davis, J. H., & Schoorman, F. D. (1995). **An Integrative Model of Organizational Trust.** *Academy of Management Review, 20*(3), 709–734. [DOI: 10.5465/amr.1995.9508080335](https://doi.org/10.5465/amr.1995.9508080335)。用于区分信任与喜欢、礼貌等正向态度。
+
+<a id="ref-04"></a>
+
+4. Lewicki, R. J., McAllister, D. J., & Bies, R. J. (1998). **Trust and Distrust: New Relationships and Realities.** *Academy of Management Review, 23*(3), 438–458. [DOI: 10.5465/amr.1998.926620](https://doi.org/10.5465/amr.1998.926620)。用于讨论矛盾信号及单一信任标量的表达限制。
+
+<a id="ref-05"></a>
+
+5. Kim, P. H., Ferrin, D. L., Cooper, C. D., & Dirks, K. T. (2004). **Removing the Shadow of Suspicion: The Effects of Apology versus Denial for Repairing Competence- versus Integrity-Based Trust Violations.** *Journal of Applied Psychology, 89*(1), 104–118. [DOI: 10.1037/0021-9010.89.1.104](https://doi.org/10.1037/0021-9010.89.1.104)。用于区分不同违背类型的修复条件，不采用固定“道歉恢复率”。
+
+<a id="ref-06"></a>
+
+6. Lewicki, R. J., & Brinsfield, C. (2017). **Trust Repair.** *Annual Review of Organizational Psychology and Organizational Behavior, 4*, 287–313. [DOI: 10.1146/annurev-orgpsych-032516-113147](https://doi.org/10.1146/annurev-orgpsych-032516-113147)。用于区分言语回应与持续行为修复。
+
+<a id="ref-07"></a>
+
+7. Russell, J. A. (1980). **A Circumplex Model of Affect.** *Journal of Personality and Social Psychology, 39*(6), 1161–1178. [DOI: 10.1037/h0077714](https://doi.org/10.1037/h0077714)。用于区分当前情感体验与长期关系构念。
+
+<a id="ref-08"></a>
+
+8. Baumeister, R. F., Bratslavsky, E., Finkenauer, C., & Vohs, K. D. (2001). **Bad Is Stronger than Good.** *Review of General Psychology, 5*(4), 323–370. [DOI: 10.1037/1089-2680.5.4.323](https://doi.org/10.1037/1089-2680.5.4.323)。用于讨论正负影响的不对称性，不提供统一扣分倍率。
+
+### 人机关系
+
+<a id="ref-09"></a>
+
+9. Bickmore, T. W., & Picard, R. W. (2005). **Establishing and Maintaining Long-Term Human-Computer Relationships.** *ACM Transactions on Computer-Human Interaction, 12*(2), 293–327. [DOI: 10.1145/1067860.1067867](https://doi.org/10.1145/1067860.1067867)。长期关系型 Agent 的设计与评价背景。
+
+<a id="ref-10"></a>
+
+10. Skjuve, M., Følstad, A., Fostervold, K. I., & Brandtzaeg, P. B. (2021). **My Chatbot Companion – a Study of Human-Chatbot Relationships.** *International Journal of Human-Computer Studies, 149*, 102601. [DOI: 10.1016/j.ijhcs.2021.102601](https://doi.org/10.1016/j.ijhcs.2021.102601)。一对一聊天机器人关系的定性研究背景。
+
+<a id="ref-11"></a>
+
+11. Skjuve, M., Følstad, A., Fostervold, K. I., & Brandtzaeg, P. B. (2022). **A Longitudinal Study of Human–Chatbot Relationships.** *International Journal of Human-Computer Studies, 168*, 102903. [DOI: 10.1016/j.ijhcs.2022.102903](https://doi.org/10.1016/j.ijhcs.2022.102903)。用于提醒长期关系体验存在个体差异，不把固定阶段当作普遍规律。
+
+### 多方对话、上下文与保守判断
+
+<a id="ref-12"></a>
+
+12. Ghosh, D., Fabbri, A. R., & Muresan, S. (2018). **Sarcasm Analysis Using Conversation Context.** *Computational Linguistics, 44*(4), 755–792. [DOI: 10.1162/coli_a_00336](https://doi.org/10.1162/coli_a_00336)。用于说明孤立句子不足以可靠识别反讽。
+
+<a id="ref-13"></a>
+
+13. Inoue, K., Lala, D., Elmers, M., Ochi, K., & Kawahara, T. (2025). **An LLM Benchmark for Addressee Recognition in Multi-modal Multi-party Dialogue.** *Proceedings of the 15th International Workshop on Spoken Dialogue Systems Technology*, 330–334. [ACL Anthology](https://aclanthology.org/2025.iwsds-1.36/)。用于支持独立处理受话人归因；原实验并非 QQ 文本群聊。
+
+<a id="ref-14"></a>
+
+14. Gao, J., Lian, Y., Zhou, Z., Fu, Y., & Wang, B. (2023). **LiveChat: A Large-Scale Personalized Dialogue Dataset Automatically Constructed from Live Streaming.** *ACL 2023, Volume 1: Long Papers*, 15387–15405. [DOI: 10.18653/v1/2023.acl-long.858](https://doi.org/10.18653/v1/2023.acl-long.858)。中文多方对话与受话人识别的外部数据参照。
+
+<a id="ref-15"></a>
+
+15. Geifman, Y., & El-Yaniv, R. (2017). **Selective Classification for Deep Neural Networks.** *Advances in Neural Information Processing Systems, 30*. [会议论文](https://papers.nips.cc/paper_files/paper/2017/hash/4a8423d5e91fda00bb7e46540e2b0cf1-Abstract.html)。借鉴“允许弃权”的风险与覆盖率权衡，不声称 Bond 实现了论文的统计保证。
+
+<a id="ref-16"></a>
+
+16. Sharma, M., Tong, M., Korbak, T., et al. (2024). **Towards Understanding Sycophancy in Language Models.** *ICLR 2024*. [会议论文](https://proceedings.iclr.cc/paper_files/paper/2024/hash/0105f7972202c1d4fb817da9f21a9663-Abstract-Conference.html)。用于说明模型建议仍需校验，不推导“夸奖用户必有恶意”或通用错误率。
+
+### 记忆与生成式 Agent：比较背景
+
+<a id="ref-17"></a>
+
+17. Zhong, W., Guo, L., Gao, Q., Ye, H., & Wang, Y. (2024). **MemoryBank: Enhancing Large Language Models with Long-Term Memory.** *Proceedings of the AAAI Conference on Artificial Intelligence, 38*(17). [DOI: 10.1609/aaai.v38i17.29946](https://doi.org/10.1609/aaai.v38i17.29946)。记忆更新的比较背景；记忆遗忘机制不能直接当作关系衰减定律。
+
+<a id="ref-18"></a>
+
+18. Wang, Z., Chiu, Y. Y., & Chiu, Y. C. (2023). **Humanoid Agents: Platform for Simulating Human-like Generative Agents.** *EMNLP 2023: System Demonstrations*. [ACL Anthology](https://aclanthology.org/2023.emnlp-demo.15/)。情绪与关系分层的模拟架构参照；Bond 未实现其情绪或需求系统。
+
+<a id="ref-19"></a>
+
+19. Park, J. S., O'Brien, J. C., Cai, C. J., Morris, M. R., Liang, P., & Bernstein, M. S. (2023). **Generative Agents: Interactive Simulacra of Human Behavior.** *UIST 2023*. [作者预印本](https://arxiv.org/abs/2304.03442)。记忆、反思和生成行为的架构参照；不作为 Bond 群聊效果或 Token 节约的证据。
