@@ -1,0 +1,293 @@
+{
+  "format_version": 1,
+  "provenance": "synthetic_external_annotations_not_production_observable",
+  "annotation_note": "独立合成标注只演示信息上界；normal_question可作现有事件载体，不代表生产识别履约。正文和旧trust向量都不是标签来源。",
+  "historical_rules_source": {
+    "path": "tests/fixtures/research/scenarios.json#baseline_rules",
+    "baseline_commit": "993e821bd127488820a0f639107f67c0c5402bf4",
+    "phase0_base": "db0624139b177cb3fc70047fd214ac564c75a5d5"
+  },
+  "historical_rules_note": "完整冻结Phase0历史规则，仅用于构造旧历史；不代表当前生产自动增信规则。",
+  "historical_rules": {
+    "normal_question": {
+      "familiarity": 0.1,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "thanks": {
+      "familiarity": 0.2,
+      "affinity": 0.5,
+      "trust": 0.2
+    },
+    "friendly": {
+      "familiarity": 0.3,
+      "affinity": 0.8,
+      "trust": 0.2
+    },
+    "joke": {
+      "familiarity": 0.2,
+      "affinity": 0.5,
+      "trust": 0.0
+    },
+    "criticism": {
+      "familiarity": 0.1,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "insult": {
+      "familiarity": 0.0,
+      "affinity": -1.0,
+      "trust": -1.5
+    },
+    "manipulation": {
+      "familiarity": 0.0,
+      "affinity": -0.5,
+      "trust": -2.0
+    },
+    "apology": {
+      "familiarity": 0.1,
+      "affinity": 0.7,
+      "trust": 1.0
+    },
+    "uncertain": {
+      "familiarity": 0.0,
+      "affinity": 0.0,
+      "trust": 0.0
+    }
+  },
+  "cases": [
+    {
+      "id": "no_evidence",
+      "operations": [],
+      "annotations": {}
+    },
+    {
+      "id": "unannotated_nonzero_t",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "polite",
+          "event_type": "thanks"
+        }
+      ],
+      "annotations": {}
+    },
+    {
+      "id": "nondiagnostic",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "polite",
+          "event_type": "thanks"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/polite": "nondiagnostic"
+      }
+    },
+    {
+      "id": "numeric_cancellation",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "apology",
+          "event_type": "apology"
+        },
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "manipulation",
+          "intensity": 0.5
+        }
+      ],
+      "annotations": {}
+    },
+    {
+      "id": "labeled_cancellation",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "fulfilled",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "event",
+          "event_id": "violated",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/fulfilled": "positive",
+        "10001/per_group/7001/8001/violated": "negative"
+      }
+    },
+    {
+      "id": "labeled_negative",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violated",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violated": "negative"
+      }
+    },
+    {
+      "id": "stale",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "old",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "advance",
+          "days": 31
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/old": "negative"
+      }
+    },
+    {
+      "id": "legacy_unknown",
+      "legacy": true,
+      "operations": [],
+      "annotations": {}
+    },
+    {
+      "id": "manual",
+      "operations": [
+        {
+          "action": "manual",
+          "event_id": "edit",
+          "values": {
+            "familiarity": 30,
+            "affinity": 20,
+            "trust": 40
+          }
+        },
+        {
+          "action": "profile"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/edit": "positive"
+      }
+    },
+    {
+      "id": "undo",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violated",
+          "event_type": "manipulation"
+        },
+        {
+          "action": "undo",
+          "event_id": "violated"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violated": "negative"
+      }
+    },
+    {
+      "id": "reset",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "erased",
+          "event_type": "manipulation"
+        },
+        {
+          "action": "reset"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/erased": "negative"
+      }
+    },
+    {
+      "id": "isolation",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "shared",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "event",
+          "event_id": "shared",
+          "event_type": "normal_question",
+          "subject": {
+            "bot": "10002"
+          }
+        },
+        {
+          "action": "event",
+          "event_id": "shared",
+          "event_type": "normal_question",
+          "subject": {
+            "scope": "global"
+          }
+        },
+        {
+          "action": "event",
+          "event_id": "shared",
+          "event_type": "normal_question",
+          "subject": {
+            "group": "7002"
+          }
+        },
+        {
+          "action": "event",
+          "event_id": "shared",
+          "event_type": "normal_question",
+          "subject": {
+            "user": "8002"
+          }
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/shared": "positive",
+        "10002/per_group/7001/8001/shared": "negative",
+        "10001/global/__global__/8001/shared": "negative",
+        "10001/per_group/7002/8001/shared": "negative",
+        "10001/per_group/7001/8002/shared": "negative"
+      }
+    },
+    {
+      "id": "decay",
+      "decay": true,
+      "operations": [
+        {
+          "action": "manual",
+          "event_id": "seed",
+          "values": {
+            "familiarity": 60,
+            "affinity": 60,
+            "trust": 40
+          }
+        },
+        {
+          "action": "event",
+          "event_id": "quiet",
+          "event_type": "uncertain"
+        },
+        {
+          "action": "advance",
+          "days": 200
+        },
+        {
+          "action": "event",
+          "event_id": "quiet-later",
+          "event_type": "uncertain"
+        }
+      ],
+      "annotations": {}
+    }
+  ]
+}
