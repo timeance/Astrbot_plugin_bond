@@ -265,8 +265,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         request = SimpleNamespace(system_prompt="当前人格", prompt="输入", contexts=[])
         await plugin._on_llm_req(excluded, request)
         assert request.system_prompt == "当前人格"
-        assert await plugin._tool_query(excluded) == "本群未启用关系功能。"
-        assert await plugin._tool_rank(excluded) == "本群未启用关系功能。"
+        for handler in (plugin._tool_query, plugin._tool_rank):
+            result = json.loads(await handler(excluded))
+            assert result["status"] == "unavailable"
+            assert result["facts"] == {"reason": "本群未启用关系功能。"}
         assert not plugin._registry._tasks and not entered.is_set()
         for bot_id in BOT_IDS:
             assert "60006" not in {
@@ -290,6 +292,26 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         )
         await plugin._on_llm_req(other, other_request)
         assert "维护者在插件配置中将当前用户设为主人" not in other_request.system_prompt
+
+        # 真实装配入口返回资料；不让固定测试响应冒充人格表达验收。
+        query = json.loads(await plugin._tool_query(FakeEvent()))
+        assert query["status"] == "ok" and query["subject"] == "当前 Bot"
+        assert query["facts"] == {
+            "object": "当前发言者",
+            "relation_title": await old_deps.favor.relation_title(OLD_GROUP, OLD_USER),
+        }
+        assert (
+            json.loads(await plugin._tool_query(FakeEvent(), "8002"))["status"]
+            == "unavailable"
+        )
+        private = FakeEvent()
+        private.group = ""
+        for handler in (plugin._tool_query, plugin._tool_rank):
+            assert json.loads(await handler(private))["status"] == "unavailable"
+        rank_context = json.loads(await plugin._tool_rank(FakeEvent()))
+        assert rank_context["subject"] == "当前 Bot"
+        assert rank_context["facts"]["objects"] == "当前群成员"
+        assert len(rank_context["facts"]["ranking"]) <= 10
 
         event = FakeEvent()
         dispatch = asyncio.create_task(_drain(plugin._on_group_msg(event)))
@@ -786,7 +808,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
+        "scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

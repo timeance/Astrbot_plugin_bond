@@ -74,7 +74,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 三维关系与成员印象",
-    "0.2.5",
+    "0.2.6",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -469,24 +469,41 @@ class BondPlugin(Star):
 
     @filter.llm_tool(name="query_favor")
     async def _tool_query(self, event: AstrMessageEvent, target: str = "") -> str:
-        """查询当前发言者自己的关系称谓，不提供分值。
+        """提供当前 Bot 对当前发言者的关系称谓资料，不提供分值。
+
+        资料不要求披露或复述，如何使用由当前人格、系统规则和对话语境决定。
+        不支持查询其他成员，也不代表发言者对 Bot 或群友之间的关系。
 
         Args:
-            target(str): 仅允许留空或当前发言者的账号
+            target(str): 仅允许留空或当前发言者的账号，不能用他人姓名代替
         """
         if _group_entry_id(event) is None:
-            return "请在群聊中查询自己的关系。"
+            return tools.query_context(
+                status="unavailable", reason="请在群聊中查询自己的关系。"
+            )
         deps = await self._runtime.for_event(event)
         if deps is None:
-            return "本群未启用关系功能。"
-        return await tools.tool_query_favor(deps.favor, event, target)
+            return tools.query_context(
+                status="unavailable", reason="本群未启用关系功能。"
+            )
+        return await tools.tool_query_favor(deps.favor, event, target, for_llm=True)
 
     @filter.llm_tool(name="query_favor_ranking")
     async def _tool_rank(self, event: AstrMessageEvent) -> str:
-        """查询本群前十名关系称谓，不提供分值。"""
+        """提供当前 Bot 对本群成员的前十名关系称谓，按亲近度排序，不提供分值。
+
+        资料不要求披露或复述，如何使用由当前人格、系统规则和对话语境决定。
+        不用于回答某个群友最喜欢谁，也不能查询群友之间的关系。
+        """
         if _group_entry_id(event) is None:
-            return _RANKING_GROUP_REQUIRED
+            return tools.query_context(
+                status="unavailable", reason=_RANKING_GROUP_REQUIRED
+            )
         deps = await self._runtime.for_event(event)
         if deps is None:
-            return "本群未启用关系功能。"
-        return await tools.tool_query_ranking(deps.favor, event, self._ranking_limit)
+            return tools.query_context(
+                status="unavailable", reason="本群未启用关系功能。"
+            )
+        return await tools.tool_query_ranking(
+            deps.favor, event, self._ranking_limit, for_llm=True
+        )
