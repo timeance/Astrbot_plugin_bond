@@ -3,6 +3,7 @@
 import ast
 import asyncio
 import copy
+import json
 import sys
 from types import ModuleType
 from pathlib import Path
@@ -133,7 +134,9 @@ def test_undo_uses_relation_bounds_for_three_dimensional_logs_and_config_for_leg
 
 
 @pytest.mark.parametrize("method_name", ["_cmd_rank", "_tool_rank"])
-def test_main_ranking_entries_reject_private_event_before_runtime(method_name):
+def test_main_ranking_entries_reject_private_event_before_runtime(
+    method_name, monkeypatch
+):
     source = (Path(__file__).resolve().parents[1] / "main.py").read_text(
         encoding="utf-8"
     )
@@ -159,7 +162,15 @@ def test_main_ranking_entries_reject_private_event_before_runtime(method_name):
     method.returns = None
     module = ast.Module(body=[group_helper, method], type_ignores=[])
     ast.fix_missing_locations(module)
-    namespace = {"_RANKING_GROUP_REQUIRED": "请在群聊中查询本群排行。"}
+    event_module = ModuleType("astrbot.api.event")
+    event_module.AstrMessageEvent = object
+    monkeypatch.setitem(sys.modules, "astrbot.api.event", event_module)
+    from astrbot_plugin_bond.api import llm_tools
+
+    namespace = {
+        "_RANKING_GROUP_REQUIRED": "请在群聊中查询本群排行。",
+        "tools": llm_tools,
+    }
     exec(compile(module, "main.py", "exec"), namespace)
 
     method_fn = namespace[method_name]
@@ -188,7 +199,9 @@ def test_main_ranking_entries_reject_private_event_before_runtime(method_name):
                 ("plain", "请在群聊中查询本群排行。")
             ]
         else:
-            assert await plugin._tool_rank(Event()) == "请在群聊中查询本群排行。"
+            result = json.loads(await plugin._tool_rank(Event()))
+            assert result["status"] == "unavailable"
+            assert result["facts"] == {"reason": "请在群聊中查询本群排行。"}
 
     asyncio.run(run())
 

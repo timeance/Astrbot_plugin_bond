@@ -1,13 +1,22 @@
 """当前人格、三维描述及不可信资料边界。"""
 
 from types import SimpleNamespace
+
+import pytest
 from astrbot_plugin_bond.services.inject_service import InjectService
 from astrbot_plugin_bond.core.levels import LevelTable
 
 
-def test_relation_block_preserves_persona_and_serializes_untrusted_text():
+@pytest.mark.parametrize(
+    "original",
+    [
+        "你是一位严谨的档案管理员，不接受恋爱设定。",
+        "你言简意赅，性格冷淡，按自己的习惯表达。",
+        "你是一位热情健谈的旅行向导，表达轻松。",
+    ],
+)
+def test_relation_block_preserves_persona_and_serializes_untrusted_text(original):
     service = InjectService(LevelTable.from_config(None), "")
-    original = "你是一位严谨的档案管理员，不接受恋爱设定。"
     request = SimpleNamespace(
         system_prompt=original,
         prompt="当前问题",
