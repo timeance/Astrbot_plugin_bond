@@ -7,6 +7,7 @@ import subprocess
 import json
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -29,7 +30,7 @@ from astrbot_plugin_bond.services.assessment_service import (
 )
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
 
-BASE_TIME = 1767225600.0
+BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
 EDGES = {
     "current": (10.0, 25.0, 40.0, 70.0),
     "early_moderate": (2.0, 8.0, 40.0, 70.0),
