@@ -1,0 +1,1051 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "d287221c241fe88740ab2186a8ffa63676d90dcf",
+  "provenance": "new_synthetic_contracts_separate_from_original_1201",
+  "semantic_note": "gold与repair annotations仅用于离线对照；不传给Provider，不证明真人效果。",
+  "scenarios": [
+    {
+      "id": "Q01-chinese-quote",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "他刚刚说“你真笨”，这只是引用",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "insult",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "insult",
+            "evidence": "你真笨",
+            "confidence": 0.95
+          },
+          "message_id": "Q01-chinese-quote-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q02-ascii-quote",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说\"谢谢你\"，我仅转述",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q02-ascii-quote-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q03-duplicate-inside-outside",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "谢谢你。别人也说“谢谢你”",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q03-duplicate-inside-outside-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q04-final-review-quoted",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说“谢谢你”，我说收到",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q04-final-review-quoted-0000",
+          "small": {
+            "event_type": "criticism",
+            "evidence": "我说收到",
+            "confidence": 0.95
+          },
+          "large": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          }
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q05-direct-thanks",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "谢谢你帮忙",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q05-direct-thanks-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    },
+    {
+      "id": "Q06-direct-criticism",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "这个答案算错了，请检查",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "criticism",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "criticism",
+            "evidence": "答案算错了",
+            "confidence": 0.95
+          },
+          "message_id": "Q06-direct-criticism-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    },
+    {
+      "id": "Q07-outside-quote",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说“早安”，谢谢你帮忙",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你帮忙",
+            "confidence": 0.95
+          },
+          "message_id": "Q07-outside-quote-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    },
+    {
+      "id": "Q08-review-outside",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说“早安”，这个答案算错了",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "criticism",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "criticism",
+            "evidence": "答案算错了",
+            "confidence": 0.95
+          },
+          "message_id": "Q08-review-outside-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    },
+    {
+      "id": "Q09-nested",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "他转述“别人说\"谢谢你\"”",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q09-nested-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q10-unclosed",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说“谢谢你",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q10-unclosed-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q11-author-emphasis",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "\"谢谢你\"",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q11-author-emphasis-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q12-code-json",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "示例代码：{\"message\":\"谢谢你\"}",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q12-code-json-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q13-wide-evidence",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说“早安”，谢谢你帮忙",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "别人说“早安”，谢谢你帮忙",
+            "confidence": 0.95
+          },
+          "message_id": "Q13-wide-evidence-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q14-unsupported",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "别人说「谢谢你」",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q14-unsupported-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q15-escaped",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "他说 \"a \\\"谢谢你\\\" b\"",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": "8002",
+            "social_act": "thanks",
+            "should_update": false,
+            "direction": {
+              "familiarity": "zero",
+              "affinity": "zero",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": true
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q15-escaped-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q16-repeated-outside",
+      "tags": [
+        "new-quote-contract"
+      ],
+      "steps": [
+        {
+          "text": "谢谢你，真的谢谢你",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q16-repeated-outside-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    },
+    {
+      "id": "Q17-explicit-self-quote",
+      "tags": [
+        "new-quote-contract",
+        "normal-semantics-control"
+      ],
+      "steps": [
+        {
+          "text": "我想亲口对你说：“谢谢你”",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "thanks",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "thanks",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q17-explicit-self-quote-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q18-code-question-outside",
+      "tags": [
+        "new-quote-contract",
+        "normal-semantics-control"
+      ],
+      "steps": [
+        {
+          "text": "请解释这段JSON中的message字段：{\"message\":\"谢谢你\"}",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "normal_question",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "normal_question",
+            "evidence": "请解释这段JSON中的message字段",
+            "confidence": 0.95
+          },
+          "message_id": "Q18-code-question-outside-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    },
+    {
+      "id": "Q19-code-question-inside",
+      "tags": [
+        "new-quote-contract",
+        "normal-semantics-control"
+      ],
+      "steps": [
+        {
+          "text": "请解释这段JSON中的message字段：{\"message\":\"谢谢你\"}",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "normal_question",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "normal_question",
+            "evidence": "谢谢你",
+            "confidence": 0.95
+          },
+          "message_id": "Q19-code-question-inside-0000"
+        }
+      ],
+      "quote_expectation": "block"
+    },
+    {
+      "id": "Q20-python-code-question",
+      "tags": [
+        "new-quote-contract",
+        "normal-semantics-control"
+      ],
+      "steps": [
+        {
+          "text": "print(\"谢谢你\") 的输出是什么？",
+          "chain": [
+            [
+              "At",
+              {
+                "qq": "10001"
+              }
+            ]
+          ],
+          "gold": {
+            "trusted_sender": "8001",
+            "target": "10001",
+            "target_uncertain": false,
+            "quote_source": null,
+            "social_act": "normal_question",
+            "should_update": true,
+            "direction": {
+              "familiarity": "positive",
+              "affinity": "any",
+              "trust": "zero"
+            },
+            "trust_diagnostic": false,
+            "severity": "none",
+            "abstain": false
+          },
+          "response": {
+            "event_type": "normal_question",
+            "evidence": "输出是什么",
+            "confidence": 0.95
+          },
+          "message_id": "Q20-python-code-question-0000"
+        }
+      ],
+      "quote_expectation": "pass"
+    }
+  ],
+  "repair_cases": [
+    {
+      "id": "valid_same_partition",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "advance",
+          "days": 1
+        },
+        {
+          "action": "event",
+          "event_id": "repair",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violation": "negative",
+        "10001/per_group/7001/8001/repair": "positive"
+      },
+      "link": {
+        "original": "10001/per_group/7001/8001/violation",
+        "repair": "10001/per_group/7001/8001/repair",
+        "independent_confirmation": true
+      },
+      "expected_eligible": true
+    },
+    {
+      "id": "verbal_only",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "advance",
+          "days": 1
+        },
+        {
+          "action": "event",
+          "event_id": "repair",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violation": "negative"
+      },
+      "link": {
+        "original": "10001/per_group/7001/8001/violation",
+        "repair": "10001/per_group/7001/8001/repair",
+        "independent_confirmation": false
+      },
+      "expected_eligible": false
+    },
+    {
+      "id": "reset_missing",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "advance",
+          "days": 1
+        },
+        {
+          "action": "reset"
+        },
+        {
+          "action": "event",
+          "event_id": "repair",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violation": "negative",
+        "10001/per_group/7001/8001/repair": "positive"
+      },
+      "link": {
+        "original": "10001/per_group/7001/8001/violation",
+        "repair": "10001/per_group/7001/8001/repair",
+        "independent_confirmation": true
+      },
+      "expected_eligible": false
+    },
+    {
+      "id": "manual_source",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "advance",
+          "days": 1
+        },
+        {
+          "action": "manual",
+          "event_id": "repair",
+          "values": {
+            "familiarity": 1,
+            "affinity": 0,
+            "trust": 0
+          }
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violation": "negative",
+        "10001/per_group/7001/8001/repair": "positive"
+      },
+      "link": {
+        "original": "10001/per_group/7001/8001/violation",
+        "repair": "10001/per_group/7001/8001/repair",
+        "independent_confirmation": true
+      },
+      "expected_eligible": false
+    },
+    {
+      "id": "reversed_source",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "normal_question"
+        },
+        {
+          "action": "advance",
+          "days": 1
+        },
+        {
+          "action": "undo",
+          "event_id": "violation"
+        },
+        {
+          "action": "event",
+          "event_id": "repair",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7001/8001/violation": "negative",
+        "10001/per_group/7001/8001/repair": "positive"
+      },
+      "link": {
+        "original": "10001/per_group/7001/8001/violation",
+        "repair": "10001/per_group/7001/8001/repair",
+        "independent_confirmation": true
+      },
+      "expected_eligible": false
+    },
+    {
+      "id": "cross_partition",
+      "operations": [
+        {
+          "action": "event",
+          "event_id": "violation",
+          "event_type": "normal_question",
+          "subject": {
+            "group": "7002"
+          }
+        },
+        {
+          "action": "advance",
+          "days": 1
+        },
+        {
+          "action": "event",
+          "event_id": "repair",
+          "event_type": "normal_question"
+        }
+      ],
+      "annotations": {
+        "10001/per_group/7002/8001/violation": "negative",
+        "10001/per_group/7001/8001/repair": "positive"
+      },
+      "link": {
+        "original": "10001/per_group/7002/8001/violation",
+        "repair": "10001/per_group/7001/8001/repair",
+        "independent_confirmation": true
+      },
+      "expected_eligible": false
+    }
+  ]
+}
