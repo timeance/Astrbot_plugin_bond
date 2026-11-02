@@ -61,13 +61,13 @@ def main():
     ]
 
     def fraction(value):
-        return f'{value["numerator"]}/{value["denominator"]}'
+        return f"{value['numerator']}/{value['denominator']}"
 
     for arm, result in report["arms"].items():
         m = result["metrics"]
         lines.append(
-            f'| {arm} | {m["events"]} | {fraction(m["persistent_false_update_rate"])} | '
-            f'{fraction(m["target_false_update_rate"])} | {fraction(m["trust_false_update_rate"])} | {m["provider_calls"]} |'
+            f"| {arm} | {m['events']} | {fraction(m['persistent_false_update_rate'])} | "
+            f"{fraction(m['target_false_update_rate'])} | {fraction(m['trust_false_update_rate'])} | {m['provider_calls']} |"
         )
     lines += [
         "",

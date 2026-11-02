@@ -158,7 +158,7 @@ def test_undo_redo_preserves_actual_vectors_sources_and_reversed_marks(history):
         assert undone["source"] == "undo"
         assert undone["reversed"] is False
         assert undone["event_id"] is None
-        assert undone["reason"] == f'撤销#{original["id"]}'
+        assert undone["reason"] == f"撤销#{original['id']}"
         assert undone["delta"] == -0.1
         assert undone["relation_delta"] == {key: -0.1 for key in actual}
         assert (await service.get_relation("g", "u")).as_dict() == dict.fromkeys(
@@ -168,7 +168,7 @@ def test_undo_redo_preserves_actual_vectors_sources_and_reversed_marks(history):
         await service.undo_log(undone["id"])
         redone = (await service.query_logs("g", "u"))[0]
         assert redone["source"] == "undo"
-        assert redone["reason"] == f'撤销#{undone["id"]}'
+        assert redone["reason"] == f"撤销#{undone['id']}"
         assert redone["event_id"] is None
         assert redone["delta"] == 0.1
         assert redone["relation_delta"] == actual
