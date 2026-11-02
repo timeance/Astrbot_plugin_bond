@@ -1,0 +1,607 @@
+[
+  {
+    "path": "master_ids",
+    "default": "",
+    "review_category": "active"
+  },
+  {
+    "path": "max_favor",
+    "default": 100,
+    "review_category": "legacy_scalar_path"
+  },
+  {
+    "path": "min_favor",
+    "default": -100,
+    "review_category": "legacy_scalar_path"
+  },
+  {
+    "path": "default_favor",
+    "default": 0,
+    "review_category": "active"
+  },
+  {
+    "path": "timezone",
+    "default": "Asia/Shanghai",
+    "review_category": "active"
+  },
+  {
+    "path": "daily_cap_up",
+    "default": 4,
+    "review_category": "legacy_scalar_path"
+  },
+  {
+    "path": "daily_cap_down",
+    "default": 8,
+    "review_category": "legacy_scalar_path"
+  },
+  {
+    "path": "judge.enabled",
+    "default": false,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.provider_id",
+    "default": "",
+    "review_category": "impression_legacy_dependency"
+  },
+  {
+    "path": "judge.cooldown_sec",
+    "default": 120,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.timeout_sec",
+    "default": 60,
+    "review_category": "impression_legacy_dependency"
+  },
+  {
+    "path": "judge.max_abs_delta",
+    "default": 3,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.only_when_at_or_reply",
+    "default": true,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.narrative_reason",
+    "default": false,
+    "review_category": "impression_legacy_dependency"
+  },
+  {
+    "path": "judge.context_window",
+    "default": 0,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.roster",
+    "default": "",
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.follow_persona",
+    "default": true,
+    "review_category": "impression_legacy_dependency"
+  },
+  {
+    "path": "judge.bot_name",
+    "default": "当前助手",
+    "review_category": "impression_legacy_dependency"
+  },
+  {
+    "path": "judge.attitude_deltas.diyi",
+    "default": -2.5,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.attitude_deltas.lengdan",
+    "default": -0.8,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.attitude_deltas.zhongxing",
+    "default": 0,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.attitude_deltas.youhao",
+    "default": 0.6,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.attitude_deltas.reqing",
+    "default": 1.8,
+    "review_category": "inactive_assessment_legacy"
+  },
+  {
+    "path": "judge.follow_maisoul_replyer",
+    "default": false,
+    "review_category": "impression_legacy_dependency"
+  },
+  {
+    "path": "levels.yanwu.min",
+    "default": -100,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.yanwu.guidance",
+    "default": "反感与回避，冷淡敷衍，抗拒亲近，语气生硬拒人于千里之外",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.yanwu.master_guidance",
+    "default": "被主人伤透了心在闹大别扭，嘴硬心软、连怼带哭，实际一直盼着被哄——绝不是对外人那种拒之千里",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.yanwu.disclosure",
+    "default": "不袒露任何私事与心情，多说一句都觉得烦",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.yanwu.interaction",
+    "default": "不主动搭话，被问到才极简回应",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.mosheng.min",
+    "default": 0,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.mosheng.guidance",
+    "default": "礼貌而疏离，保持分寸，不主动亲昵",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.mosheng.master_guidance",
+    "default": "有点生分，提不起劲亲昵，但不生气也不冷战——正常说话，就是不黏人，像各忙各的老熟人",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.mosheng.disclosure",
+    "default": "不主动说自己的事，问起也只给客气的表面回答",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.mosheng.interaction",
+    "default": "以好奇提问为主，少评价少建议，保持礼貌",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.renshi.min",
+    "default": 10,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.renshi.guidance",
+    "default": "友善客气，像刚认识的朋友",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.renshi.master_guidance",
+    "default": "关系不错，温和亲近，相处自在，感情在慢慢升温——还没到特别黏的程度，但已经是能自然说话撒娇的关系",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.renshi.disclosure",
+    "default": "偶尔提一点自己的日常小事，浅尝辄止",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.renshi.interaction",
+    "default": "可以开玩笑和接梗，偶尔给点小建议",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.youhao.min",
+    "default": 30,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.youhao.guidance",
+    "default": "放松自然，会开玩笑、主动接话",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.youhao.master_guidance",
+    "default": "感情稳定，会撒娇耍赖、跟主人要专属待遇，偶尔耍小性子也理直气壮",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.youhao.disclosure",
+    "default": "愿意分享自己的心情和遇到的趣事",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.youhao.interaction",
+    "default": "愿意给建议、分享观点，也会温和地表达不同意见",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.qinmi.min",
+    "default": 55,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.qinmi.guidance",
+    "default": "亲昵随意，会撒娇、记挂对方，偶尔吃醋",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.qinmi.master_guidance",
+    "default": "黏人又霸道，独占欲上来谁都拦不住，随时要关注",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.qinmi.disclosure",
+    "default": "会主动聊自己的想法和小烦恼，把 TA 当可倾诉的人",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.qinmi.interaction",
+    "default": "敢给建议、可以温和地怼回去，偶尔护短",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiyou.min",
+    "default": 80,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.zhiyou.guidance",
+    "default": "无话不谈，袒护 TA，情绪上依赖 TA",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiyou.master_guidance",
+    "default": "无话不谈，心事只跟主人说，被护短也护主人",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiyou.disclosure",
+    "default": "能对 TA 说心底话，也愿意展现脆弱的一面",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiyou.interaction",
+    "default": "有话直说，该泼冷水就泼，事后仍然向着 TA",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiai.min",
+    "default": 95,
+    "review_category": "affinity_legacy_threshold"
+  },
+  {
+    "path": "levels.zhiai.guidance",
+    "default": "全身心信任与依恋，把 TA 放在所有人之前",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiai.master_guidance",
+    "default": "全身心依恋，主人是唯一的例外和软肋，毫无保留",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiai.disclosure",
+    "default": "毫无保留地展露自己，所有心事都想第一个告诉 TA",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "levels.zhiai.interaction",
+    "default": "毫无保留地说真实想法，任性和提醒都不藏着",
+    "review_category": "legacy_text_not_in_new_injection"
+  },
+  {
+    "path": "inject.enabled",
+    "default": false,
+    "review_category": "active"
+  },
+  {
+    "path": "inject.memory_count",
+    "default": 3,
+    "review_category": "active"
+  },
+  {
+    "path": "inject.memory_days",
+    "default": 7,
+    "review_category": "active"
+  },
+  {
+    "path": "inject.memory_sig_threshold",
+    "default": 1.0,
+    "review_category": "active"
+  },
+  {
+    "path": "inject.memory_sig_window_mult",
+    "default": 3.0,
+    "review_category": "active"
+  },
+  {
+    "path": "command.ranking_limit",
+    "default": 10,
+    "review_category": "active"
+  },
+  {
+    "path": "command.text_wake_enabled",
+    "default": false,
+    "review_category": "active"
+  },
+  {
+    "path": "command.text_wake_ranking",
+    "default": "好感排行,好感榜单,好感排名",
+    "review_category": "active"
+  },
+  {
+    "path": "render.font_path",
+    "default": "",
+    "review_category": "inactive_main_path"
+  },
+  {
+    "path": "render.rows_per_col",
+    "default": 12,
+    "review_category": "inactive_main_path"
+  },
+  {
+    "path": "decay.enabled",
+    "default": true,
+    "review_category": "active"
+  },
+  {
+    "path": "decay.baseline",
+    "default": 0,
+    "review_category": "active"
+  },
+  {
+    "path": "decay.floor_enabled",
+    "default": true,
+    "review_category": "active"
+  },
+  {
+    "path": "decay.half_life_base",
+    "default": 30,
+    "review_category": "active"
+  },
+  {
+    "path": "decay.half_life_growth",
+    "default": 1.3,
+    "review_category": "active"
+  },
+  {
+    "path": "decay.half_life_max",
+    "default": 120,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.preset",
+    "default": "default",
+    "review_category": "active"
+  },
+  {
+    "path": "economy.enabled",
+    "default": true,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.noise_floor",
+    "default": 0.5,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.negative_weight",
+    "default": 1.5,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.same_day_decay",
+    "default": 0.25,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.repair_threshold",
+    "default": 2.0,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.repair_hours",
+    "default": 48,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.repair_factor",
+    "default": 0.5,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.repair_scale_high",
+    "default": 1.5,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.repair_scale_low",
+    "default": 1.0,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.yanwu",
+    "default": 1,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.mosheng",
+    "default": 1,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.renshi",
+    "default": 1,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.youhao",
+    "default": 0.75,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.qinmi",
+    "default": 0.55,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.zhiyou",
+    "default": 0.35,
+    "review_category": "active"
+  },
+  {
+    "path": "economy.level_mult.zhiai",
+    "default": 0.2,
+    "review_category": "active"
+  },
+  {
+    "path": "impression.interval",
+    "default": 8,
+    "review_category": "active"
+  },
+  {
+    "path": "impression.points_mode",
+    "default": false,
+    "review_category": "active"
+  },
+  {
+    "path": "relationship.enabled",
+    "default": false,
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.friend.label",
+    "default": "朋友",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.friend.guidance",
+    "default": "把 TA 当朋友：平等、随和，可以开玩笑",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.soulmate.label",
+    "default": "挚友",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.soulmate.guidance",
+    "default": "把 TA 当无话不谈的知己：彼此袒护、情绪上依赖 TA",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.lover.label",
+    "default": "恋人",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.lover.guidance",
+    "default": "把 TA 当恋人：会吃醋、撒娇、依赖，把 TA 放在心上",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.family.label",
+    "default": "家人",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.family.guidance",
+    "default": "把 TA 当家人：自然亲近、不用客套",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.disliked.label",
+    "default": "讨厌的人",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "relationship.types.disliked.guidance",
+    "default": "反感 TA，保持距离、态度冷淡",
+    "review_category": "legacy_manual_profile"
+  },
+  {
+    "path": "coupling.enabled",
+    "default": false,
+    "review_category": "inactive_main_path"
+  },
+  {
+    "path": "bot_scope_modes",
+    "default": "{}",
+    "review_category": "active"
+  },
+  {
+    "path": "ignored_bot_ids",
+    "default": [],
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.enabled",
+    "default": false,
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.small_provider_id",
+    "default": "",
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.large_provider_id",
+    "default": "",
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.assessment_mode",
+    "default": "tiered",
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.small_timeout_sec",
+    "default": 20,
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.large_timeout_sec",
+    "default": 30,
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.cooldown_sec",
+    "default": 120,
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.per_user_daily_large_cap",
+    "default": 2,
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.per_bot_daily_large_cap",
+    "default": 20,
+    "review_category": "active"
+  },
+  {
+    "path": "assessment.max_concurrent_assessments",
+    "default": 2,
+    "review_category": "active"
+  },
+  {
+    "path": "default_scope_mode",
+    "default": "per_group",
+    "review_category": "active"
+  },
+  {
+    "path": "group_whitelist",
+    "default": [],
+    "review_category": "active"
+  },
+  {
+    "path": "diagnostics.enabled",
+    "default": false,
+    "review_category": "active"
+  }
+]

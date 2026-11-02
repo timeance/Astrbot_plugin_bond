@@ -1,11 +1,11 @@
 # Bond 关系词典
 
-由 scripts/compare_relation_lexicon.py 从唯一词典源生成。词典版本 1。
+由 scripts/compare_relation_lexicon.py 从唯一词典源生成。词典版本 2。
 
 F/A/T 保持原范围和计算；以下只描述当前 Bot 的态度，不断言对方感受或历史事实。
 零值处于亲近/信任中档；信任中档不区分无证据、抵消或陈旧。高信任称谓不是可靠性证明。
 
-F 边界 10/25/40/70，边界值进高档；A/T 边界 -40/-10/10/40。
+F 边界 1/5/40/70，边界值进高档；A/T 边界 -40/-10/10/40。
 A/T 的 -40 留在最低档（保持既有负边界），-10/10/40 进高档。无历史滞回或称谓冷却。
 
 ## 词条
@@ -147,16 +147,16 @@ A/T 的 -40 留在最低档（保持既有负边界），-10/10/40 进高档。�
 | S13-joke-distant | 1 | 0 | 0 |
 | S14-joke-boundary | 1 | 0 | 0 |
 | S15-normal-criticism | 1 | 0 | 0 |
-| S16-repeated-thanks | 60 | 1 | 1 |
-| S17-repeated-praise | 100 | 2 | 2 |
+| S16-repeated-thanks | 60 | 1 | 3 |
+| S17-repeated-praise | 100 | 2 | 4 |
 | S18-greeting-50d | 50 | 0 | 0 |
 | S19-variants-50d | 50 | 0 | 0 |
 | S18-greeting-100d | 100 | 0 | 0 |
 | S19-variants-100d | 100 | 0 | 0 |
 | S18-greeting-200d | 200 | 0 | 0 |
 | S19-variants-200d | 200 | 0 | 0 |
-| S20-questions-200d | 200 | 1 | 1 |
-| S21-intermittent-200d | 50 | 0 | 0 |
+| S20-questions-200d | 200 | 1 | 2 |
+| S21-intermittent-200d | 50 | 0 | 2 |
 | S22-test-injection-abstain | 1 | 0 | 0 |
 | S23-test-injection-misclassified | 1 | 0 | 0 |
 | S24-diagnostic-violation | 1 | 0 | 0 |
@@ -177,7 +177,7 @@ A/T 的 -40 留在最低档（保持既有负边界），-10/10/40 进高档。�
 | S39-bot-group-isolation | 3 | 0 | 0 |
 | S40-restart-dedup | 2 | 0 | 0 |
 | S41-cooldown | 3 | 0 | 0 |
-| S42-daily-caps | 20 | 0 | 0 |
+| S42-daily-caps | 20 | 0 | 1 |
 | S43-persona-global-privacy | 2 | 0 | 0 |
 | S44-silence-200d | 2 | 0 | 0 |
 | S45-threshold-oscillation | 4 | 4 | 4 |
