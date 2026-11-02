@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900" viewBox="0 0 1280 900" role="img" aria-labelledby="title desc">
+<title id="title">Bond：三个维度，五档组合，55 个关系词条</title>
+<desc id="desc">计算层分别记录熟悉度、亲近度和信任度，每维五档。理解层把125种组合映射为55个词条，亲近却戒备、疏远但信赖和亲密挚友是并列示例。表达层由当前人格与对话情境决定如何使用资料，不照读标签。</desc>
+<defs>
+  <style>
+    text { font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif; }
+    .title { font-size: 34px; font-weight: 700; fill: #12283d; }
+    .sub { font-size: 21px; fill: #536779; }
+    .section { font-size: 23px; font-weight: 700; fill: #12283d; }
+    .number { font-size: 18px; font-weight: 700; fill: #fff; text-anchor: middle; }
+    .name { font-size: 26px; font-weight: 700; fill: #12283d; }
+    .body { font-size: 19px; fill: #536779; }
+    .chip { font-size: 19px; fill: #12283d; text-anchor: middle; }
+    .small { font-size: 17px; fill: #536779; }
+  </style>
+</defs>
+<rect width="1280" height="900" rx="28" fill="#f6fafb"/>
+<path d="M30 0 H1250 Q1280 0 1280 30 V8 H0 V30 Q0 0 30 0" fill="#19aeb7"/>
+<text x="48" y="70" class="title">三个维度，读懂关系里的细微差别</text>
+<text x="48" y="108" class="sub">计算保留三维 · 词典解释状态 · 表达沿用人格</text>
+<rect x="48" y="140" width="42" height="32" rx="10" fill="#12868d"/><text x="69" y="163" class="number">01</text>
+<text x="105" y="165" class="section">计算：每个维度，各有五档</text>
+<rect x="48" y="190" width="380" height="190" rx="18" fill="#fff" stroke="#d9e4e8"/>
+<text x="70" y="230" class="name">F · 熟悉度</text>
+<text x="70" y="265" class="body">有多熟悉</text>
+<rect x="70" y="287" width="64" height="38" rx="10" fill="#d8f2f0"/><text x="102" y="313" class="chip">陌生</text>
+<rect x="138" y="287" width="64" height="38" rx="10" fill="#d8f2f0"/><text x="170" y="313" class="chip">眼熟</text>
+<rect x="206" y="287" width="64" height="38" rx="10" fill="#d8f2f0"/><text x="238" y="313" class="chip">相识</text>
+<rect x="274" y="287" width="64" height="38" rx="10" fill="#d8f2f0"/><text x="306" y="313" class="chip">熟悉</text>
+<rect x="342" y="287" width="64" height="38" rx="10" fill="#d8f2f0"/><text x="374" y="313" class="chip">熟络</text>
+<text x="70" y="354" class="small">0 → 100 · 三维独立，不合成总分</text>
+<rect x="452" y="190" width="380" height="190" rx="18" fill="#fff" stroke="#d9e4e8"/>
+<text x="474" y="230" class="name">A · 亲近度</text>
+<text x="474" y="265" class="body">相处时的亲疏</text>
+<rect x="474" y="287" width="64" height="38" rx="10" fill="#fbe4e4"/><text x="506" y="313" class="chip">疏远</text>
+<rect x="542" y="287" width="64" height="38" rx="10" fill="#fbe4e4"/><text x="574" y="313" class="chip">疏淡</text>
+<rect x="610" y="287" width="64" height="38" rx="10" fill="#fbe4e4"/><text x="642" y="313" class="chip">平和</text>
+<rect x="678" y="287" width="64" height="38" rx="10" fill="#fbe4e4"/><text x="710" y="313" class="chip">亲近</text>
+<rect x="746" y="287" width="64" height="38" rx="10" fill="#fbe4e4"/><text x="778" y="313" class="chip">亲密</text>
+<text x="474" y="354" class="small">−100 → 100 · 三维独立，不合成总分</text>
+<rect x="856" y="190" width="380" height="190" rx="18" fill="#fff" stroke="#d9e4e8"/>
+<text x="878" y="230" class="name">T · 信任度</text>
+<text x="878" y="265" class="body">放心还是戒备</text>
+<rect x="878" y="287" width="64" height="38" rx="10" fill="#e5e9fa"/><text x="910" y="313" class="chip">戒备</text>
+<rect x="946" y="287" width="64" height="38" rx="10" fill="#e5e9fa"/><text x="978" y="313" class="chip">谨慎</text>
+<rect x="1014" y="287" width="64" height="38" rx="10" fill="#e5e9fa"/><text x="1046" y="313" class="chip">保留</text>
+<rect x="1082" y="287" width="64" height="38" rx="10" fill="#e5e9fa"/><text x="1114" y="313" class="chip">放心</text>
+<rect x="1150" y="287" width="64" height="38" rx="10" fill="#e5e9fa"/><text x="1182" y="313" class="chip">信赖</text>
+<text x="878" y="354" class="small">−100 → 100 · 三维独立，不合成总分</text>
+<rect x="48" y="414" width="42" height="32" rx="10" fill="#12868d"/><text x="69" y="437" class="number">02</text>
+<text x="105" y="439" class="section">理解：125 种组合，55 个中文词条</text>
+<rect x="48" y="464" width="380" height="150" rx="18" fill="#d8f2f0"/>
+<text x="70" y="508" class="name">亲近却戒备</text>
+<text x="70" y="550" class="body">有亲近感，也有明确戒心。</text>
+<text x="70" y="582" class="body">亲近，不会自动抵消边界。</text>
+<rect x="452" y="464" width="380" height="150" rx="18" fill="#fbe4e4"/>
+<text x="474" y="508" class="name">疏远但信赖</text>
+<text x="474" y="550" class="body">不够热络，仍保有信任。</text>
+<text x="474" y="582" class="body">亲疏与信任可以不同步。</text>
+<rect x="856" y="464" width="380" height="150" rx="18" fill="#e5e9fa"/>
+<text x="878" y="508" class="name">亲密挚友</text>
+<text x="878" y="550" class="body">熟悉、亲近、信任均较强。</text>
+<text x="878" y="582" class="body">人格原则与权限依然保留。</text>
+<rect x="48" y="648" width="42" height="32" rx="10" fill="#12868d"/><text x="69" y="671" class="number">03</text>
+<text x="105" y="673" class="section">表达：把资料交给当前人格</text>
+<rect x="48" y="700" width="1188" height="125" rx="20" fill="#142d44"/>
+<text x="80" y="746" font-size="27" font-weight="700" fill="#fff">关系词条用于理解，具体回应由人格与对话情境决定。</text>
+<text x="80" y="789" font-size="21" fill="#c3e8eb">不要求照读称谓，不预设某类人格的答法，也不改变宿主的接话策略。</text>
+<text x="48" y="864" class="small">上方词条是并列示例，不是升级路线；描述当前 Bot 的态度，不推断成员感受。</text>
+</svg>
