@@ -1,0 +1,191 @@
+{
+  "base_commit": "d287221c241fe88740ab2186a8ffa63676d90dcf",
+  "lexicon_version": "1",
+  "terms": 55,
+  "cells": 125,
+  "identical_scoring_events": 1201,
+  "old_title_flips": 13,
+  "new_title_flips": 13,
+  "before_metrics": {
+    "events": 1201,
+    "persistent_false_update_rate": {
+      "numerator": 6,
+      "denominator": 381,
+      "value": 0.015748031496062992
+    },
+    "target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 8,
+      "value": 0.0
+    },
+    "certain_target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 4,
+      "value": 0.0
+    },
+    "uncertain_target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 4,
+      "value": 0.0
+    },
+    "quote_false_update_rate": {
+      "numerator": 2,
+      "denominator": 4,
+      "value": 0.5
+    },
+    "trust_false_update_rate": {
+      "numerator": 2,
+      "denominator": 1195,
+      "value": 0.0016736401673640166
+    },
+    "target_precision": {
+      "numerator": 479,
+      "denominator": 479,
+      "value": 1.0
+    },
+    "abstention_coverage": {
+      "numerator": 375,
+      "denominator": 381,
+      "value": 0.984251968503937
+    },
+    "abstention_status_coverage": {
+      "numerator": 8,
+      "denominator": 381,
+      "value": 0.02099737532808399
+    },
+    "abstention_outcomes": {
+      "abstained": 8,
+      "accepted": 7,
+      "entry_skipped": 3,
+      "failed": 4,
+      "filtered": 356,
+      "temporary": 3
+    },
+    "unscored_trust_events": 2,
+    "neutral_drift": {
+      "familiarity": 25.4,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "neutral_absolute_drift": {
+      "familiarity": 25.4,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "title_flips_per_100_turns": 1.0824313072439633,
+    "provider_calls": 492,
+    "simulated_tokens": null,
+    "statuses": {
+      "filtered": 706,
+      "accepted": 454,
+      "entry_skipped": 3,
+      "abstained": 8,
+      "failed": 4,
+      "temporary": 3,
+      "unchanged": 13,
+      "busy": 10
+    },
+    "failures": 1,
+    "timeouts": 1,
+    "busy": 10,
+    "real_provider_tokens": null,
+    "main_reply_p50_ms": null,
+    "main_reply_p95_ms": null,
+    "semantic_accuracy": null
+  },
+  "after_metrics": {
+    "events": 1201,
+    "persistent_false_update_rate": {
+      "numerator": 6,
+      "denominator": 381,
+      "value": 0.015748031496062992
+    },
+    "target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 8,
+      "value": 0.0
+    },
+    "certain_target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 4,
+      "value": 0.0
+    },
+    "uncertain_target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 4,
+      "value": 0.0
+    },
+    "quote_false_update_rate": {
+      "numerator": 2,
+      "denominator": 4,
+      "value": 0.5
+    },
+    "trust_false_update_rate": {
+      "numerator": 2,
+      "denominator": 1195,
+      "value": 0.0016736401673640166
+    },
+    "target_precision": {
+      "numerator": 479,
+      "denominator": 479,
+      "value": 1.0
+    },
+    "abstention_coverage": {
+      "numerator": 375,
+      "denominator": 381,
+      "value": 0.984251968503937
+    },
+    "abstention_status_coverage": {
+      "numerator": 8,
+      "denominator": 381,
+      "value": 0.02099737532808399
+    },
+    "abstention_outcomes": {
+      "abstained": 8,
+      "accepted": 7,
+      "entry_skipped": 3,
+      "failed": 4,
+      "filtered": 356,
+      "temporary": 3
+    },
+    "unscored_trust_events": 2,
+    "neutral_drift": {
+      "familiarity": 25.4,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "neutral_absolute_drift": {
+      "familiarity": 25.4,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "title_flips_per_100_turns": 1.0824313072439633,
+    "provider_calls": 492,
+    "simulated_tokens": null,
+    "statuses": {
+      "filtered": 706,
+      "accepted": 454,
+      "entry_skipped": 3,
+      "abstained": 8,
+      "failed": 4,
+      "temporary": 3,
+      "unchanged": 13,
+      "busy": 10
+    },
+    "failures": 1,
+    "timeouts": 1,
+    "busy": 10,
+    "real_provider_tokens": null,
+    "main_reply_p50_ms": null,
+    "main_reply_p95_ms": null,
+    "semantic_accuracy": null
+  },
+  "thresholds": "表达分档草案，未校准为心理学尺度",
+  "human_semantic_evaluation": null,
+  "source_sha256": {
+    "core/relation_lexicon.py": "d332c8b9120c1e4c183beb476f6224a6e9b7ec035f2bd74dea9afa07b99262c7",
+    "core/relation_policy.py": "87b945ea1c052ddb530599049a8580e102023fc17e1b398d664bb1d1a42bb4b1",
+    "services/favor_service.py": "9339344ee666afc32c877015ecbc33e173a59a48e4a81590ced0e53cf568f99c",
+    "api/listeners.py": "919268fc486350b39f6d53a86cbc49880b149d07bfba4f869e7fe8df08837b67"
+  }
+}
