@@ -1,0 +1,430 @@
+{
+  "format_version": 1,
+  "phase0_base": "db0624139b177cb3fc70047fd214ac564c75a5d5",
+  "fixture_sha256": "6b5453aeaf8b77011334f6819dd56d96b09c7aff3cc224614855dedd54527841",
+  "historical_rules": {
+    "normal_question": {
+      "familiarity": 0.1,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "thanks": {
+      "familiarity": 0.2,
+      "affinity": 0.5,
+      "trust": 0.2
+    },
+    "friendly": {
+      "familiarity": 0.3,
+      "affinity": 0.8,
+      "trust": 0.2
+    },
+    "joke": {
+      "familiarity": 0.2,
+      "affinity": 0.5,
+      "trust": 0.0
+    },
+    "criticism": {
+      "familiarity": 0.1,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "insult": {
+      "familiarity": 0.0,
+      "affinity": -1.0,
+      "trust": -1.5
+    },
+    "manipulation": {
+      "familiarity": 0.0,
+      "affinity": -0.5,
+      "trust": -2.0
+    },
+    "apology": {
+      "familiarity": 0.1,
+      "affinity": 0.7,
+      "trust": 1.0
+    },
+    "uncertain": {
+      "familiarity": 0.0,
+      "affinity": 0.0,
+      "trust": 0.0
+    }
+  },
+  "historical_rules_sha256": "6df3f908317b211cd5e7ffe825ca4a1bb7bacc4751150b5bda982242ccb4c7f9",
+  "historical_rules_source": {
+    "path": "tests/fixtures/research/scenarios.json#baseline_rules",
+    "baseline_commit": "993e821bd127488820a0f639107f67c0c5402bf4",
+    "phase0_base": "db0624139b177cb3fc70047fd214ac564c75a5d5"
+  },
+  "historical_rules_note": "完整冻结Phase0历史规则，仅用于构造旧历史；不代表当前生产自动增信规则。",
+  "source_files_sha256": {
+    "services/favor_service.py": "4b835886e9e5d37aa953ee9397acfff63d00a6e1e337983b685d988f7d0834c2",
+    "storage/sqlite_backend.py": "f713b6e830a4960020f52e9c4522b1b30b5cc3e5d61054dc6394a9f5c8c3441d",
+    "storage/migrations.py": "6d684507309dea8fc50f898b3ca6bf3dc00f44420e635d91c5f453af786d965a",
+    "core/relation_policy.py": "9abdc58bd8bf0c1dc9a0e78231bc68d85875bf672b7a6764b5609eaefc5d00be",
+    "scripts/replay_trust_evidence.py": "ab44aeef60837a254514a4bdc5f5c0cd0d6d0c626cb813aa556c0420dc55ce29"
+  },
+  "window_days": 30,
+  "evaluation": "synthetic_real_sqlite_derivation_consistency_only",
+  "provider_calls": 0,
+  "semantic_gain": null,
+  "persistent_false_update_gain": null,
+  "production_decision": "stop_no_proven_production_benefit",
+  "checks": {
+    "same_sources": {
+      "numerator": 13,
+      "denominator": 13
+    },
+    "same_content": {
+      "numerator": 13,
+      "denominator": 13
+    },
+    "counts_match_summary": {
+      "numerator": 13,
+      "denominator": 13
+    },
+    "all_sources_accounted": {
+      "numerator": 13,
+      "denominator": 13
+    },
+    "no_analysis_writes": {
+      "numerator": 13,
+      "denominator": 13
+    }
+  },
+  "cases": [
+    {
+      "id": "no_evidence",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [],
+      "source_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "trust": 0,
+      "known_logged_trust_delta_sum": 0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "unannotated_nonzero_t",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "ef65c21fd3bec3cc200dec4872503069a352cdc9c93783d2388a826fcc3d4bb4",
+      "trust": 0.2,
+      "known_logged_trust_delta_sum": 0.2,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 1,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "nondiagnostic",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "ef65c21fd3bec3cc200dec4872503069a352cdc9c93783d2388a826fcc3d4bb4",
+      "trust": 0.2,
+      "known_logged_trust_delta_sum": 0.2,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 1,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "numeric_cancellation",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/2",
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "1ade25038181da22c3a3151069b4e62c1519045cb00a5e130544c41d34465057",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 2,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "labeled_cancellation",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/2",
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "4ea5ab385c5913dccca53cf5ea9cba49cc8fe7d97ab55243aa2fed086de1df8e",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 1,
+        "negative": 1,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "labeled_negative",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "85fcb35a9a3e23f9de9bc0e257dcc1655f489ef509c011ed6e2f0d0cde23bc0a",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 1,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "stale",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "9394a201d56b92c65d5d1c381f1d162c92f61b148e7fdb28c5a40eac95bd7918",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 1,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "legacy_unknown",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "56caff8d2607eb7eb2277d6cee2400ff9374c0703083e3d8ba9760c92d22e4e4",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 1
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "manual",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/2",
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "120c948eb89e908dc6397916f79a98e10369db5d607a47a887f10ff8aa07add7",
+      "trust": 40.0,
+      "known_logged_trust_delta_sum": 40.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 2,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "undo",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/2",
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "412423867b2cd1c262ce2e1ba3722372bc8e8bd811eebc4a07bcfa13222374a5",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 1,
+        "manual_edit": 0,
+        "reversal_audit": 1,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "reset",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [],
+      "source_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "trust": 0,
+      "known_logged_trust_delta_sum": 0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [
+        "10001/per_group/7001/8001/erased"
+      ],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "isolation",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "928f94b0ebbea1e23ade76ef04f268ac6348df2941327836d083cc0a4393242e",
+      "trust": 0.0,
+      "known_logged_trust_delta_sum": 0.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 1,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 0,
+        "stale": 0,
+        "reversed": 0,
+        "manual_edit": 0,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [
+        "10001/global/__global__/8001/shared",
+        "10001/per_group/7001/8002/shared",
+        "10001/per_group/7002/8001/shared",
+        "10002/per_group/7001/8001/shared"
+      ],
+      "analysis_sqlite_changes": 0
+    },
+    {
+      "id": "decay",
+      "subject": "10001/per_group/7001/8001",
+      "source_refs": [
+        "10001/per_group/7001/8001/log/3",
+        "10001/per_group/7001/8001/log/2",
+        "10001/per_group/7001/8001/log/1"
+      ],
+      "source_sha256": "441da4f1552b5cc1cdb6c08b67dec3d421a54b933edb6b4f5df25919c2a4f0e9",
+      "trust": 40.0,
+      "known_logged_trust_delta_sum": 40.0,
+      "reliability_counts": null,
+      "history_evidence": "unknown",
+      "synthetic_counts": {
+        "positive": 0,
+        "negative": 0,
+        "nondiagnostic": 0,
+        "unknown": 1,
+        "stale": 1,
+        "reversed": 0,
+        "manual_edit": 1,
+        "reversal_audit": 0,
+        "legacy_unknown": 0
+      },
+      "annotations_without_retained_source": [],
+      "analysis_sqlite_changes": 0
+    }
+  ]
+}
