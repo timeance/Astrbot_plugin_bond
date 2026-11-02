@@ -8,7 +8,7 @@ function harness(timerOverrides={}){
  const bridge={
   apiGet:async(endpoint,params)=>{
    reads.push({endpoint,params});
-   if(endpoint==='prompts'||endpoint==='member')return new Promise(resolve=>pendingGets.push({endpoint,params,resolve}));
+   if(endpoint==='prompts'||endpoint==='member'||(endpoint==='diagnostics'&&params.action==='export'))return new Promise(resolve=>pendingGets.push({endpoint,params,resolve}));
    return {success:true,groups:[],users:[],logs:[{id:params.bot_id}]};
   },
   apiPost:(endpoint,params)=>new Promise(resolve=>pending.push({endpoint,params,resolve}))
@@ -223,4 +223,55 @@ test('row nickname refresh cannot overwrite a newly opened member session',async
  await refresh;
  assert.equal(ui.memberDetail.value.nickname,'当前成员');
  assert.equal(ui.errorMsg.value,'');
+});
+
+
+test('diagnostic export from old scope cannot prepare a download',async()=>{
+ let downloads=0;
+ const {ui,pendingGets}=harness({
+  URL:{createObjectURL:()=>{downloads++;return 'blob:synthetic';},revokeObjectURL:()=>{}},
+  Blob:class {}
+ });
+ const old=ui.diagnosticRequest('export');
+ assert.equal(pendingGets.length,1);
+ ui.selectedBot.value='20002';await ui.selectBot();
+ pendingGets[0].resolve({success:true,diagnostics:{rows:[{private:'old-scope'}]}});
+ await old;
+ assert.equal(downloads,0);
+ assert.equal(ui.diagnosticDownload.value,'');
+ assert.equal(ui.diagnosticLoading.value,false);
+});
+
+test('diagnostic export keeps selected scope and releases previous download',async()=>{
+ let downloads=0, released=0;
+ const {ui,pendingGets}=harness({
+  URL:{createObjectURL:()=>{downloads++;return 'blob:synthetic';},revokeObjectURL:()=>{released++;}},
+  Blob:class {}
+ });
+ const result=ui.diagnosticRequest('export');
+ assert.equal(pendingGets[0].params.scope_mode,'per_group');
+ pendingGets[0].resolve({success:true,diagnostics:{rows:[]}});
+ await result;
+ assert.equal(downloads,1);
+ assert.equal(ui.diagnosticDownload.value,'blob:synthetic');
+ ui.selectedBot.value='20002';await ui.selectBot();
+ assert.equal(released,1);
+ assert.equal(ui.diagnosticDownload.value,'');
+});
+
+test('diagnostic clear requires local confirmation and ignores late old-scope completion',async()=>{
+ const {ui,pending}=harness();
+ await ui.diagnosticRequest('clear');
+ assert.equal(ui.diagnosticConfirm.value,true);
+ assert.equal(pending.length,0);
+ const clear=ui.diagnosticRequest('clear');
+ assert.equal(pending.length,1);
+ assert.equal(pending[0].endpoint,'diagnostics');
+ assert.equal(pending[0].params.bot_id,'10001');
+ assert.equal(pending[0].params.action,'clear');
+ ui.selectedBot.value='20002';await ui.selectBot();
+ pending[0].resolve({success:true,diagnostics:{cleared:true}});
+ await clear;
+ assert.equal(ui.diagnosticStats.value,null);
+ assert.equal(ui.diagnosticLoading.value,false);
 });

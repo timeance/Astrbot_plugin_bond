@@ -135,7 +135,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 16
+    assert len(routes) == 17
     assert set(route_names) == {
         "logs",
         "relation",
@@ -144,6 +144,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         "models",
         "settings",
         "assessment_stats",
+        "diagnostics",
         "groups",
         "users",
         "undo",
@@ -617,6 +618,14 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             assert status == expected
             if expected == 200:
                 assert body["stats"]["events"]["accepted"] == 1
+            status, body = await call(
+                page.handle_diagnostics,
+                f"/astrbot_plugin_bond/diagnostics?bot_id={BOT_IDS[0]}&scope_mode=per_group",
+                username=username,
+            )
+            assert status == expected
+            if expected == 200:
+                assert body["diagnostics"]["enabled"] is False
 
         status, body = await call(
             page.handle_users,
@@ -738,7 +747,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 16
+        assert len(context2.registered_web_apis) == 17
         assert plugin2._prompts.load_error
         deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
         assert (await deps2.favor.get(OLD_GROUP, OLD_USER)).favor == 12
@@ -777,7 +786,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、16 路 WebUI、群白名单、主人标记、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
+        "scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

@@ -52,6 +52,42 @@ createApp({
     const assessmentStats = ref({ calls: [], events: {}, currency_cost: null });
     const modelNotice = ref("");
     const modelNoticeError = ref(false);
+    const diagnosticStats = ref(null);
+    const diagnosticLoading = ref(false);
+    const diagnosticNotice = ref("");
+    const diagnosticDownload = ref("");
+    const diagnosticConfirm = ref(false);
+    const releaseDiagnosticDownload = () => {
+      if (diagnosticDownload.value) URL.revokeObjectURL(diagnosticDownload.value);
+      diagnosticDownload.value = "";
+    };
+    const diagnosticRequest = async (action = "status") => {
+      const snapshot = scopeSnapshot(), revision = scopeRevision.value;
+      if (!snapshot || diagnosticLoading.value) return;
+      if (action === "clear" && !diagnosticConfirm.value) { diagnosticConfirm.value = true; return; }
+      diagnosticLoading.value = true; diagnosticNotice.value = ""; diagnosticConfirm.value = false;
+      try {
+        const data = action === "clear"
+          ? await scopedPost("diagnostics", {action}, snapshot)
+          : await scopedGet("diagnostics", {action}, snapshot);
+        if (!isCurrentScope(snapshot, revision)) return;
+        if (!data.success) throw new Error(data.error || "诊断操作失败");
+        releaseDiagnosticDownload();
+        if (action === "export") {
+          diagnosticDownload.value = URL.createObjectURL(new Blob(
+            [JSON.stringify(data.diagnostics, null, 2)], {type:"application/json"}));
+          diagnosticNotice.value = "已准备当前 Bot 和数据空间的脱敏记录。请下载后在本地检查。";
+        } else {
+          diagnosticStats.value = data.diagnostics;
+          diagnosticNotice.value = action === "clear" ? "当前 Bot 和数据空间的诊断记录已清除，关系数据保留。" : "";
+        }
+      } catch (error) {
+        if (isCurrentScope(snapshot, revision)) diagnosticNotice.value = String(error);
+      } finally {
+        if (isCurrentScope(snapshot, revision)) diagnosticLoading.value = false;
+      }
+    };
+    onUnmounted(releaseDiagnosticDownload);
     const detailSettings = ref(null);
     const detailValues = ref({});
     const detailLoading = ref(false);
@@ -119,6 +155,8 @@ createApp({
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
       clearExpiryTimer();
+      releaseDiagnosticDownload(); diagnosticStats.value = null; diagnosticLoading.value = false;
+      diagnosticNotice.value = ""; diagnosticConfirm.value = false;
       scopeRevision.value += 1;
       detailSettings.value = null; detailValues.value = {}; detailLoading.value = false; detailNotice.value = "";
       loading.value = false;
@@ -952,6 +990,7 @@ createApp({
       maxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
       detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, updateListSetting,
+      diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
     };
   },
   template: `
@@ -1261,6 +1300,25 @@ createApp({
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
           </div>
         </details>
+        <div class="xx-form-card">
+          <h4>当前空间的诊断记录</h4>
+          <p class="xx-help">上方“关系诊断记录”开启并重载后持续记录。写入或导出时清理超过7天的内容，全部空间合计最多20MB，量大时会更早轮转，不新增聊天原文，不自动上传。</p>
+          <p class="xx-help">以下操作仅针对当前选择的 Bot 和数据空间。记录能检查机制运行，不能代替人工判断关系词是否贴切。</p>
+          <div class="xx-actions">
+            <button class="xx-btn" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
+            <button class="xx-btn" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
+            <button class="xx-btn" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
+            <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn">下载脱敏记录</a>
+          </div>
+          <p v-if="diagnosticNotice" role="status">{{ diagnosticNotice }}</p>
+          <dl v-if="diagnosticStats" class="xx-runtime-list">
+            <div><dt>当前记录开关</dt><dd>{{ diagnosticStats.enabled ? "已开启" : "已关闭" }}</dd></div>
+            <div><dt>本次加载已写入</dt><dd>{{ diagnosticStats.counters?.written || 0 }} 条</dd></div>
+            <div><dt>等待写入</dt><dd>{{ diagnosticStats.queued || 0 }} 条</dd></div>
+            <div><dt>丢弃或写入失败</dt><dd>{{ diagnosticStats.counters?.dropped || 0 }} / {{ diagnosticStats.counters?.write_errors || 0 }}</dd></div>
+            <div><dt>记录完整性</dt><dd>{{ diagnosticStats.gap ? "存在记录缺口，请查看导出说明" : "本次加载尚未报告缺口；历史完整性未知" }}</dd></div>
+          </dl>
+        </div>
       </section>
 
       <!-- 变动详情弹窗：完整发言 + AI 原因 -->

@@ -33,6 +33,7 @@ from .core.levels import LevelTable
 from .core.naming import TIER_NAME_BY_KEY
 from .core.relationship import RelationshipTable
 from .core.taskregistry import TaskRegistry
+from .services.diagnostics_service import DiagnosticRecorder
 from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
 from .services.inject_service import InjectService
@@ -73,7 +74,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 三维关系与成员印象",
-    "0.2.4",
+    "0.2.5",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -106,6 +107,11 @@ class BondPlugin(Star):
                 f"[Bond] {self._prompts.load_error}；已暂停关系提示词和自动评估"
             )
         self._registry = TaskRegistry()
+        self._diagnostics = DiagnosticRecorder(
+            data_dir / "diagnostics",
+            self._registry,
+            enabled=(config.get("diagnostics") or {}).get("enabled", False),
+        )
         # 所有 bundle 使用本次加载时的同一模型配置；面板保存后统一重载生效。
         self._assessment_values = dict(config.get("assessment") or {})
         self._assessment_values.pop("max_concurrent_assessments", None)
@@ -120,6 +126,7 @@ class BondPlugin(Star):
             config,
             self._build_deps,
             bot_discovery=BotDiscovery(context),
+            diagnostics=self._diagnostics,
         )
         self._relationships = None
         cmd_cfg = config.get("command") or {}
@@ -179,6 +186,7 @@ class BondPlugin(Star):
             economy=eco,
             tz_name=str(config.get("timezone", "") or ""),
             scope_mode=scope_mode,
+            diagnostics=self._diagnostics,
         )
 
         judge_cfg = config.get("judge") or {}
@@ -278,6 +286,7 @@ class BondPlugin(Star):
     async def terminate(self) -> None:
         # X10：先取消并等待在飞任务（评审/印象刷新/延迟清理），再关存储
         await self._registry.cancel_and_wait_all(timeout=5.0)
+        await self._diagnostics.close()
         await self._storage.close()
         logger.info("[八千代] 好感度插件已卸载")
 

@@ -178,6 +178,13 @@ class RelationPolicy:
                     dimension: cap for dimension in RELATION_DIMENSIONS
                 }
 
+    def snapshot(self):
+        """诊断用规则快照；复制嵌套映射，不允许观察者修改计算规则。"""
+        return {
+            "rules": {key: dict(value) for key, value in self._rules.items()},
+            "event_caps": {key: dict(value) for key, value in self._event_caps.items()},
+        }
+
     def limit_deltas(self, event_type, deltas):
         """经济规则调整后再次执行同一单事件上限。"""
         event = _event_name(event_type)

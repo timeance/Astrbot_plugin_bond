@@ -9,7 +9,10 @@ from ..core.scope import account_id, scope_mode
 
 
 class RuntimeService:
-    def __init__(self, storage, config, factory, *, bot_discovery=None) -> None:
+    def __init__(
+        self, storage, config, factory, *, bot_discovery=None, diagnostics=None
+    ) -> None:
+        self.diagnostics = diagnostics
         self._bot_discovery = bot_discovery
         self.storage = storage
         self._config = config

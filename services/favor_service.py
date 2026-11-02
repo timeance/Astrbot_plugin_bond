@@ -51,6 +51,7 @@ class FavorService:
         relation_policy=None,
         relation_resolver=None,
         relation_caps=None,
+        diagnostics=None,
     ) -> None:
         from ..core.relation_policy import RelationPolicy, RelationResolver
 
@@ -70,6 +71,38 @@ class FavorService:
                 for x in pair
             ):
                 raise ValueError("每日限幅必须是有限非负数")
+        self.diagnostics = diagnostics
+        self._diagnostic_config = {}
+        if diagnostics is not None and diagnostics.enabled:
+            import hashlib
+            import json
+            from dataclasses import asdict
+            from ..core.relation_lexicon import LEXICON_VERSION
+
+            self._diagnostic_config = dict(
+                policy_version="0.2.5",
+                lexicon_version=LEXICON_VERSION,
+                config_hash=hashlib.sha256(
+                    json.dumps(
+                        dict(
+                            rules=self._relation_policy.snapshot(),
+                            caps=self._relation_caps,
+                            economy=asdict(economy) if economy is not None else None,
+                            timezone=tz_name,
+                            floor=decay_floor_enabled,
+                            initial=[min_favor, max_favor, default_favor],
+                            decay=[
+                                decay_enabled,
+                                half_life_base,
+                                half_life_growth,
+                                half_life_max,
+                                decay_baseline,
+                            ],
+                        ),
+                        sort_keys=True,
+                    ).encode()
+                ).hexdigest(),
+            )
         self._storage = storage
         self.scope_mode = validate_scope(scope_mode)
         self._levels = levels
@@ -111,6 +144,57 @@ class FavorService:
             self._tz = None
 
     # ---------- 查询 ----------
+
+    @property
+    def diagnostics_enabled(self):
+        return self.diagnostics is not None and self.diagnostics.enabled
+
+    def record_diagnostic(self, group_id, user_id, kind, **fields):
+        if self.diagnostics_enabled:
+            if fields.get("event_id") is not None:
+                import hashlib
+
+                fields["event_id"] = hashlib.sha256(
+                    str(fields["event_id"]).encode()
+                ).hexdigest()
+            fields = {
+                key: value
+                for key, value in fields.items()
+                if value is not None or key == "tokens"
+            }
+            self.diagnostics.emit(
+                self._storage.bot_id,
+                self.scope_mode,
+                group_id,
+                user_id,
+                kind,
+                **self._diagnostic_config,
+                **fields,
+            )
+
+    def _diagnose_change(
+        self, group_id, user_id, result, reason, event_id, event_type=None
+    ):
+        if not self.diagnostics_enabled:
+            return
+        before = self.describe_relation(**result["before"])
+        after = self.describe_relation(**result["after"])
+        self.record_diagnostic(
+            group_id,
+            user_id,
+            "relation",
+            reason=reason,
+            event_id=event_id,
+            event_type=event_type,
+            before=result["before"],
+            after=result["after"],
+            delta=result["delta"],
+            bands_before=before.bands,
+            bands_after=after.bands,
+            term_before=before.key,
+            term_after=after.key,
+            status=result["skipped"] or "committed",
+        )
 
     def invalidate_cache(self):
         """恢复数据库后重新核对成员是否存在及昵称。"""
@@ -270,7 +354,7 @@ class FavorService:
             deltas = self._relation_policy.limit_deltas(
                 event_type, dict(deltas, affinity=eco.delta)
             )
-        return await self._storage.apply_relation_change(
+        result = await self._storage.apply_relation_change(
             self.group_key(group_id),
             user_id,
             deltas,
@@ -285,6 +369,16 @@ class FavorService:
             decay=self._decay,
             default_favor=self.default_favor,
         )
+
+        self._diagnose_change(
+            group_id,
+            user_id,
+            result,
+            "automatic",
+            event_id,
+            getattr(event_type, "value", event_type),
+        )
+        return result
 
     async def set_relation(
         self,
@@ -305,7 +399,7 @@ class FavorService:
         values = asdict(
             RelationState(familiarity=familiarity, affinity=affinity, trust=trust)
         )
-        return await self._storage.apply_relation_change(
+        result = await self._storage.apply_relation_change(
             self.group_key(group_id),
             user_id,
             dict.fromkeys(values, 0),
@@ -318,6 +412,9 @@ class FavorService:
             effective=self._effective,
             default_favor=self.default_favor,
         )
+
+        self._diagnose_change(group_id, user_id, result, "manual", event_id)
+        return result
 
     async def set_profile(self, group_id, user_id, *, impression, tags, actor):
         """管理员资料编辑；值校验与审计共用一个服务入口。"""
@@ -850,11 +947,25 @@ class FavorService:
             default_favor=self.default_favor,
             actor=actor,
         )
+        self.record_diagnostic(
+            info["group_id"],
+            info["user_id"],
+            "relation",
+            reason="undo",
+            status="committed",
+        )
         return await self.get(info["group_id"], info["user_id"])
 
     async def reset(self, group_id: str, user_id: str | None = None) -> None:
         group_id = self.group_key(group_id)
         await self._storage.reset(group_id, user_id)
+        self.record_diagnostic(
+            group_id,
+            user_id or "all-members",
+            "relation",
+            reason="reset",
+            status="committed",
+        )
 
     async def update_member_names(self, group_id, user_id, nickname=None, card=None):
         await self._storage.update_member_names(group_id, user_id, nickname, card)
@@ -894,6 +1005,15 @@ class FavorService:
             actor,
             self.default_favor,
             reason,
+        )
+
+        self.record_diagnostic(
+            group_id,
+            user_id,
+            "relation",
+            reason="temporary" if values is not None else "temporary_end",
+            status="committed",
+            temporary=values is not None,
         )
 
     async def temporary_audit(self, group_id, user_id):
