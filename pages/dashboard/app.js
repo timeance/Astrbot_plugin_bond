@@ -8,10 +8,27 @@ createApp({
     const errorMsg = ref("");
     const logs = ref([]);
     const users = ref([]);
+    const userPage = ref(1);
+    const userPageSize = ref(50);
+    const userPages = ref(1);
+    const userTotal = ref(0);
+    const userMatchedCount = ref(0);
+    const userCollapsedCount = ref(0);
+    const userZeroCount = ref(0);
+    const includeZeroUsers = ref(false);
+    let userRequestId = 0;
     const groups = ref([]);
     const filterGroup = ref("");
     const filterUser = ref("");
     const filterLimit = ref(300);
+    const logDimension = ref("all");
+    const logSource = ref("");
+    const logDimensions = [
+      {key: "familiarity", label: "F 熟悉度"},
+      {key: "affinity", label: "A 亲近度"},
+      {key: "trust", label: "T 信任度"},
+    ];
+    let logRequestId = 0;
     const bots = ref([]);
     const selectedBot = ref("");
     const selectedMode = ref("per_group");
@@ -49,6 +66,7 @@ createApp({
     const modelConfig = ref({});
     const activeModelConfig = ref({});
     const maxConcurrentAssessments = ref(2);
+    const activeMaxConcurrentAssessments = ref(null);
     const assessmentStats = ref({ calls: [], events: {}, currency_cost: null });
     const modelNotice = ref("");
     const modelNoticeError = ref(false);
@@ -165,7 +183,17 @@ createApp({
       backupLoading.value = false;
       restoreName.value = "";
       logs.value = [];
+      logRequestId += 1;
       users.value = [];
+      userRequestId += 1;
+      userPage.value = 1;
+      userPages.value = 1;
+      userTotal.value = 0;
+      userMatchedCount.value = 0;
+      userCollapsedCount.value = 0;
+      userZeroCount.value = 0;
+      includeZeroUsers.value = false;
+      filterUser.value = "";
       groups.value = [];
       filterGroup.value = "";
       selectedLog.value = null;
@@ -191,6 +219,7 @@ createApp({
       modelSaving.value = false;
       modelConfig.value = {};
       activeModelConfig.value = {};
+      activeMaxConcurrentAssessments.value = null;
       assessmentStats.value = { calls: [], events: {}, currency_cost: null };
       modelNotice.value = "";
       modelNoticeError.value = false;
@@ -207,6 +236,15 @@ createApp({
       return Number.isInteger(n) ? String(n) : n.toFixed(1);
     };
     const fmtOptionalNum = (v) => (v == null || v === "" ? "-" : fmtNum(v));
+    const logDeltaParts = (row, dimension = logDimension.value) => logDimensions
+      .filter(item => dimension === "all" || item.key === dimension)
+      .map(item => {
+        const vector = row.relation_delta;
+        const raw = vector && Object.prototype.hasOwnProperty.call(vector, item.key)
+          ? vector[item.key] : item.key === "affinity" ? row.delta : null;
+        return {...item, value: typeof raw === "number" && Number.isFinite(raw) ? raw : null};
+      });
+    const fmtKnownDelta = (value) => value == null ? "未知" : fmtDelta(value);
     const fmtDelta = (v) => {
       const n = Number(v || 0);
       const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
@@ -688,6 +726,7 @@ createApp({
         modelConfig.value = normalizeModelConfig(modelData.configured);
         activeModelConfig.value = normalizeModelConfig(modelData.active);
         maxConcurrentAssessments.value = Number(modelData.max_concurrent_assessments || 2);
+        activeMaxConcurrentAssessments.value = modelData.active_max_concurrent_assessments ?? null;
         assessmentStats.value = {
           calls: Array.isArray(statsData.stats && statsData.stats.calls) ? statsData.stats.calls : [],
           events: statsData.stats && statsData.stats.events && typeof statsData.stats.events === "object" ? statsData.stats.events : {},
@@ -734,19 +773,15 @@ createApp({
       const revision = scopeRevision.value;
       scopeLoading.value = true;
       try {
-        const [groupData, userData] = await Promise.all([
+        const [groupData] = await Promise.all([
           scopedGet("groups", {}, snapshot),
-          scopedGet("users", { limit: 1000 }, snapshot),
+          fetchUsers(),
         ]);
         if (!isCurrentScope(snapshot, revision)) return;
         if (groupData && groupData.success === false) {
           throw new Error(groupData.error || "加载群列表失败");
         }
-        if (userData && userData.success === false) {
-          throw new Error(userData.error || "加载成员失败");
-        }
         groups.value = (groupData && groupData.groups) || [];
-        users.value = (userData && userData.users) || [];
         if (tab.value === "logs") await fetchLogs();
         if (tab.value === "prompts") await loadPrompts(snapshot);
         if (tab.value === "evaluation") await loadEvaluation(snapshot);
@@ -882,67 +917,99 @@ createApp({
       }
     };
 
+    const logQueryKey = () => JSON.stringify([
+      filterGroup.value, filterUser.value.trim(), filterLimit.value, logDimension.value, logSource.value,
+    ]);
     const fetchLogs = async () => {
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
+      const requestId = ++logRequestId, queryKey = logQueryKey();
+      const current = () => isCurrentScope(snapshot, revision) &&
+        requestId === logRequestId && queryKey === logQueryKey();
       loading.value = true;
       errorMsg.value = "";
+      logs.value = [];
       try {
         const params = { limit: filterLimit.value };
+        if (logDimension.value !== "all") params.dimension = logDimension.value;
+        if (logSource.value) params.source = logSource.value;
         if (filterGroup.value) params.group_id = filterGroup.value;
         const u = filterUser.value.trim();
-        // 搜索框保持子串匹配体验（后端默认精确匹配，仅此处显式开启模糊）
         if (u) { params.user_id = u; params.fuzzy = "1"; }
         const data = await scopedGet("logs", params, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
-        if (data && data.success === false) {
-          errorMsg.value = data.error || "加载失败";
-          logs.value = [];
-        } else {
-          logs.value = (data && data.logs) || [];
-        }
+        if (!current()) return;
+        if (data && data.success === false) throw new Error(data.error || "加载失败");
+        logs.value = (data && data.logs) || [];
       } catch (e) {
-        if (isCurrentScope(snapshot, revision)) {
+        if (current()) {
           errorMsg.value = String(e);
           logs.value = [];
         }
       } finally {
-        if (isCurrentScope(snapshot, revision)) loading.value = false;
+        if (requestId === logRequestId && isCurrentScope(snapshot, revision)) loading.value = false;
       }
     };
+    const showEvaluationChanges = () => {
+      userRequestId += 1;
+      logSource.value = "judge";
+      tab.value = "logs";
+      return fetchLogs();
+    };
 
+    const userQueryKey = () => JSON.stringify([
+      filterGroup.value, filterUser.value.trim(), userPage.value,
+      userPageSize.value, includeZeroUsers.value,
+    ]);
     const fetchUsers = async () => {
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
+      const requestId = ++userRequestId;
+      const queryKey = userQueryKey();
+      const current = () => isCurrentScope(snapshot, revision) &&
+        requestId === userRequestId && queryKey === userQueryKey();
       loading.value = true;
+      users.value = [];
       errorMsg.value = "";
       try {
-        const params = { limit: 1000 };
+        const params = {
+          page: userPage.value, page_size: userPageSize.value,
+          search: filterUser.value.trim(), include_zero: includeZeroUsers.value ? "1" : "0",
+        };
         if (filterGroup.value) params.group_id = filterGroup.value;
         const data = await scopedGet("users", params, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
-        if (data && data.success === false) {
-          errorMsg.value = data.error || "加载失败";
-          users.value = [];
-        } else {
-          users.value = (data && data.users) || [];
-        }
+        if (!current()) return;
+        if (data && data.success === false) throw new Error(data.error || "加载失败");
+        users.value = (data && data.users) || [];
+        userTotal.value = data.total || 0;
+        userMatchedCount.value = data.matched_count || 0;
+        userCollapsedCount.value = data.collapsed_count || 0;
+        userZeroCount.value = data.zero_count || 0;
+        userPages.value = data.pages || 1;
+        // 数据减少或临时关系到期后，后端会将越界页修正到最后一页。
+        userPage.value = data.page || 1;
       } catch (e) {
-        if (isCurrentScope(snapshot, revision)) {
+        if (current()) {
           errorMsg.value = String(e);
           users.value = [];
+          userTotal.value = 0;
+          userMatchedCount.value = 0;
+          userCollapsedCount.value = 0;
+          userZeroCount.value = 0;
+          userPages.value = 1;
         }
       } finally {
-        if (isCurrentScope(snapshot, revision)) loading.value = false;
+        if (requestId === userRequestId && isCurrentScope(snapshot, revision)) loading.value = false;
       }
     };
-
-    const visibleUsers = computed(() => {
-      const q = filterUser.value.trim();
-      return q ? users.value.filter((u) => u.user_id.indexOf(q) !== -1) : users.value;
-    });
+    const resetUserPage = () => { userPage.value = 1; return fetchUsers(); };
+    const changeUserPage = (page) => {
+      userPage.value = Math.min(userPages.value, Math.max(1, page));
+      return fetchUsers();
+    };
+    const changeListFilter = () => tab.value === "users" ? resetUserPage() : fetchLogs();
+    const visibleUsers = computed(() => users.value);
 
     const refresh = () => {
       if (tab.value === "logs") return fetchLogs();
@@ -952,10 +1019,12 @@ createApp({
       return fetchUsers();
     };
     const switchTab = (t) => {
+      if (t !== "users") { userRequestId += 1; loading.value = false; }
+      if (t !== "logs") { logRequestId += 1; loading.value = false; }
       tab.value = t;
       errorMsg.value = "";
-      if (t === "logs" && !logs.value.length) fetchLogs();
-      if (t === "users" && !users.value.length) fetchUsers();
+      if (t === "logs") fetchLogs();
+      if (t === "users") resetUserPage();
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
       if (t === "settings") loadSettings();
@@ -973,6 +1042,10 @@ createApp({
     return {
       tab, loading, errorMsg, logs, users, visibleUsers, groups,
       filterGroup, filterUser, filterLimit,
+      logDimension, logSource, logDimensions, logDeltaParts, fmtKnownDelta, showEvaluationChanges,
+      userPage, userPageSize, userPages, userTotal, userMatchedCount,
+      userCollapsedCount, userZeroCount, includeZeroUsers,
+      resetUserPage, changeUserPage, changeListFilter,
       bots, selectedBot, selectedMode, selectedBotInfo, scopeLabel,
       scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
       fmtTime, fmtNum, fmtOptionalNum, fmtDelta, fmtIdle, fmtUser, sourceLabel,
@@ -987,7 +1060,7 @@ createApp({
       promptMode, promptTemplate, promptResolved, promptPreview, promptNotice, promptNoticeError,
       loadPrompts, savePrompt,
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
-      maxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
+      maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
       detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, updateListSetting,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
@@ -1043,13 +1116,15 @@ createApp({
       </section>
 
       <div v-if="tab === 'users' || tab === 'logs'" class="xx-filters">
-        <select v-model="filterGroup" @change="refresh">
+        <select v-model="filterGroup" @change="changeListFilter">
           <option value="">全部群</option>
           <option v-for="g in groups" :key="g.group_id" :value="g.group_id">
             {{ g.group_id }}（{{ g.count }}）
           </option>
         </select>
-        <input class="xx-input" v-model="filterUser" placeholder="按 QQ 号筛选（模糊）" @keyup.enter="tab === 'logs' && fetchLogs()">
+        <input class="xx-input" v-model="filterUser" placeholder="按 QQ 号筛选（模糊）" @input="tab === 'users' && resetUserPage()" @keyup.enter="changeListFilter">
+        <select v-if="tab === 'logs'" v-model="logDimension" @change="fetchLogs" aria-label="流水维度"><option value="all">全部维度</option><option v-for="item in logDimensions" :key="item.key" :value="item.key">{{ item.label }}</option></select>
+        <select v-if="tab === 'logs'" v-model="logSource" @change="fetchLogs" aria-label="流水来源"><option value="">全部来源</option><option value="judge">仅自动评估</option></select>
         <select v-if="tab === 'logs'" v-model="filterLimit" @change="fetchLogs">
           <option :value="100">最近 100</option>
           <option :value="300">最近 300</option>
@@ -1062,6 +1137,17 @@ createApp({
 
       <p v-if="errorMsg" class="xx-error">{{ errorMsg }}</p>
 
+      <div v-if="tab === 'users'" class="xx-member-pagination" aria-label="成员列表分页">
+        <span role="status" aria-live="polite">共 {{ userMatchedCount }} 条成员记录，当前显示范围 {{ userTotal }} 条</span>
+        <button v-if="userCollapsedCount" class="xx-btn xx-btn-mini" @click="includeZeroUsers = true; resetUserPage()" :disabled="loading">展开 {{ userCollapsedCount }} 条已观察的零值记录</button>
+        <button v-else-if="includeZeroUsers && !filterUser.trim()" class="xx-btn xx-btn-mini" @click="includeZeroUsers = false; resetUserPage()" :disabled="loading">折叠已观察的零值记录（{{ userZeroCount }}）</button>
+        <span v-if="filterUser.trim()" class="xx-help">搜索包含已折叠的零值成员</span>
+        <label>每页 <select v-model.number="userPageSize" @change="resetUserPage()" :disabled="loading"><option v-for="size in [30, 50, 100, 200]" :key="size" :value="size">{{ size }}</option></select> 条</label>
+        <button class="xx-btn xx-btn-mini" @click="changeUserPage(userPage - 1)" :disabled="loading || userPage <= 1">上一页</button>
+        <span>第 {{ userPage }} / {{ userPages }} 页</span>
+        <button class="xx-btn xx-btn-mini" @click="changeUserPage(userPage + 1)" :disabled="loading || userPage >= userPages">下一页</button>
+      </div>
+
       <!-- 当前总览 -->
       <div v-if="tab === 'users'" class="xx-table-wrap">
         <table class="xx-table">
@@ -1072,7 +1158,7 @@ createApp({
           </thead>
           <tbody>
             <tr v-if="!visibleUsers.length">
-              <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (users.length ? "无匹配成员" : "暂无成员") }}</td>
+              <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "已折叠零值成员，可点击上方展开" : "暂无匹配成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
               <td class="xx-mono">{{ selectedMode === 'global' ? '全局共享' : u.group_id }}</td>
@@ -1105,12 +1191,13 @@ createApp({
         </table>
       </div>
 
+      <p v-if="tab === 'logs'" class="xx-help">维度筛选只显示该维度有已知非零增量的事件，不影响评分。旧流水的 F/T 未知；仅保留 A 的历史前后值。撤销始终撤销整个事件的全部维度。</p>
       <!-- 变动流水 -->
       <div v-if="tab === 'logs'" class="xx-table-wrap">
         <table class="xx-table">
           <thead>
             <tr>
-              <th>时间</th><th>群</th><th>QQ</th><th>增减</th><th>旧亲近度变化</th><th>原因</th><th>来源</th><th>操作</th>
+              <th>时间</th><th>群</th><th>QQ</th><th>维度增量</th><th>A 亲近度前后</th><th>原因</th><th>来源</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1121,8 +1208,8 @@ createApp({
               <td class="xx-mono">{{ fmtTime(r.ts) }}</td>
               <td class="xx-mono">{{ r.group_id }}</td>
               <td class="xx-mono">{{ r.user_id }}</td>
-              <td :class="r.delta > 0 ? 'xx-up' : (r.delta < 0 ? 'xx-down' : 'xx-zero')">{{ fmtDelta(r.delta) }}</td>
-              <td class="xx-mono">{{ fmtNum(r.favor_before) }} → {{ fmtNum(r.favor_after) }}</td>
+              <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" :class="change.value > 0 ? 'xx-up' : (change.value < 0 ? 'xx-down' : 'xx-zero')">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
+              <td class="xx-mono">{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</td>
               <td>{{ r.reason || "-" }}</td>
               <td><span class="xx-tag">{{ sourceLabel(r.source) }}</span></td>
               <td class="xx-actions">
@@ -1219,6 +1306,11 @@ createApp({
           </button>
         </div>
         <p v-if="modelNotice" :class="['xx-status', modelNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ modelNotice }}</p>
+        <div class="xx-member-pagination">
+          <label>按维度查看评估变动 <select v-model="logDimension"><option value="all">全部维度</option><option v-for="item in logDimensions" :key="item.key" :value="item.key">{{ item.label }}</option></select></label>
+          <button class="xx-btn xx-btn-mini" @click="showEvaluationChanges()">查看评估流水</button>
+          <span class="xx-help">仅切换查看维度，不会关闭任何维度的评分。</span>
+        </div>
         <div class="xx-settings-grid xx-evaluation-grid">
           <section class="xx-form-card">
             <h4>评估详细设置</h4>
@@ -1233,7 +1325,7 @@ createApp({
             <label class="xx-form-row"><span>同一成员评估间隔（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.cooldown_sec"></label>
             <label class="xx-form-row"><span>每成员每日复核次数</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_user_daily_large_cap"></label>
             <label class="xx-form-row"><span>每 Bot 每日复核次数</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_bot_daily_large_cap"></label>
-            <label class="xx-form-row"><span>并发评估上限</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
+            <label class="xx-form-row"><span>并发评估上限（重载后生效）</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
             </details>
             <p class="xx-help">每日复核次数按 UTC 换日。达到限额后跳过复核；并发已满时跳过本次评估，不排队。</p>
             <div class="xx-modal-actions">
@@ -1250,7 +1342,7 @@ createApp({
               <div><dt>复核模型</dt><dd class="xx-mono">{{ activeModelConfig.large_provider_id || "未设置" }}</dd></div>
               <div><dt>模式</dt><dd>{{ activeModelConfig.assessment_mode === 'single' ? "单模型" : "分级复核" }}</dd></div>
               <div><dt>超时</dt><dd>{{ activeModelConfig.small_timeout_sec || "-" }} / {{ activeModelConfig.large_timeout_sec || "-" }} 秒</dd></div>
-              <div><dt>并发上限</dt><dd>{{ maxConcurrentAssessments }}</dd></div>
+              <div><dt>运行并发上限</dt><dd>{{ activeMaxConcurrentAssessments ?? "未知" }}</dd></div>
             </dl>
           </section>
         </div>
@@ -1330,8 +1422,8 @@ createApp({
           </header>
           <div class="xx-modal-meta xx-mono">
             {{ fmtTime(selectedLog.ts) }} · 群 {{ selectedLog.group_id }} · QQ {{ selectedLog.user_id }}
-            · <span :class="selectedLog.delta > 0 ? 'xx-up' : (selectedLog.delta < 0 ? 'xx-down' : 'xx-zero')">{{ fmtDelta(selectedLog.delta) }}</span>
-            · 旧亲近度 {{ fmtNum(selectedLog.favor_before) }} → {{ fmtNum(selectedLog.favor_after) }}
+            <span v-for="change in logDeltaParts(selectedLog, 'all')" :key="change.key"> · {{ change.label }} {{ fmtKnownDelta(change.value) }}</span>
+            · A 亲近度 {{ fmtOptionalNum(selectedLog.favor_before) }} → {{ fmtOptionalNum(selectedLog.favor_after) }}
             · <span class="xx-tag">{{ sourceLabel(selectedLog.source) }}</span>
           </div>
           <section class="xx-modal-section">
@@ -1432,9 +1524,10 @@ createApp({
           </header>
           <section class="xx-modal-section">
             <p class="xx-modal-text">
-              撤销后旧亲近度：<b class="xx-up" style="font-size:16px">{{ fmtNum(undoPreview.after) }}</b>
+              撤销后 A 亲近度：<b class="xx-up" style="font-size:16px">{{ fmtNum(undoPreview.after) }}</b>
               <span class="xx-muted-text">（当前 {{ fmtNum(undoPreview.current) }}，本次 {{ fmtDelta(undoPreview.delta) }}）</span>
             </p>
+            <p class="xx-help">将撤销此事件的全部维度，与当前查看筛选无关。</p>
             <p class="xx-modal-text xx-muted-text">原因：{{ undoPreview.reason || "-" }}</p>
           </section>
           <div class="xx-modal-actions">

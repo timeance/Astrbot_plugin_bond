@@ -1112,6 +1112,30 @@ class SQLiteBackend(StorageBackend):
             for row in rows
         ]
 
+    async def observed_member_keys(
+        self, group_id: str | None = None
+    ) -> set[tuple[str, str]]:
+        return await asyncio.to_thread(self._observed_member_keys_sync, group_id)
+
+    def _observed_member_keys_sync(self, group_id):
+        with self._lock:
+            if group_id is None:
+                rows = (
+                    self._c()
+                    .execute("SELECT group_id, user_id FROM observed_members")
+                    .fetchall()
+                )
+            else:
+                rows = (
+                    self._c()
+                    .execute(
+                        "SELECT group_id, user_id FROM observed_members WHERE group_id=?",
+                        (group_id,),
+                    )
+                    .fetchall()
+                )
+        return {(row[0], row[1]) for row in rows}
+
     async def list_observed(self, group_id: str) -> list[FavorRecord]:
         return await self.ranking_observed(group_id, -1)
 
@@ -1204,15 +1228,36 @@ class SQLiteBackend(StorageBackend):
             self._c().commit()
 
     async def query_logs(
-        self, group_id=None, user_id=None, limit=200, offset=0, fuzzy=False
+        self,
+        group_id=None,
+        user_id=None,
+        limit=200,
+        offset=0,
+        fuzzy=False,
+        dimension=None,
+        source=None,
     ) -> list[dict]:
         # X9：流水查询（面板 limit 可达 1000，LIKE 模糊走不了索引）放线程池
         return await asyncio.to_thread(
-            self._query_logs_sync, group_id, user_id, limit, offset, fuzzy
+            self._query_logs_sync,
+            group_id,
+            user_id,
+            limit,
+            offset,
+            fuzzy,
+            dimension,
+            source,
         )
 
     def _query_logs_sync(
-        self, group_id=None, user_id=None, limit=200, offset=0, fuzzy=False
+        self,
+        group_id=None,
+        user_id=None,
+        limit=200,
+        offset=0,
+        fuzzy=False,
+        dimension=None,
+        source=None,
     ) -> list[dict]:
         sql = (
             "SELECT id, group_id, user_id, delta, favor_before, favor_after, reason, source, ts, message, reversed, relation_delta, event_id "
@@ -1233,6 +1278,19 @@ class SQLiteBackend(StorageBackend):
             else:
                 where.append("user_id = ?")
                 args.append(user_id)
+        # 维度和来源先于 LIMIT；旧流水只知道亲近度，不补造 F/T 的零值。
+        dimensions = {
+            "familiarity": "json_extract(relation_delta, '$.familiarity') != 0",
+            "affinity": "COALESCE(json_extract(relation_delta, '$.affinity'), delta) != 0",
+            "trust": "json_extract(relation_delta, '$.trust') != 0",
+        }
+        if dimension is not None:
+            if dimension not in dimensions:
+                raise ValueError("未知流水维度")
+            where.append(dimensions[dimension])
+        if source is not None:
+            where.append("source = ?")
+            args.append(source)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?"

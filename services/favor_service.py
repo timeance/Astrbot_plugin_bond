@@ -523,6 +523,65 @@ class FavorService:
         out.sort(key=lambda x: x["favor"], reverse=True)
         return out[:limit] if limit >= 0 else out
 
+    async def standings_page(
+        self,
+        group_id: str | None = None,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        search: str = "",
+        include_zero: bool = False,
+    ) -> dict:
+        """先计算全部候选的有效态，再筛选、计数和分页，不能先截断存量值。"""
+        if type(page) is not int or page < 1:
+            raise ValueError("页码须为正整数")
+        if type(page_size) is not int or page_size not in (30, 50, 100, 200):
+            raise ValueError("每页条数须为 30、50、100 或 200")
+        if not isinstance(search, str) or len(search) > 32:
+            raise ValueError("成员搜索无效")
+        if type(include_zero) is not bool:
+            raise ValueError("展开选项无效")
+        search = search.strip()
+        rows = await self.standings(group_id, limit=-1)
+        observed = await self._storage.observed_member_keys(group_id)
+        observed_users = {user for _, user in observed}
+
+        def foldable(row):
+            seen = (
+                row["user_id"] in observed_users
+                if self.scope_mode == "global"
+                else (row["group_id"], row["user_id"]) in observed
+            )
+            return seen and all(
+                row[key] == 0 for key in ("familiarity", "affinity", "trust")
+            )
+
+        matched = [row for row in rows if search in row["user_id"]]
+        zero_count = sum(foldable(row) for row in matched)
+        # 搜索总能找回零值成员，不要求先展开。
+        collapsed_count = 0 if include_zero or search else zero_count
+        if collapsed_count:
+            matched = [row for row in matched if not foldable(row)]
+        matched.sort(
+            key=lambda row: (-row["affinity"], row["group_id"], row["user_id"])
+        )
+        total = len(matched)
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        start = (page - 1) * page_size
+        users = matched[start : start + page_size]
+        return dict(
+            users=users,
+            count=len(users),
+            total=total,
+            matched_count=total + collapsed_count,
+            zero_count=zero_count,
+            collapsed_count=collapsed_count,
+            page=page,
+            page_size=page_size,
+            pages=pages,
+        )
+
     def level_of(self, favor: float) -> LevelDef:
         return self._levels.level_of(favor)
 
@@ -601,12 +660,24 @@ class FavorService:
         limit: int = 20,
         offset: int = 0,
         fuzzy: bool = False,
+        dimension: str | None = None,
+        source: str | None = None,
     ) -> list[dict]:
         """流水查询透传（注入链路一次拉取，milestone/recent_events 共用）。
 
         fuzzy=True 仅供面板搜索（子串匹配）；内部路径一律精确。"""
+        if dimension not in (None, "familiarity", "affinity", "trust"):
+            raise ValueError("未知流水维度")
+        if source not in (None, "judge"):
+            raise ValueError("未知流水来源筛选")
         return await self._storage.query_logs(
-            self.group_key(group_id), user_id, limit=limit, offset=offset, fuzzy=fuzzy
+            self.group_key(group_id),
+            user_id,
+            limit=limit,
+            offset=offset,
+            fuzzy=fuzzy,
+            dimension=dimension,
+            source=source,
         )
 
     async def recent_events(

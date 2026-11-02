@@ -239,6 +239,12 @@ class StorageBackend(ABC):
         """列出当前好感度记录（含 relationship）；group_id 为空则全部群，按 updated_at 倒序。"""
 
     @abstractmethod
+    async def observed_member_keys(
+        self, group_id: str | None = None
+    ) -> set[tuple[str, str]]:
+        """成员分页折叠用的已观察身份；不改变或删除成员记录。"""
+
+    @abstractmethod
     async def distinct_groups(self) -> list[dict]:
         """有当前好感记录的群列表（含每群人数），供面板群筛选。"""
 
@@ -296,6 +302,8 @@ class StorageBackend(ABC):
         limit: int = 200,
         offset: int = 0,
         fuzzy: bool = False,
+        dimension: str | None = None,
+        source: str | None = None,
     ) -> list[dict]:
         """查询变动流水（时间倒序）。每条 dict 含 id/group_id/user_id/delta/favor_before/favor_after/reason/source/ts/message/reversed。
 
