@@ -210,6 +210,10 @@ def test_repair_sources_cannot_create_verified_production_repair(report):
         check == dict(numerator=13, denominator=13)
         for check in repair["existing_shadow_checks"].values()
     )
+    for case in repair["cases"]:
+        for source in case["sources"]:
+            assert "ts" not in source["row"]
+            assert source["row"]["ts_utc"].endswith("+00:00")
     cases = {case["id"]: case for case in repair["cases"]}
     assert sum(case["eligible"] for case in cases.values()) == 1
     assert cases["valid_same_partition"]["eligible"]

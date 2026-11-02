@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import asyncio
+import datetime as dt
 import hashlib
 import inspect
 import json
@@ -406,12 +407,19 @@ async def repair_contracts(runtime, fixture):
         before = replay_support.digest(retained)
         link = repair_link(case, retained)
         assert replay_support.digest(retained) == before
+        # 公开报告用UTC日期表达合成时钟，保留来源摘要针对原始数值字段。
+        sources = deepcopy(retained["inventory"])
+        for source in sources:
+            row = source["row"]
+            row["ts_utc"] = dt.datetime.fromtimestamp(
+                row.pop("ts"), dt.timezone.utc
+            ).isoformat()
         results.append(
             dict(
                 **link,
                 expected_eligible=case["expected_eligible"],
                 source_sha256=retained["production_derived"]["source_sha256"],
-                sources=retained["inventory"],
+                sources=sources,
                 analysis_sqlite_changes=retained["analysis_sqlite_changes"],
                 source_contracts=retained["checks"],
                 formal_trust=retained["formal_relation"]["trust"],

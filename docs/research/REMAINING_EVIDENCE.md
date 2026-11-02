@@ -55,7 +55,7 @@ Q18/Q19使用同一句正文、相同normal_question类别、相同gold，分别
 
 复用既有 shadow.run_case，经真实FavorService生成隔离SQLite流水；normal_question只作T=0的来源载体。建夹具会写合成库，随后来源派生和关联分析只读。负行为/修复的语义及 independent_confirmation 都是独立合成标注，只示范信息上界，不是生产可知事实。
 
-关联检查先验证来源仍保留、完整Bot/scope/group/user分区、judge自然来源、未撤销、修复时间在原行为之后，再看外部确认及正负标签。人工/撤销/缺源/跨区不能靠正标签变成自然修复。按完整event_key关联并输出log引用，绝不只按跨库重复的裸ID合并。
+关联检查先验证来源仍保留、完整Bot/scope/group/user分区、judge自然来源、未撤销、修复时间在原行为之后，再看外部确认及正负标签。人工/撤销/缺源/跨区不能靠正标签变成自然修复。按完整event_key关联并输出log引用，绝不只按跨库重复的裸ID合并。公开来源列表把合成时间写为UTC ISO日期，来源SHA仍基于原始数值字段；这是报告格式转换，既有号码扫描规则保持不变。
 
 | 合同 | 结果 |
 | --- | --- |
@@ -88,9 +88,9 @@ $env:BLACK_CACHE_DIR = Join-Path $sessionRoot 'remaining-black-cache'
 & $python -B -m black --required-version 26.5.1 --check scripts/replay_attribution_candidates.py tests/test_attribution_candidates.py
 ~~~
 
-实际结果：新增测试30 passed in 30.28s；CLI退出0；Black 26.5.1检查退出0，2 files would be left unchanged。主代理在该独立分支重新运行全量测试：593 passed in 54.68s；Black检查80文件、Node19项与check_project通过。隔离AstrBot4.28.0合成装配通过，24个真实转换元数据用例通过；均不连接真实平台或Provider。
+实际结果：新增测试30 passed in 30.28s；CLI退出0；Black 26.5.1检查退出0，2 files would be left unchanged。主代理在最终独立分支重新运行全量测试：593 passed in 55.00s；Black检查80文件、Node19项与check_project通过。隔离AstrBot4.28.0合成装配通过，24个真实转换元数据用例通过；均不连接真实平台或Provider。
 
-命令产物在会话根remaining-attribution-run-03：results.json包含四臂逐事件真实增量、状态、调用轨迹、gate理由及来源引用；summary.json保存完整分子/分母和源码/夹具指纹；runtime保存隔离合成数据库。主代理以scripts/replay_attribution_candidates.py --output <另一新目录>再次独立回放，退出0，summary.json与前次逐字节一致。本目录REMAINING_RESULTS.json与该summary.json逐字节一致，不将运行数据库或完整回放产物放进仓库。
+命令产物在会话根remaining-attribution-run-03：results.json包含四臂逐事件真实增量、状态、调用轨迹、gate理由及来源引用；summary.json保存完整分子/分母和源码/夹具指纹；runtime保存隔离合成数据库。主代理独立回放的初版summary与前次逐字节一致。公开时间改为UTC日期后，再次运行scripts/replay_attribution_candidates.py --output <另一新目录>，退出0；除时间表示和对应源码摘要外，报告与初版一致。当前REMAINING_RESULTS.json与这次最终summary.json逐字节一致，不将运行数据库或完整回放产物放进仓库。
 
 测试覆盖20条句法合同、原集实际增量与分母、两级最终证据、Provider轨迹不变、源文件不变、同输入语义冲突、assess/_assess包装结构、六条repair及既有13条shadow来源检查。所有生产文件及原始夹具/研究支持文件的前后SHA-256相同。
 

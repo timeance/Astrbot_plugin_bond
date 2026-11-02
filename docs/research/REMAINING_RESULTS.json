@@ -5,8 +5,8 @@
   "original_fixture_sha256": "69fb8c354129d4f4264b0845f4dc227bb5a8b2fcc3f202218370e2867ac77dae",
   "candidate_fixture_sha256": "73acd0614053ee7fe49bf041096bb85a667534220eccc23d176d7129d6923290",
   "candidate_source_sha256": {
-    "scripts/replay_attribution_candidates.py": "3d1de2acc517c838fe0450de0baa7c5d66723e06b1c2a57096e84c809410b5d2",
-    "tests/test_attribution_candidates.py": "be455d7e86e6518aeccc5e85f746833efaaece8a8b7ce1df9699cf5943e79621"
+    "scripts/replay_attribution_candidates.py": "c3cd15cb9b7c07c696e7898d08ad93141d9ad178b6cb3a0c7146c31f3ed4e5d9",
+    "tests/test_attribution_candidates.py": "35c36f54e6f735ecfa4dfc955dc986b75855c9efef399650bd1c196c0710d8dd"
   },
   "original_denominators": {
     "events": 1201,
@@ -1366,7 +1366,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800086400.0,
               "message": "合成片段：repair",
               "reversed": false,
               "relation_delta": {
@@ -1374,7 +1373,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "repair"
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           },
           {
@@ -1389,7 +1389,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800000000.0,
               "message": "合成片段：violation",
               "reversed": false,
               "relation_delta": {
@@ -1397,7 +1396,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "violation"
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
             }
           }
         ],
@@ -1439,7 +1439,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800086400.0,
               "message": "合成片段：repair",
               "reversed": false,
               "relation_delta": {
@@ -1447,7 +1446,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "repair"
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           },
           {
@@ -1462,7 +1462,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800000000.0,
               "message": "合成片段：violation",
               "reversed": false,
               "relation_delta": {
@@ -1470,7 +1469,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "violation"
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
             }
           }
         ],
@@ -1512,7 +1512,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800086400.0,
               "message": "合成片段：repair",
               "reversed": false,
               "relation_delta": {
@@ -1520,7 +1519,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "repair"
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           }
         ],
@@ -1562,7 +1562,6 @@
               "favor_after": 0.0,
               "reason": "管理员调整",
               "source": "admin",
-              "ts": 1800086400.0,
               "message": "",
               "reversed": false,
               "relation_delta": {
@@ -1570,7 +1569,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "repair"
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           },
           {
@@ -1585,7 +1585,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800000000.0,
               "message": "合成片段：violation",
               "reversed": false,
               "relation_delta": {
@@ -1593,7 +1592,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "violation"
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
             }
           }
         ],
@@ -1635,7 +1635,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800086400.0,
               "message": "合成片段：repair",
               "reversed": false,
               "relation_delta": {
@@ -1643,7 +1642,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "repair"
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           },
           {
@@ -1658,7 +1658,6 @@
               "favor_after": 0.0,
               "reason": "撤销#1",
               "source": "undo",
-              "ts": 1800086400.0,
               "message": "",
               "reversed": false,
               "relation_delta": {
@@ -1666,7 +1665,8 @@
                 "trust": 0.0,
                 "affinity": 0.0
               },
-              "event_id": null
+              "event_id": null,
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           },
           {
@@ -1681,7 +1681,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800000000.0,
               "message": "合成片段：violation",
               "reversed": true,
               "relation_delta": {
@@ -1689,7 +1688,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "violation"
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
             }
           }
         ],
@@ -1731,7 +1731,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800086400.0,
               "message": "合成片段：repair",
               "reversed": false,
               "relation_delta": {
@@ -1739,7 +1738,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "repair"
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
             }
           },
           {
@@ -1754,7 +1754,6 @@
               "favor_after": 0.0,
               "reason": "关系事件",
               "source": "judge",
-              "ts": 1800000000.0,
               "message": "合成片段：violation",
               "reversed": false,
               "relation_delta": {
@@ -1762,7 +1761,8 @@
                 "affinity": 0.0,
                 "trust": 0.0
               },
-              "event_id": "violation"
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
             }
           }
         ],
