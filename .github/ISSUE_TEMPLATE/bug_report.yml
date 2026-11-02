@@ -1,0 +1,70 @@
+name: 报告 Bug
+description: 提供复现步骤、版本和预期结果，帮助定位异常。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索已有 Issue。此表单及附件公开可见，请勿上传完整配置、真实聊天、数据库、诊断导出或原始运行日志。
+        密钥、Token、Cookie、账号、群号、服务器地址和本机目录请删除或替换；截图也须脱敏。
+  - type: input
+    id: bond-version
+    attributes:
+      label: Bond 版本
+      description: 填写插件列表中的版本；使用源码时可补充提交号。
+      placeholder: 例如 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: astrbot-version
+    attributes:
+      label: AstrBot 版本
+      placeholder: 例如 4.28.0；无法确认请写“不确定”
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 写明系统、部署方式和消息适配器；页面问题补充浏览器，模型相关问题补充模型名称。不要填写密钥、服务地址或账号。
+      placeholder: 例如 Windows，源码部署，OneBot v11；Python 版本不确定
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 写明相关功能开关、操作顺序和出现频率。配置只摘录相关字段，Bot、群和成员使用虚构标识；无法稳定复现时写明已知触发条件。
+      placeholder: |
+        1. 在 bot-A 的 group-A 中开启……
+        2. 使用人工编写的消息……
+        3. 执行……后出现问题
+        出现频率：每次 / 偶发 / 仅一次
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+      description: 你期望这一步发生什么？
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 实际发生了什么？如涉及关系调整，说明哪个维度或对象不符合预期，使用合成示例。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏异常信息或截图（可选）
+      description: 只摘录错误类型和定位所需调用栈，删除正文、凭据、账号、服务器地址和本机目录。不要上传原始日志文件；截图请使用合成数据。
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 公开前确认
+      options:
+        - label: 我已检查正文和附件，不含凭据、真实聊天、账号、群号或运行数据文件。
+          required: true

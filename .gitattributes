@@ -3,3 +3,5 @@ tests/ export-ignore
 scripts/ export-ignore
 requirements-dev.txt export-ignore
 AGENTS.md export-ignore
+requirements-test.txt export-ignore
+.editorconfig export-ignore

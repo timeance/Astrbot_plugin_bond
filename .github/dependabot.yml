@@ -8,3 +8,11 @@ updates:
     groups:
       actions:
         patterns: ['*']
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      development:
+        patterns: [pytest, PyYAML, tzdata, black, ruff]
