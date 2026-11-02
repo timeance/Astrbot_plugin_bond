@@ -492,12 +492,12 @@
       "repair_threshold": {
         "type": "float",
         "default": 2.0,
-        "description": "信任修复期触发阈值：评审分值 ≤ -该值 的重大得罪后进入修复期（摧毁快、修复慢）。0=关闭"
+        "description": "亲近度恢复抑制阈值：评审亲近度增量 ≤ -该值 后暂时压低正向亲近度增长。0=关闭；不修复 trust"
       },
       "repair_hours": {
         "type": "float",
         "default": 48,
-        "description": "信任修复期时长（小时）：窗口内的正向评审分值被压制——得罪了要哄好几天"
+        "description": "亲近度恢复抑制时长（小时）：窗口内压低正向 affinity 增量，不代表 trust 自动修复"
       },
       "repair_factor": {
         "type": "float",

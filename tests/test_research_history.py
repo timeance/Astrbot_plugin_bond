@@ -7,6 +7,7 @@ from contextlib import closing
 import pytest
 
 from astrbot_plugin_bond.core.levels import LevelTable
+from astrbot_plugin_bond.core.relation_policy import RelationPolicy
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.storage.migrations import MIGRATIONS, SCHEMA_VERSION
 from astrbot_plugin_bond.storage.pragma_version import set_user_version
@@ -17,7 +18,12 @@ from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
 def history(tmp_path):
     db = SQLiteBackend(tmp_path / "history.db")
     asyncio.run(db.init())
-    service = FavorService(db, LevelTable.from_config(None))
+    # 固定旧致谢规则，以验证升级后仍能解释/撤销既有三维流水。
+    service = FavorService(
+        db,
+        LevelTable.from_config(None),
+        relation_policy=RelationPolicy(rules={"thanks": {"trust": 0.2}}),
+    )
     try:
         yield db, service
     finally:

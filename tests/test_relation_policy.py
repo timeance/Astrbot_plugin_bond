@@ -97,7 +97,7 @@ def test_policy_handles_negative_events_without_total_score() -> None:
 
     assert insult["affinity"] < 0 and insult["trust"] < 0
     assert manipulation["trust"] < insult["trust"]
-    assert apology["affinity"] > 0 and apology["trust"] > 0
+    assert apology["affinity"] > 0 and apology["trust"] == 0
     assert set(insult) == {"familiarity", "affinity", "trust"}
 
 
@@ -138,3 +138,11 @@ def test_large_finite_intensity_still_obeys_cap():
         "friendly", 1e308
     )
     assert result["affinity"] == 2
+
+
+@pytest.mark.parametrize("event", ["thanks", "friendly", "apology"])
+def test_politeness_has_no_default_trust_evidence_and_custom_rule_wins(event):
+    assert RelationPolicy().deltas(event)["trust"] == 0
+    assert RelationPolicy(rules={event: {"affinity": 0.4}}).deltas(event)["trust"] == 0
+    assert RelationPolicy(rules={event: {"trust": 0.7}}).deltas(event)["trust"] == 0.7
+    assert RelationPolicy(rules={event: {"trust": 9}}).deltas(event)["trust"] == 2

@@ -220,3 +220,33 @@ def test_three_dimensional_new_member_uses_configured_half_life(tmp_path):
         await db.close()
 
     asyncio.run(run())
+
+
+def test_default_change_preserves_legacy_trust_and_undo_on_reopen(tmp_path):
+    from astrbot_plugin_bond.core.relation_policy import RelationPolicy
+
+    async def run():
+        db = SQLiteBackend(tmp_path / "upgrade.db")
+        await db.init()
+        old = svc(db, relation_policy=RelationPolicy(rules={"thanks": {"trust": 0.2}}))
+        await old.apply_relation_event(
+            "g", "u", "thanks", event_id="old", cooldown_sec=0
+        )
+        original = (await old.query_logs("g", "u"))[0]
+        await db.close()
+        await db.init()
+        current = svc(db)
+        assert (await current.get_relation("g", "u")).trust == 0.2
+        fresh = await current.apply_relation_event(
+            "g", "u", "apology", event_id="new", cooldown_sec=0
+        )
+        assert fresh["delta"]["trust"] == 0
+        await current.undo_log(original["id"])
+        assert (await current.get_relation("g", "u")).trust == 0
+        # 换回旧规则不会迁移或重算已经保存的关系。
+        await db.close()
+        await db.init()
+        assert (await old.get_relation("g", "u")).trust == 0
+        await db.close()
+
+    asyncio.run(run())

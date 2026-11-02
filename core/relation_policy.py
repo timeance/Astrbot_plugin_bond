@@ -50,16 +50,17 @@ class EventType(str, Enum):
 
 EVENT_TYPES = tuple(event.value for event in EventType)
 
-# 数值是规则层的基础增量，FavorService/存储层仍负责每日限幅和最终状态封顶。
+# F：确认的交互暴露；A：温暖/疏离；T：涉及风险时的可靠性、诚实和边界尊重。
+# 礼貌、示好或道歉本身不是可靠性修复证据。限幅仍由 FavorService/存储负责。
 DEFAULT_RULES: dict[str, dict[str, float]] = {
     EventType.NORMAL_QUESTION: {"familiarity": 0.1},
-    EventType.THANKS: {"familiarity": 0.2, "affinity": 0.5, "trust": 0.2},
-    EventType.FRIENDLY: {"familiarity": 0.3, "affinity": 0.8, "trust": 0.2},
+    EventType.THANKS: {"familiarity": 0.2, "affinity": 0.5, "trust": 0.0},
+    EventType.FRIENDLY: {"familiarity": 0.3, "affinity": 0.8, "trust": 0.0},
     EventType.JOKE: {"familiarity": 0.2, "affinity": 0.5},
     EventType.CRITICISM: {"familiarity": 0.1},
     EventType.INSULT: {"affinity": -1.0, "trust": -1.5},
     EventType.MANIPULATION: {"affinity": -0.5, "trust": -2.0},
-    EventType.APOLOGY: {"familiarity": 0.1, "affinity": 0.7, "trust": 1.0},
+    EventType.APOLOGY: {"familiarity": 0.1, "affinity": 0.7, "trust": 0.0},
     EventType.UNCERTAIN: {},
 }
 

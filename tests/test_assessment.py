@@ -91,7 +91,7 @@ def test_persistent_dedup_and_three_dimensions(tmp_path):
         try:
             assert await service.assess(interaction(), directed=True) == "accepted"
             state = await favor.get_relation("789", "456")
-            assert state.familiarity > 0 and state.affinity > 0 and state.trust > 0
+            assert state.familiarity > 0 and state.affinity > 0 and state.trust == 0
             await store.close()
             await store.init()
             assert (
@@ -444,3 +444,35 @@ def test_small_and_large_share_one_prompt_snapshot(tmp_path):
             await store.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["早安😊", "早安～", "☀️ 早安！", "你好👨‍👩‍👧‍👦", "HELLO✨", "“hi”", "早安！"],
+)
+def test_decorated_whole_greeting_is_filtered(text):
+    from astrbot_plugin_bond.core.assessment import locally_relevant
+
+    assert not locally_relevant(text, True)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "早安，能解释一下事务吗？",
+        "你好，我修正了昨天的计算",
+        "请解释😊的含义",
+        "@合成名字 早安",
+        "hello world",
+        "hello()",
+        "hi++",
+        "$hello",
+        chr(96) + "hello()" + chr(96),
+        "hello©",
+    ],
+)
+def test_greeting_normalization_keeps_substantive_or_unresolved_content(text):
+    from astrbot_plugin_bond.core.assessment import locally_relevant
+
+    assert locally_relevant(text, True)
+    assert not locally_relevant(text, False)
