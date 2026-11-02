@@ -43,7 +43,7 @@ python scripts/smoke_astrbot.py --session-dir <本次测试目录> --runtime-dir
 
 ## 发布
 
-当前 `0.2.0-dev` 只交付审核分支与验证 ZIP，不发布正式版。未来发版先由维护者合并 PR，再同步 `metadata.yaml` 与 `main.py` 的版本，创建带说明的 annotated tag，如版本 `0.2.0` 对应 `v0.2.0`。预发布版本使用带连字符的版本与 tag，Release 自动标为 prerelease。
+运行版本以 metadata.yaml 和 main.py 为准。普通行为修复递增补丁版本并同步 CHANGELOG；研究与测试改动不递增运行版本。维护者审核并合并后决定是否创建 annotated tag 和 Release；提交 PR 或验证 ZIP 不等于正式发布。
 
 发布仅接受 main 历史中的提交，tag 版本须与两个元数据入口一致。工作流先完成检查，再生成归档、校验文件及 SHA-256 校验和，最后创建 GitHub Release。普通 PR 和分支推送只做验证，不发版。
 
@@ -58,3 +58,21 @@ Schema 11 将成功汇总的流水 ID 保存在本地，并与印象、标签和
 Schema 12 增加三维关系和事件去重，Schema 13 保存评估事件、调用状态与预算。`affinity` 继续使用单一 `favor` 列，熟悉度和信任度各有独立列；不维护第二份亲近度或三维总分。管理员资料修改也通过 `FavorService`，资料与审计流水原子提交，资料流水不能当作数值撤销。
 
 `PromptService` 管理独立 JSON。LivingMemory 集成已移除；相关决策和代码调查见 [接口调查](LIVINGMEMORY.md)。
+
+## 合成关系回放
+
+离线环境运行，输出目录须为本次新建的空目录：
+
+```bash
+python scripts/replay_relations.py --arms baseline model-a --output <本次测试目录>/replay
+```
+
+脚本运行真实入口方法、评估服务与 SQLite 链路，模型返回预置响应。baseline 固定旧默认规则，但所有实验臂的入口均来自当前检出；跨代码版本须比较各自保存的结果及源码摘要。results.json 包含逐事件结果与逻辑指标，timings.json 单列非确定性耗时。数据库仅在输出目录，不提交。
+
+真实 AstrBot 环境另运行消息转换检查：
+
+```bash
+python scripts/smoke_message_metadata.py --session-dir <本次测试目录>/metadata
+```
+
+使用 AstrBot 4.28.0 的真实 OneBot 转换代码和合成 action 响应，禁止网络及子进程。此检查验证 message_str、At/Reply 和本地过滤，不代表真实 QQ、Provider、浏览器或真人语义验收。方法、风险和基线见 [研究 RFC](research/RFC_PHASE0.md)。

@@ -62,6 +62,11 @@ jobs:
           --session-dir "${{ runner.temp }}/bond-smoke"
           --runtime-dir "${{ runner.temp }}/bond-smoke/runtime"
 
+      - name: 真实 OneBot 合成消息元数据
+        run: >-
+          python astrbot_plugin_bond/scripts/smoke_message_metadata.py
+          --session-dir "${{ runner.temp }}/bond-metadata"
+
   purity:
     name: 敏感数据与纯净交付检查
     runs-on: ubuntu-latest
