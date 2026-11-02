@@ -1,6 +1,6 @@
 # Bond 插件商店提交准备
 
-核查日期：2026-11-03。插件版本：0.2.6。本文提供提交资料与验收清单；尚未向商店提交。
+核查日期：2026-11-03。插件版本：0.3.0。本文提供提交资料与验收清单；尚未向商店提交。
 
 ## 提交入口
 
@@ -17,7 +17,7 @@ name: astrbot_plugin_bond
 display_name: Bond 关系系统
 short_desc: 按 Bot 隔离的三维关系与成员印象
 desc: 保存熟悉度、亲近度、信任度与成员印象，支持分级评估、人格适配及管理面板。
-version: "0.2.6"
+version: "0.3.0"
 author: yiwuerxin, Timeance
 repo: https://github.com/timeance/Astrbot_plugin_bond
 tags:
