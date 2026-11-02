@@ -185,7 +185,7 @@ def test_schema9_synthetic_database_survives_upgrade_restart_undo_and_scoped_res
             )
             assert after_event.affinity > before_relation.affinity
             assert after_event.familiarity > before_relation.familiarity
-            assert after_event.trust > before_relation.trust
+            assert after_event.trust == before_relation.trust
 
             event_log = next(
                 row

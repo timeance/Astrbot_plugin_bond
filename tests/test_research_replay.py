@@ -88,7 +88,8 @@ def test_50_100_200_day_actual_deltas(comparison):
         )
         assert all(not r["changed"] for r in baseline[f"S18-greeting-{days}d"]["rows"])
         variant = baseline[f"S19-variants-{days}d"]["rows"]
-        assert any(r["changed"] for r in variant)
+        assert all(not r["changed"] for r in variant)
+        assert all(not r["provider_called"] for r in variant)
         assert all(r["delta"]["familiarity"] in (0, 0.3) for r in variant)
     questions = baseline["S20-questions-200d"]["rows"]
     assert sum(r["delta"]["familiarity"] for r in questions) == pytest.approx(20)

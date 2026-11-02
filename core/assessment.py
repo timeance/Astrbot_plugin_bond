@@ -77,11 +77,28 @@ def parse_verdict(raw: str, interaction: Interaction) -> Verdict:
 
 def locally_relevant(text: str, directed: bool) -> bool:
     stripped = text.strip()
+    # 只归一化边缘装饰以比较整句寒暄，不修改交给 Provider 的原文证据。
+    greeting = stripped.casefold()
+
+    def decoration(char):
+        # 不剥代码括号、运算符或货币符号，避免 hello()、hi++ 被当作寒暄。
+        return (
+            char.isspace()
+            or char in "!！。.?？,，、…～~“”「」『』"
+            or char in "☀☁☂☔☕☺☹♥❤✨⭐\ufe0e\ufe0f\u200d"
+            or 0x1F300 <= ord(char) <= 0x1FAFF
+        )
+
+    start, end = 0, len(greeting)
+    while start < end and decoration(greeting[start]):
+        start += 1
+    while end > start and decoration(greeting[end - 1]):
+        end -= 1
     return (
         directed
         and 2 <= len(stripped) <= 2000
         and not stripped.startswith(("/", "!", "！"))
-        and stripped.lower().strip("!！。.?？ ")
+        and greeting[start:end]
         not in {"你好", "早", "早安", "晚安", "hi", "hello", "在吗"}
     )
 
