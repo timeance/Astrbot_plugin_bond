@@ -229,7 +229,9 @@ async def _on_llm_request_inner(
     template = deps.prompts.resolve("behavior", deps.bot_id, str(group_id))
     block = deps.inject.build_relation_block(
         template,
-        relationship=await deps.favor.relation_title(group_id, user_id),
+        relationship=deps.favor.describe_relation(
+            rec.familiarity, rec.favor, rec.trust
+        ).text,
         impression=rec.impression if local else "",
         events=events,
         configured_master=deps.favor.is_master(str(user_id)),

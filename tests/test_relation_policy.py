@@ -105,8 +105,8 @@ def test_resolver_keeps_relationship_dimensions_composable() -> None:
     resolver = RelationResolver()
 
     assert resolver.resolve(RelationState()) == "陌生"
-    assert resolver.resolve(RelationState(90, 65, -60)) == "熟悉、亲近但戒备"
-    assert resolver.resolve(RelationState(90, 65, 60)) == "熟悉、亲近且信任"
+    assert resolver.resolve(RelationState(90, 65, -60)) == "亲近却戒备"
+    assert resolver.resolve(RelationState(90, 65, 60)) == "亲密挚友"
 
 
 def test_resolver_accepts_configurable_thresholds_and_labels() -> None:

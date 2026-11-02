@@ -213,6 +213,8 @@ class RelationResolver:
         thresholds: Mapping[str, Mapping[str, float]] | None = None,
         labels: Mapping[str, str] | None = None,
     ) -> None:
+        # 显式传入旧配置时保留旧解析；默认调用采用五档词典。
+        self._legacy = thresholds is not None or labels is not None
         self._thresholds = {
             dimension: dict(values) for dimension, values in DEFAULT_THRESHOLDS.items()
         }
@@ -247,6 +249,22 @@ class RelationResolver:
                 raise ValueError(f"称谓 {key} 必须是非空字符串")
             self._labels[key] = value.strip()
 
+    def describe(self, state: RelationState):
+        """公开称谓与模型释义共用结果；旧显式配置保持原文案。"""
+        from .relation_lexicon import RelationDescription, describe
+
+        if not isinstance(state, RelationState):
+            raise ValueError("state 必须是 RelationState")
+        if self._legacy:
+            return RelationDescription(
+                "legacy",
+                self.resolve(state),
+                "当前关系态度由显式自定义规则描述，不改变人格与权限。",
+                (),
+                self.resolve_labels(state),
+            )
+        return describe(state)
+
     def _keys(self, state: RelationState) -> tuple[str, str | None, str | None]:
         familiarity_thresholds = self._thresholds["familiarity"]
         if state.familiarity >= familiarity_thresholds["familiar"]:
@@ -277,6 +295,8 @@ class RelationResolver:
         """返回按熟悉度、亲近度、信任度排列的结构化称谓文本。"""
         if not isinstance(state, RelationState):
             raise ValueError("state 必须是 RelationState")
+        if not self._legacy:
+            return self.describe(state).labels
         familiarity, affinity, trust = self._keys(state)
         keys = [familiarity]
         if affinity:
@@ -289,6 +309,8 @@ class RelationResolver:
         """输出可并存的中文称谓，不合成总分或单一等级。"""
         if not isinstance(state, RelationState):
             raise ValueError("state 必须是 RelationState")
+        if not self._legacy:
+            return self.describe(state).title
         familiarity, affinity, trust = self._keys(state)
         familiarity_label = self._labels[familiarity]
 

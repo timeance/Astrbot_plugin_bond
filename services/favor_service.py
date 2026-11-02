@@ -203,17 +203,20 @@ class FavorService:
             familiarity=rec.familiarity, affinity=rec.favor, trust=rec.trust
         )
 
-    def _relation_title(self, familiarity, affinity, trust):
+    def describe_relation(self, familiarity, affinity, trust):
         from ..core.relation_policy import RelationState
 
         # 历史值只在称谓分类时饱和，不改数据库中的旧标量。
-        return self._relation_resolver.resolve(
+        return self._relation_resolver.describe(
             RelationState(
                 familiarity=familiarity,
                 affinity=max(-100, min(100, affinity)),
                 trust=trust,
             )
         )
+
+    def _relation_title(self, familiarity, affinity, trust):
+        return self.describe_relation(familiarity, affinity, trust).title
 
     async def relation_title(self, group_id, user_id):
         rec = await self.get(group_id, user_id)
