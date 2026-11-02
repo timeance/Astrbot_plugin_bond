@@ -19,8 +19,13 @@ SECTIONS = {
         ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
     ),
     "commands": ("查询与排行", ["command", "render"]),
+    "diagnostics": ("关系诊断", ["diagnostics"]),
 }
 LABELS = {
+    "diagnostics.enabled": (
+        "关系诊断记录",
+        "默认关闭；本机记录脱敏状态和耗时，不新增原文。按7天及20MB上限清理，可能提前轮转；重载后生效。",
+    ),
     "default_scope_mode": (
         "默认关系模式",
         "按群：各群分别记录；全局：同一 Bot 跨群共用关系。页面顶部为指定 Bot 选择的模式优先；切换不复制或合并历史。",

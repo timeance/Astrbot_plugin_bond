@@ -1,0 +1,193 @@
+{
+  "logical_results_identical": true,
+  "fixture_sha256": "69fb8c354129d4f4264b0845f4dc227bb5a8b2fcc3f202218370e2867ac77dae",
+  "metrics": {
+    "events": 1201,
+    "persistent_false_update_rate": {
+      "numerator": 6,
+      "denominator": 381,
+      "value": 0.015748031496062992
+    },
+    "target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 8,
+      "value": 0.0
+    },
+    "certain_target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 4,
+      "value": 0.0
+    },
+    "uncertain_target_false_update_rate": {
+      "numerator": 0,
+      "denominator": 4,
+      "value": 0.0
+    },
+    "quote_false_update_rate": {
+      "numerator": 2,
+      "denominator": 4,
+      "value": 0.5
+    },
+    "trust_false_update_rate": {
+      "numerator": 2,
+      "denominator": 1195,
+      "value": 0.0016736401673640166
+    },
+    "target_precision": {
+      "numerator": 479,
+      "denominator": 479,
+      "value": 1.0
+    },
+    "abstention_coverage": {
+      "numerator": 375,
+      "denominator": 381,
+      "value": 0.984251968503937
+    },
+    "abstention_status_coverage": {
+      "numerator": 8,
+      "denominator": 381,
+      "value": 0.02099737532808399
+    },
+    "abstention_outcomes": {
+      "abstained": 8,
+      "accepted": 7,
+      "entry_skipped": 3,
+      "failed": 4,
+      "filtered": 356,
+      "temporary": 3
+    },
+    "unscored_trust_events": 2,
+    "neutral_drift": {
+      "familiarity": 25.4,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "neutral_absolute_drift": {
+      "familiarity": 25.4,
+      "affinity": 0.0,
+      "trust": 0.0
+    },
+    "title_flips_per_100_turns": 1.0824313072439633,
+    "provider_calls": 492,
+    "simulated_tokens": null,
+    "statuses": {
+      "filtered": 706,
+      "accepted": 454,
+      "entry_skipped": 3,
+      "abstained": 8,
+      "failed": 4,
+      "temporary": 3,
+      "unchanged": 13,
+      "busy": 10
+    },
+    "failures": 1,
+    "timeouts": 1,
+    "busy": 10,
+    "real_provider_tokens": null,
+    "main_reply_p50_ms": null,
+    "main_reply_p95_ms": null,
+    "semantic_accuracy": null
+  },
+  "diagnostics": {
+    "off": {
+      "enabled": false,
+      "closed": false,
+      "version": 1,
+      "namespace": null,
+      "counters_scope": "current_session",
+      "counters": {
+        "accepted": 0,
+        "written": 0,
+        "dropped": 0,
+        "queue_full": 0,
+        "invalid": 0,
+        "filtered_fields": 0,
+        "write_errors": 0,
+        "read_errors": 0,
+        "expired_rows": 0,
+        "evicted_rows": 0,
+        "cleared_rows": 0,
+        "corrupt_lines": 0,
+        "export_truncated": 0,
+        "namespace_limit": 0,
+        "closed": 0
+      },
+      "missing": {
+        "dropped": 0,
+        "filtered_fields": 0,
+        "write_errors": 0,
+        "read_errors": 0,
+        "expired_rows": 0,
+        "evicted_rows": 0,
+        "corrupt_lines": 0,
+        "export_truncated": 0,
+        "unattributed": 0,
+        "historical_counters_unknown": true
+      },
+      "gap": false,
+      "queued": 0,
+      "tracked_namespaces": 0,
+      "namespace_limit": 128
+    },
+    "on": {
+      "enabled": true,
+      "closed": false,
+      "version": 1,
+      "namespace": null,
+      "counters_scope": "current_session",
+      "counters": {
+        "accepted": 2171,
+        "written": 2171,
+        "dropped": 0,
+        "queue_full": 0,
+        "invalid": 0,
+        "filtered_fields": 0,
+        "write_errors": 0,
+        "read_errors": 0,
+        "expired_rows": 0,
+        "evicted_rows": 0,
+        "cleared_rows": 0,
+        "corrupt_lines": 0,
+        "export_truncated": 0,
+        "namespace_limit": 0,
+        "closed": 0
+      },
+      "missing": {
+        "dropped": 0,
+        "filtered_fields": 0,
+        "write_errors": 0,
+        "read_errors": 0,
+        "expired_rows": 0,
+        "evicted_rows": 0,
+        "corrupt_lines": 0,
+        "export_truncated": 0,
+        "unattributed": 0,
+        "historical_counters_unknown": true
+      },
+      "gap": false,
+      "queued": 0,
+      "tracked_namespaces": 3,
+      "namespace_limit": 128
+    }
+  },
+  "offline_hook_latency_ms": {
+    "off": {
+      "samples": 1201,
+      "p50": 1.5822999412193894,
+      "p95": 1.8975000130012631
+    },
+    "on": {
+      "samples": 1201,
+      "p50": 1.8649999983608723,
+      "p95": 2.2726000752300024
+    }
+  },
+  "limits": "单机单次合成测量，无真实Provider或主回复；延迟不是性能保证。轮转/丢弃见diagnostics。",
+  "base_commit": "6caafd8f800dd9ce5a20b85decb732343fba07d6",
+  "source_sha256": {
+    "services/favor_service.py": "4317b9ac4185916ab929e5c7b2ba8aa3fba5c483b058e70d1a5380d20ee07a83",
+    "services/assessment_service.py": "d2e6aea2a38b1eb06d73ab559b477ebdb48daba999205e47eb55da1266d0b844",
+    "services/diagnostics_service.py": "1d5c146fb7d20206912383d96d4b9e86c183960c60b95bbeb17103c504984e2f",
+    "scripts/replay_diagnostics.py": "634f3195550fe6c6b4949a9170fd5a501c18d94a4f76df5eb5008463cfbcb679"
+  }
+}

@@ -194,6 +194,7 @@ class PageApi:
             ("profile", self.handle_profile, ["POST"], "Bond 修改印象与标签"),
             ("prompts", self.handle_prompts, ["GET", "POST"], "Bond 提示词设置"),
             ("models", self.handle_models, ["GET", "POST"], "Bond 评估模型设置"),
+            ("diagnostics", self.handle_diagnostics, ["GET", "POST"], "Bond 关系诊断"),
         ):
             reg(f"/{PLUGIN_NAME}/{endpoint}", handler, methods, label)
         reg(
@@ -638,6 +639,33 @@ class PageApi:
                     **self._runtime.detailed_settings(),
                     "restart_required": request.method == "POST",
                 }
+            )
+
+        return await self._invoke(run)
+
+    async def handle_diagnostics(self):
+        async def run():
+            params = await self._params()
+            bot_id, mode = self._target(params)
+            recorder = self._runtime.diagnostics
+            if recorder is None:
+                return self._error("诊断记录不可用")
+            action = params.get("action", "status")
+            if request.method == "POST" and action == "clear":
+                cleared = await recorder.clear(bot_id, mode)
+                if not cleared["clear_succeeded"]:
+                    raise _PageOperationError
+            elif request.method == "GET" and action == "export":
+                return self._response(
+                    {
+                        "success": True,
+                        "diagnostics": await recorder.export(bot_id, mode),
+                    }
+                )
+            elif request.method != "GET" or action != "status":
+                raise _PageRequestError
+            return self._response(
+                {"success": True, "diagnostics": recorder.stats(bot_id, mode)}
             )
 
         return await self._invoke(run)

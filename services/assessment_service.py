@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from dataclasses import dataclass
 
 from ..core.assessment import (
@@ -90,6 +91,22 @@ class AssessmentService:
             )
 
     async def _call(self, provider_id, timeout, interaction, tier, instructions):
+        started = time.perf_counter() if self.favor.diagnostics_enabled else 0
+
+        async def finish(call_id, status, tokens):
+            await self.storage.finish_assessment_call(call_id, status, tokens)
+            if self.favor.diagnostics_enabled:
+                self.favor.record_diagnostic(
+                    interaction.group_id,
+                    interaction.user_id,
+                    "call",
+                    event_id=interaction.event_id,
+                    tier=tier,
+                    status=status,
+                    tokens=tokens,
+                    elapsed_ms=(time.perf_counter() - started) * 1000,
+                )
+
         # 调用尝试先持久化，异常/超时也消耗调用预算。
         call_id = await self._reserve_call(
             interaction.event_id,
@@ -101,6 +118,14 @@ class AssessmentService:
             self.config.per_bot_daily_large_cap,
         )
         if call_id is None:
+            self.favor.record_diagnostic(
+                interaction.group_id,
+                interaction.user_id,
+                "call",
+                event_id=interaction.event_id,
+                tier=tier,
+                status="budget",
+            )
             return None
         try:
             provider = self.context.get_provider_by_id(provider_id)
@@ -122,20 +147,55 @@ class AssessmentService:
             try:
                 result = parse_verdict(response.completion_text, interaction)
             except (ValueError, TypeError):
-                await self.storage.finish_assessment_call(call_id, "invalid", tokens)
+                await finish(call_id, "invalid", tokens)
                 return None
-            await self.storage.finish_assessment_call(call_id, "ok", tokens)
+            await finish(call_id, "ok", tokens)
             return result
         except asyncio.CancelledError:
-            await self.storage.finish_assessment_call(call_id, "cancelled", None)
+            await finish(call_id, "cancelled", None)
             raise
         except Exception as exc:
             status = "timeout" if isinstance(exc, asyncio.TimeoutError) else "failed"
-            await self.storage.finish_assessment_call(call_id, status, None)
+            await finish(call_id, status, None)
             return None
 
     async def assess(
         self, interaction: Interaction, *, directed: bool, admission_state=None
+    ):
+        if not self.favor.diagnostics_enabled:
+            return await self._assess(
+                interaction, directed=directed, admission_state=admission_state
+            )
+        started, status, trace = time.perf_counter(), "failed", {}
+        try:
+            status = await self._assess(
+                interaction,
+                directed=directed,
+                admission_state=admission_state,
+                trace=trace,
+            )
+            return status
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        finally:
+            self.favor.record_diagnostic(
+                interaction.group_id,
+                interaction.user_id,
+                "assessment",
+                event_id=interaction.event_id,
+                status=status,
+                elapsed_ms=(time.perf_counter() - started) * 1000,
+                **trace,
+            )
+
+    async def _assess(
+        self,
+        interaction: Interaction,
+        *,
+        directed: bool,
+        admission_state=None,
+        trace=None,
     ):
         cfg = self.config
         if interaction.bot_id != self.storage.bot_id:
@@ -143,6 +203,8 @@ class AssessmentService:
         if not cfg.enabled:
             return "disabled"
         if not locally_relevant(interaction.text, directed):
+            if trace is not None:
+                trace["reason"] = "not_directed" if not directed else "filtered"
             await self.storage.record_assessment_skip(interaction, "filtered")
             return "filtered"
         temporary = await self.favor.temporary_state(
@@ -208,6 +270,10 @@ class AssessmentService:
                         )
                         if cfg.assessment_mode == "tiered" and cfg.large_provider_id
                         else None
+                    )
+                if trace is not None and verdict is not None:
+                    trace.update(
+                        event_type=verdict.event_type, confidence=verdict.confidence
                     )
                 if (
                     verdict is None

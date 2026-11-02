@@ -76,3 +76,14 @@ python scripts/smoke_message_metadata.py --session-dir <本次测试目录>/meta
 ```
 
 使用 AstrBot 4.28.0 的真实 OneBot 转换代码和合成 action 响应，禁止网络及子进程。此检查验证 message_str、At/Reply 和本地过滤，不代表真实 QQ、Provider、浏览器或真人语义验收。方法、风险和基线见 [研究 RFC](research/RFC_PHASE0.md)。
+
+
+## 可选诊断检查
+
+真实框架隔离环境运行：python scripts/smoke_diagnostics.py --runtime-dir <新的空目录>。
+检查2 Bot/2作用域、开关重载、认证拒绝、脱敏导出、清除隔离及停用后历史管理；不连接 Provider、QQ 或浏览器。
+
+管理员导出后可在离线环境运行：
+python scripts/summarize_diagnostics.py <导出.json> --output <本地摘要.json>。
+只汇总已保留的记录，未知 Token、语义准确率和主回复延迟保持未知。
+不要将真实导出文件提交到仓库。

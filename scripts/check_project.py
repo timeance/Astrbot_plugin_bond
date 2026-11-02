@@ -43,6 +43,7 @@ def check_project(root: Path = ROOT) -> str:
         ("inject", "enabled"),
         ("coupling", "enabled"),
         ("assessment", "enabled"),
+        ("diagnostics", "enabled"),
     ):
         if schema[section]["items"][key]["default"] is not False:
             raise ValueError(f"开发基线要求 {section}.{key} 默认关闭")
