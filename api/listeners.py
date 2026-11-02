@@ -76,17 +76,31 @@ class AssessmentEvent:
 
 
 def _chain_flags(event: AstrMessageEvent) -> tuple[bool, bool]:
-    """解析消息链：是否@小千、是否回复小千。"""
+    """只接受无冲突的当前 Bot 指向；缺失或多来源时让关系评估弃权。"""
+    from ..core.scope import is_account_id
+
     self_id = str(event.get_self_id() or "")
-    chain = getattr(event.message_obj, "message", None) or []
-    has_at_bot = any(
-        isinstance(c, At) and str(getattr(c, "qq", "")) == self_id for c in chain
-    )
-    is_reply_bot = any(
-        isinstance(c, Reply) and str(getattr(c, "sender_id", "")) == self_id
-        for c in chain
-    )
-    return has_at_bot, is_reply_bot
+    if not is_account_id(self_id):
+        return False, False
+    chain = getattr(getattr(event, "message_obj", None), "message", None) or []
+    ats = [c for c in chain if isinstance(c, At)]
+    replies = [c for c in chain if isinstance(c, Reply)]
+    if any(str(getattr(c, "qq", "")) != self_id for c in ats):
+        return False, False
+    source_ids = set()
+    for reply in replies:
+        if str(getattr(reply, "sender_id", "")) != self_id:
+            return False, False
+        source_id = getattr(reply, "id", None)
+        if type(source_id) not in (str, int):
+            return False, False
+        source_id = str(source_id)
+        if not source_id.strip() or source_id == "0" or len(source_id) > 200:
+            return False, False
+        source_ids.add(source_id)
+    if len(source_ids) > 1:
+        return False, False
+    return bool(ats), bool(replies)
 
 
 # X10：后台评审任务经 Deps.registry（TaskRegistry）发起——裸 create_task

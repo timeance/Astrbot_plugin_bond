@@ -133,6 +133,55 @@ def _cases() -> list[dict]:
             False,
             False,
         ),
+        (
+            "reply_other_at_bot",
+            [reply(9102), at(), text("谢谢你的帮助")],
+            "谢谢你的帮助",
+            True,
+            False,
+        ),
+        (
+            "reply_unavailable_at_bot",
+            [reply(9103), at(), text("谢谢你的帮助")],
+            "谢谢你的帮助",
+            True,
+            False,
+        ),
+        (
+            "reply_sender_missing_at_bot",
+            [reply(9104), at(), text("谢谢你的帮助")],
+            "谢谢你的帮助",
+            True,
+            False,
+        ),
+        (
+            "reply_bot_at_other",
+            [reply(9101), at(OTHER), text("谢谢你的帮助")],
+            f" @synthetic-other({OTHER}) 谢谢你的帮助",
+            False,
+            True,
+        ),
+        (
+            "reply_bot_at_bot",
+            [reply(9101), at(), text("谢谢你的帮助")],
+            "谢谢你的帮助",
+            True,
+            True,
+        ),
+        (
+            "same_reply_twice",
+            [reply(9101), reply(9101), text("谢谢你的帮助")],
+            "谢谢你的帮助",
+            False,
+            True,
+        ),
+        (
+            "different_bot_replies",
+            [reply(9101), reply(9105), text("谢谢你的帮助")],
+            "谢谢你的帮助",
+            False,
+            True,
+        ),
     ]
     return [
         dict(
@@ -217,6 +266,7 @@ async def check() -> dict:
     reply_messages = {
         9101: _payload([_segment("text", text="合成 Bot 上文")], 9101, BOT),
         9102: _payload([_segment("text", text="合成他人上文")], 9102, OTHER),
+        9105: _payload([_segment("text", text="合成 Bot 另一上文")], 9105, BOT),
         9104: _payload([_segment("text", text="合成来源缺失上文")], 9104, BOT),
     }
     reply_messages[9104].pop("sender")
@@ -276,10 +326,25 @@ async def check() -> dict:
             converted.message_str,
             case["expected_text"],
         )
-        assert (has_at, is_reply) == (
+        raw_at = any(isinstance(c, At) and str(c.qq) == BOT for c in converted.message)
+        raw_reply = any(
+            isinstance(c, Reply) and str(c.sender_id) == BOT for c in converted.message
+        )
+        assert (raw_at, raw_reply) == (
             case["expected_at"],
             case["expected_reply"],
         ), case["name"]
+        blocked = case["name"] in {
+            "mixed_bot_other",
+            "mixed_other_bot",
+            "reply_other_at_bot",
+            "reply_unavailable_at_bot",
+            "reply_sender_missing_at_bot",
+            "reply_bot_at_other",
+            "different_bot_replies",
+        }
+        expected_flags = (False, False) if blocked else (raw_at, raw_reply)
+        assert (has_at, is_reply) == expected_flags, case["name"]
         ats = [
             json.loads(part.json())
             for part in converted.message
@@ -294,11 +359,16 @@ async def check() -> dict:
         assert len(replies) == sum(part["type"] == "reply" for part in raw["message"])
         if replies:
             reply = replies[0]
-            if case["name"] in {"reply_unavailable", "reply_sender_missing"}:
+            if case["name"] in {
+                "reply_unavailable",
+                "reply_sender_missing",
+                "reply_unavailable_at_bot",
+                "reply_sender_missing_at_bot",
+            }:
                 assert reply["sender_id"] in (None, 0, "", "0"), reply
                 assert not reply["chain"] and not reply["message_str"], reply
             else:
-                source = BOT if is_reply else OTHER
+                source = BOT if raw_reply else OTHER
                 assert str(reply["sender_id"]) == source, reply
                 assert str(reply["qq"]) == source, reply
                 assert reply["chain"] and reply["message_str"], reply
@@ -310,8 +380,10 @@ async def check() -> dict:
                 "message_str": event.message_str,
                 "At": ats,
                 "Reply": replies,
-                "has_at_bot": has_at,
-                "is_reply_bot": is_reply,
+                "has_at_bot": raw_at,
+                "is_reply_bot": raw_reply,
+                "assessment_at_bot": has_at,
+                "assessment_reply_bot": is_reply,
                 "directed": directed,
                 "locally_relevant": locally_relevant(event.message_str, directed),
                 "locally_relevant_if_directed": locally_relevant(

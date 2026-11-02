@@ -58,17 +58,18 @@ def test_model_a_changes_only_three_trust_defaults(comparison):
                 assert row["delta"]["trust"] == 0
 
 
-def test_baseline_failures_are_reproduced_not_marked_correct(comparison):
+def test_structural_conflicts_abstain_but_text_only_quote_risk_remains(comparison):
     baseline = cases(comparison, "baseline")
     for name in (
         "S04-reply-at-conflict",
         "S06-multiple-targets",
         "S07-missing-reply-source",
-        "S03-quoted-attack",
     ):
-        row = baseline[name]["rows"][0]
-        assert not row["gold"]["should_update"]
-        assert row["changed"], name
+        for arm in comparison["arms"]:
+            row = cases(comparison, arm)[name]["rows"][0]
+            assert not row["gold"]["should_update"]
+            assert not row["changed"] and not row["provider_called"], name
+    assert baseline["S03-quoted-attack"]["rows"][0]["changed"]
     for name in (
         "S01-other-conversation",
         "S02-reply-other",
@@ -175,7 +176,6 @@ def test_quotes_and_decay_remain_separate_from_target_and_event_writes(compariso
         for name in (
             "S03-quoted-attack",
             "S47-quote-confident-thanks",
-            "S04-reply-at-conflict",
         ):
             assert data[name]["rows"][0]["changed"]
         silence = data["S44-silence-200d"]["rows"]
