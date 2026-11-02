@@ -1,0 +1,1883 @@
+{
+  "format_version": 1,
+  "base_commit": "d287221c241fe88740ab2186a8ffa63676d90dcf",
+  "evaluation": "synthetic_scripted_provider_routing_and_real_sqlite_only",
+  "original_fixture_sha256": "69fb8c354129d4f4264b0845f4dc227bb5a8b2fcc3f202218370e2867ac77dae",
+  "candidate_fixture_sha256": "73acd0614053ee7fe49bf041096bb85a667534220eccc23d176d7129d6923290",
+  "candidate_source_sha256": {
+    "scripts/replay_attribution_candidates.py": "c3cd15cb9b7c07c696e7898d08ad93141d9ad178b6cb3a0c7146c31f3ed4e5d9",
+    "tests/test_attribution_candidates.py": "35c36f54e6f735ecfa4dfc955dc986b75855c9efef399650bd1c196c0710d8dd"
+  },
+  "original_denominators": {
+    "events": 1201,
+    "forbidden": 381,
+    "zero_trust": 1195
+  },
+  "original": {
+    "control": {
+      "metrics": {
+        "events": 1201,
+        "persistent_false_update_rate": {
+          "numerator": 6,
+          "denominator": 381,
+          "value": 0.015748031496062992
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "quote_false_update_rate": {
+          "numerator": 2,
+          "denominator": 4,
+          "value": 0.5
+        },
+        "trust_false_update_rate": {
+          "numerator": 2,
+          "denominator": 1195,
+          "value": 0.0016736401673640166
+        },
+        "target_precision": {
+          "numerator": 479,
+          "denominator": 479,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 375,
+          "denominator": 381,
+          "value": 0.984251968503937
+        },
+        "abstention_status_coverage": {
+          "numerator": 8,
+          "denominator": 381,
+          "value": 0.02099737532808399
+        },
+        "abstention_outcomes": {
+          "abstained": 8,
+          "accepted": 7,
+          "entry_skipped": 3,
+          "failed": 4,
+          "filtered": 356,
+          "temporary": 3
+        },
+        "unscored_trust_events": 2,
+        "neutral_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 1.0824313072439633,
+        "provider_calls": 492,
+        "simulated_tokens": null,
+        "statuses": {
+          "filtered": 706,
+          "accepted": 454,
+          "entry_skipped": 3,
+          "abstained": 8,
+          "failed": 4,
+          "temporary": 3,
+          "unchanged": 13,
+          "busy": 10
+        },
+        "failures": 1,
+        "timeouts": 1,
+        "busy": 10,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 0,
+        "denominator": 381,
+        "value": 0.0
+      },
+      "suppressed_expected_updates": {
+        "numerator": 0,
+        "denominator": 820,
+        "value": 0.0
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 0,
+        "denominator": 447,
+        "value": 0.0
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 4,
+        "value": 0.0
+      },
+      "new_false_updates": [],
+      "changed_rows": [],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 0
+    },
+    "quoted_evidence": {
+      "metrics": {
+        "events": 1201,
+        "persistent_false_update_rate": {
+          "numerator": 4,
+          "denominator": 381,
+          "value": 0.010498687664041995
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "quote_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "trust_false_update_rate": {
+          "numerator": 1,
+          "denominator": 1195,
+          "value": 0.0008368200836820083
+        },
+        "target_precision": {
+          "numerator": 479,
+          "denominator": 479,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 377,
+          "denominator": 381,
+          "value": 0.989501312335958
+        },
+        "abstention_status_coverage": {
+          "numerator": 10,
+          "denominator": 381,
+          "value": 0.026246719160104987
+        },
+        "abstention_outcomes": {
+          "abstained": 10,
+          "accepted": 5,
+          "entry_skipped": 3,
+          "failed": 4,
+          "filtered": 356,
+          "temporary": 3
+        },
+        "unscored_trust_events": 2,
+        "neutral_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 1.0824313072439633,
+        "provider_calls": 492,
+        "simulated_tokens": null,
+        "statuses": {
+          "filtered": 706,
+          "abstained": 10,
+          "entry_skipped": 3,
+          "accepted": 452,
+          "failed": 4,
+          "temporary": 3,
+          "unchanged": 13,
+          "busy": 10
+        },
+        "failures": 1,
+        "timeouts": 1,
+        "busy": 10,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 2,
+        "denominator": 381,
+        "value": 0.005249343832020997
+      },
+      "suppressed_expected_updates": {
+        "numerator": 0,
+        "denominator": 820,
+        "value": 0.0
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 0,
+        "denominator": 447,
+        "value": 0.0
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 4,
+        "value": 0.0
+      },
+      "new_false_updates": [],
+      "changed_rows": [
+        {
+          "scenario": "S03-quoted-attack",
+          "index": 0,
+          "message_id": "S03-quoted-attack-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -1.0,
+            "trust": -1.5
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S47-quote-confident-thanks",
+          "index": 0,
+          "message_id": "S47-quote-confident-thanks-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        }
+      ],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 2
+    },
+    "joke_abstain": {
+      "metrics": {
+        "events": 1201,
+        "persistent_false_update_rate": {
+          "numerator": 3,
+          "denominator": 381,
+          "value": 0.007874015748031496
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "quote_false_update_rate": {
+          "numerator": 2,
+          "denominator": 4,
+          "value": 0.5
+        },
+        "trust_false_update_rate": {
+          "numerator": 2,
+          "denominator": 1195,
+          "value": 0.0016736401673640166
+        },
+        "target_precision": {
+          "numerator": 479,
+          "denominator": 479,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 378,
+          "denominator": 381,
+          "value": 0.9921259842519685
+        },
+        "abstention_status_coverage": {
+          "numerator": 11,
+          "denominator": 381,
+          "value": 0.028871391076115485
+        },
+        "abstention_outcomes": {
+          "abstained": 11,
+          "accepted": 4,
+          "entry_skipped": 3,
+          "failed": 4,
+          "filtered": 356,
+          "temporary": 3
+        },
+        "unscored_trust_events": 2,
+        "neutral_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 1.0824313072439633,
+        "provider_calls": 492,
+        "simulated_tokens": null,
+        "statuses": {
+          "filtered": 706,
+          "accepted": 450,
+          "entry_skipped": 3,
+          "abstained": 12,
+          "failed": 4,
+          "temporary": 3,
+          "unchanged": 13,
+          "busy": 10
+        },
+        "failures": 1,
+        "timeouts": 1,
+        "busy": 10,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 3,
+        "denominator": 381,
+        "value": 0.007874015748031496
+      },
+      "suppressed_expected_updates": {
+        "numerator": 1,
+        "denominator": 820,
+        "value": 0.0012195121951219512
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 1,
+        "denominator": 447,
+        "value": 0.0022371364653243847
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 4,
+        "value": 0.0
+      },
+      "new_false_updates": [],
+      "changed_rows": [
+        {
+          "scenario": "S11-joke-stranger",
+          "index": 0,
+          "message_id": "S11-joke-stranger-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S12-joke-close",
+          "index": 0,
+          "message_id": "S12-joke-close-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S13-joke-distant",
+          "index": 0,
+          "message_id": "S13-joke-distant-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S14-joke-boundary",
+          "index": 0,
+          "message_id": "S14-joke-boundary-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        }
+      ],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 4
+    },
+    "manipulation_no_source": {
+      "metrics": {
+        "events": 1201,
+        "persistent_false_update_rate": {
+          "numerator": 5,
+          "denominator": 381,
+          "value": 0.013123359580052493
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "quote_false_update_rate": {
+          "numerator": 2,
+          "denominator": 4,
+          "value": 0.5
+        },
+        "trust_false_update_rate": {
+          "numerator": 1,
+          "denominator": 1195,
+          "value": 0.0008368200836820083
+        },
+        "target_precision": {
+          "numerator": 479,
+          "denominator": 479,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 376,
+          "denominator": 381,
+          "value": 0.9868766404199475
+        },
+        "abstention_status_coverage": {
+          "numerator": 9,
+          "denominator": 381,
+          "value": 0.023622047244094488
+        },
+        "abstention_outcomes": {
+          "abstained": 9,
+          "accepted": 6,
+          "entry_skipped": 3,
+          "failed": 4,
+          "filtered": 356,
+          "temporary": 3
+        },
+        "unscored_trust_events": 2,
+        "neutral_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 25.4,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 0.6661115736885929,
+        "provider_calls": 492,
+        "simulated_tokens": null,
+        "statuses": {
+          "filtered": 706,
+          "accepted": 449,
+          "entry_skipped": 3,
+          "abstained": 13,
+          "failed": 4,
+          "temporary": 3,
+          "unchanged": 13,
+          "busy": 10
+        },
+        "failures": 1,
+        "timeouts": 1,
+        "busy": 10,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 1,
+        "denominator": 381,
+        "value": 0.0026246719160104987
+      },
+      "suppressed_expected_updates": {
+        "numerator": 4,
+        "denominator": 820,
+        "value": 0.004878048780487805
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 4,
+        "denominator": 447,
+        "value": 0.008948545861297539
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 4,
+        "denominator": 4,
+        "value": 1.0
+      },
+      "new_false_updates": [],
+      "changed_rows": [
+        {
+          "scenario": "S23-test-injection-misclassified",
+          "index": 0,
+          "message_id": "S23-test-injection-misclassified-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -0.5,
+            "trust": -2.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S24-diagnostic-violation",
+          "index": 0,
+          "message_id": "S24-diagnostic-violation-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -0.5,
+            "trust": -2.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S26-violation-apology-repair",
+          "index": 0,
+          "message_id": "S26-violation-apology-repair-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -0.5,
+            "trust": -2.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S27-violation-apology-repeat",
+          "index": 0,
+          "message_id": "S27-violation-apology-repeat-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -0.5,
+            "trust": -2.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "S27-violation-apology-repeat",
+          "index": 2,
+          "message_id": "S27-violation-apology-repeat-0002",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -0.5,
+            "trust": -2.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        }
+      ],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 5
+    }
+  },
+  "new_samples": {
+    "control": {
+      "metrics": {
+        "events": 20,
+        "persistent_false_update_rate": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "quote_false_update_rate": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "trust_false_update_rate": {
+          "numerator": 1,
+          "denominator": 20,
+          "value": 0.05
+        },
+        "target_precision": {
+          "numerator": 20,
+          "denominator": 20,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "abstention_status_coverage": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "abstention_outcomes": {
+          "accepted": 8
+        },
+        "unscored_trust_events": 0,
+        "neutral_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 0.0,
+        "provider_calls": 24,
+        "simulated_tokens": null,
+        "statuses": {
+          "accepted": 20
+        },
+        "failures": 0,
+        "timeouts": 0,
+        "busy": 0,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 0,
+        "denominator": 8,
+        "value": 0.0
+      },
+      "suppressed_expected_updates": {
+        "numerator": 0,
+        "denominator": 12,
+        "value": 0.0
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 0,
+        "denominator": 12,
+        "value": 0.0
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "new_false_updates": [],
+      "changed_rows": [],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 0
+    },
+    "quoted_evidence": {
+      "metrics": {
+        "events": 20,
+        "persistent_false_update_rate": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "quote_false_update_rate": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "trust_false_update_rate": {
+          "numerator": 0,
+          "denominator": 20,
+          "value": 0.0
+        },
+        "target_precision": {
+          "numerator": 20,
+          "denominator": 20,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "abstention_status_coverage": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "abstention_outcomes": {
+          "abstained": 8
+        },
+        "unscored_trust_events": 0,
+        "neutral_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 0.0,
+        "provider_calls": 24,
+        "simulated_tokens": null,
+        "statuses": {
+          "abstained": 13,
+          "accepted": 7
+        },
+        "failures": 0,
+        "timeouts": 0,
+        "busy": 0,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 8,
+        "denominator": 8,
+        "value": 1.0
+      },
+      "suppressed_expected_updates": {
+        "numerator": 5,
+        "denominator": 12,
+        "value": 0.4166666666666667
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 5,
+        "denominator": 12,
+        "value": 0.4166666666666667
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "new_false_updates": [],
+      "changed_rows": [
+        {
+          "scenario": "Q01-chinese-quote",
+          "index": 0,
+          "message_id": "Q01-chinese-quote-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.0,
+            "affinity": -1.0,
+            "trust": -1.5
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q02-ascii-quote",
+          "index": 0,
+          "message_id": "Q02-ascii-quote-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q03-duplicate-inside-outside",
+          "index": 0,
+          "message_id": "Q03-duplicate-inside-outside-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q04-final-review-quoted",
+          "index": 0,
+          "message_id": "Q04-final-review-quoted-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q09-nested",
+          "index": 0,
+          "message_id": "Q09-nested-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q10-unclosed",
+          "index": 0,
+          "message_id": "Q10-unclosed-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q11-author-emphasis",
+          "index": 0,
+          "message_id": "Q11-author-emphasis-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q12-code-json",
+          "index": 0,
+          "message_id": "Q12-code-json-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q13-wide-evidence",
+          "index": 0,
+          "message_id": "Q13-wide-evidence-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q14-unsupported",
+          "index": 0,
+          "message_id": "Q14-unsupported-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q15-escaped",
+          "index": 0,
+          "message_id": "Q15-escaped-0000",
+          "should_update": false,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q17-explicit-self-quote",
+          "index": 0,
+          "message_id": "Q17-explicit-self-quote-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.2,
+            "affinity": 0.5,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        },
+        {
+          "scenario": "Q19-code-question-inside",
+          "index": 0,
+          "message_id": "Q19-code-question-inside-0000",
+          "should_update": true,
+          "before": {
+            "familiarity": 0.1,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "after": {
+            "familiarity": 0.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          },
+          "status": "abstained"
+        }
+      ],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 13
+    },
+    "joke_abstain": {
+      "metrics": {
+        "events": 20,
+        "persistent_false_update_rate": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "quote_false_update_rate": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "trust_false_update_rate": {
+          "numerator": 1,
+          "denominator": 20,
+          "value": 0.05
+        },
+        "target_precision": {
+          "numerator": 20,
+          "denominator": 20,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "abstention_status_coverage": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "abstention_outcomes": {
+          "accepted": 8
+        },
+        "unscored_trust_events": 0,
+        "neutral_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 0.0,
+        "provider_calls": 24,
+        "simulated_tokens": null,
+        "statuses": {
+          "accepted": 20
+        },
+        "failures": 0,
+        "timeouts": 0,
+        "busy": 0,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 0,
+        "denominator": 8,
+        "value": 0.0
+      },
+      "suppressed_expected_updates": {
+        "numerator": 0,
+        "denominator": 12,
+        "value": 0.0
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 0,
+        "denominator": 12,
+        "value": 0.0
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "new_false_updates": [],
+      "changed_rows": [],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 0
+    },
+    "manipulation_no_source": {
+      "metrics": {
+        "events": 20,
+        "persistent_false_update_rate": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "certain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "uncertain_target_false_update_rate": {
+          "numerator": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "quote_false_update_rate": {
+          "numerator": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "trust_false_update_rate": {
+          "numerator": 1,
+          "denominator": 20,
+          "value": 0.05
+        },
+        "target_precision": {
+          "numerator": 20,
+          "denominator": 20,
+          "value": 1.0
+        },
+        "abstention_coverage": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "abstention_status_coverage": {
+          "numerator": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "abstention_outcomes": {
+          "accepted": 8
+        },
+        "unscored_trust_events": 0,
+        "neutral_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "neutral_absolute_drift": {
+          "familiarity": 0.2,
+          "affinity": 0.0,
+          "trust": 0.0
+        },
+        "title_flips_per_100_turns": 0.0,
+        "provider_calls": 24,
+        "simulated_tokens": null,
+        "statuses": {
+          "accepted": 20
+        },
+        "failures": 0,
+        "timeouts": 0,
+        "busy": 0,
+        "real_provider_tokens": null,
+        "main_reply_p50_ms": null,
+        "main_reply_p95_ms": null,
+        "semantic_accuracy": null
+      },
+      "prevented_false_updates": {
+        "numerator": 0,
+        "denominator": 8,
+        "value": 0.0
+      },
+      "suppressed_expected_updates": {
+        "numerator": 0,
+        "denominator": 12,
+        "value": 0.0
+      },
+      "suppressed_baseline_expected_writes": {
+        "numerator": 0,
+        "denominator": 12,
+        "value": 0.0
+      },
+      "suppressed_expected_negative_trust": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "new_false_updates": [],
+      "changed_rows": [],
+      "provider_transcript_unchanged": true,
+      "abstained_gate_count": 0
+    }
+  },
+  "observability": [
+    {
+      "scenarios": [
+        "S11-joke-stranger",
+        "S12-joke-close",
+        "S13-joke-distant",
+        "S14-joke-boundary"
+      ],
+      "observations": 4,
+      "unique_provider_payloads": 1,
+      "expected_updates": [
+        false,
+        true,
+        false,
+        false
+      ],
+      "scripted_event_types": [
+        "joke",
+        "joke",
+        "joke",
+        "joke"
+      ],
+      "labels_are_external_semantic_assumptions": true
+    },
+    {
+      "scenarios": [
+        "S22-test-injection-abstain",
+        "S23-test-injection-misclassified"
+      ],
+      "observations": 2,
+      "unique_provider_payloads": 1,
+      "expected_updates": [
+        false,
+        false
+      ],
+      "scripted_event_types": [
+        "uncertain",
+        "manipulation"
+      ],
+      "labels_are_external_semantic_assumptions": true
+    },
+    {
+      "scenarios": [
+        "S12-joke-close",
+        "S14-joke-boundary"
+      ],
+      "identical_initial_state": true,
+      "boundary_source_in_provider_input": false
+    }
+  ],
+  "repair": {
+    "cases": [
+      {
+        "id": "valid_same_partition",
+        "eligible": true,
+        "reason": "eligible_synthetic_upper_bound",
+        "original_ref": "10001/per_group/7001/8001/log/1",
+        "repair_ref": "10001/per_group/7001/8001/log/2",
+        "claim": {
+          "original": "10001/per_group/7001/8001/violation",
+          "repair": "10001/per_group/7001/8001/repair",
+          "independent_confirmation": true
+        },
+        "production_observable_repair": null,
+        "production_repair_positive_denominator": 0,
+        "expected_eligible": true,
+        "source_sha256": "f823efea910a317fde626e9b539f6f6e34d9735c4733d4760eea63cf1ac914a5",
+        "sources": [
+          {
+            "ref": "10001/per_group/7001/8001/log/2",
+            "event_key": "10001/per_group/7001/8001/repair",
+            "row": {
+              "id": 2,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：repair",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          },
+          {
+            "ref": "10001/per_group/7001/8001/log/1",
+            "event_key": "10001/per_group/7001/8001/violation",
+            "row": {
+              "id": 1,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：violation",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
+            }
+          }
+        ],
+        "analysis_sqlite_changes": 0,
+        "source_contracts": {
+          "same_sources": true,
+          "same_content": true,
+          "counts_match_summary": true,
+          "all_sources_accounted": true,
+          "no_analysis_writes": true
+        },
+        "formal_trust": 0.0
+      },
+      {
+        "id": "verbal_only",
+        "eligible": false,
+        "reason": "verbal_claim_only",
+        "original_ref": "10001/per_group/7001/8001/log/1",
+        "repair_ref": "10001/per_group/7001/8001/log/2",
+        "claim": {
+          "original": "10001/per_group/7001/8001/violation",
+          "repair": "10001/per_group/7001/8001/repair",
+          "independent_confirmation": false
+        },
+        "production_observable_repair": null,
+        "production_repair_positive_denominator": 0,
+        "expected_eligible": false,
+        "source_sha256": "f823efea910a317fde626e9b539f6f6e34d9735c4733d4760eea63cf1ac914a5",
+        "sources": [
+          {
+            "ref": "10001/per_group/7001/8001/log/2",
+            "event_key": "10001/per_group/7001/8001/repair",
+            "row": {
+              "id": 2,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：repair",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          },
+          {
+            "ref": "10001/per_group/7001/8001/log/1",
+            "event_key": "10001/per_group/7001/8001/violation",
+            "row": {
+              "id": 1,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：violation",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
+            }
+          }
+        ],
+        "analysis_sqlite_changes": 0,
+        "source_contracts": {
+          "same_sources": true,
+          "same_content": true,
+          "counts_match_summary": true,
+          "all_sources_accounted": true,
+          "no_analysis_writes": true
+        },
+        "formal_trust": 0.0
+      },
+      {
+        "id": "reset_missing",
+        "eligible": false,
+        "reason": "missing_retained_source",
+        "original_ref": null,
+        "repair_ref": "10001/per_group/7001/8001/log/2",
+        "claim": {
+          "original": "10001/per_group/7001/8001/violation",
+          "repair": "10001/per_group/7001/8001/repair",
+          "independent_confirmation": true
+        },
+        "production_observable_repair": null,
+        "production_repair_positive_denominator": 0,
+        "expected_eligible": false,
+        "source_sha256": "aa880926ffede981b55c38d34b335ce3aef4b68c7acf114063061bcafd9e6315",
+        "sources": [
+          {
+            "ref": "10001/per_group/7001/8001/log/2",
+            "event_key": "10001/per_group/7001/8001/repair",
+            "row": {
+              "id": 2,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：repair",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          }
+        ],
+        "analysis_sqlite_changes": 0,
+        "source_contracts": {
+          "same_sources": true,
+          "same_content": true,
+          "counts_match_summary": true,
+          "all_sources_accounted": true,
+          "no_analysis_writes": true
+        },
+        "formal_trust": 0.0
+      },
+      {
+        "id": "manual_source",
+        "eligible": false,
+        "reason": "manual_or_audit_source",
+        "original_ref": "10001/per_group/7001/8001/log/1",
+        "repair_ref": "10001/per_group/7001/8001/log/2",
+        "claim": {
+          "original": "10001/per_group/7001/8001/violation",
+          "repair": "10001/per_group/7001/8001/repair",
+          "independent_confirmation": true
+        },
+        "production_observable_repair": null,
+        "production_repair_positive_denominator": 0,
+        "expected_eligible": false,
+        "source_sha256": "174169db689aba9531db82e969dc9d02d324d8a1fa66126a8747fb9061bd95b4",
+        "sources": [
+          {
+            "ref": "10001/per_group/7001/8001/log/2",
+            "event_key": "10001/per_group/7001/8001/repair",
+            "row": {
+              "id": 2,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "管理员调整",
+              "source": "admin",
+              "message": "",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.9,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          },
+          {
+            "ref": "10001/per_group/7001/8001/log/1",
+            "event_key": "10001/per_group/7001/8001/violation",
+            "row": {
+              "id": 1,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：violation",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
+            }
+          }
+        ],
+        "analysis_sqlite_changes": 0,
+        "source_contracts": {
+          "same_sources": true,
+          "same_content": true,
+          "counts_match_summary": true,
+          "all_sources_accounted": true,
+          "no_analysis_writes": true
+        },
+        "formal_trust": 0.0
+      },
+      {
+        "id": "reversed_source",
+        "eligible": false,
+        "reason": "reversed_source",
+        "original_ref": "10001/per_group/7001/8001/log/1",
+        "repair_ref": "10001/per_group/7001/8001/log/3",
+        "claim": {
+          "original": "10001/per_group/7001/8001/violation",
+          "repair": "10001/per_group/7001/8001/repair",
+          "independent_confirmation": true
+        },
+        "production_observable_repair": null,
+        "production_repair_positive_denominator": 0,
+        "expected_eligible": false,
+        "source_sha256": "0b0dcefd814941daa25322d3ddc111ef7bd6e8aa7d943b9554e4c116e31a3ecf",
+        "sources": [
+          {
+            "ref": "10001/per_group/7001/8001/log/3",
+            "event_key": "10001/per_group/7001/8001/repair",
+            "row": {
+              "id": 3,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：repair",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          },
+          {
+            "ref": "10001/per_group/7001/8001/log/2",
+            "event_key": null,
+            "row": {
+              "id": 2,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "撤销#1",
+              "source": "undo",
+              "message": "",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": -0.1,
+                "trust": 0.0,
+                "affinity": 0.0
+              },
+              "event_id": null,
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          },
+          {
+            "ref": "10001/per_group/7001/8001/log/1",
+            "event_key": "10001/per_group/7001/8001/violation",
+            "row": {
+              "id": 1,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：violation",
+              "reversed": true,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
+            }
+          }
+        ],
+        "analysis_sqlite_changes": 0,
+        "source_contracts": {
+          "same_sources": true,
+          "same_content": true,
+          "counts_match_summary": true,
+          "all_sources_accounted": true,
+          "no_analysis_writes": true
+        },
+        "formal_trust": 0.0
+      },
+      {
+        "id": "cross_partition",
+        "eligible": false,
+        "reason": "cross_partition",
+        "original_ref": "10001/per_group/7002/8001/log/1",
+        "repair_ref": "10001/per_group/7001/8001/log/2",
+        "claim": {
+          "original": "10001/per_group/7002/8001/violation",
+          "repair": "10001/per_group/7001/8001/repair",
+          "independent_confirmation": true
+        },
+        "production_observable_repair": null,
+        "production_repair_positive_denominator": 0,
+        "expected_eligible": false,
+        "source_sha256": "aa880926ffede981b55c38d34b335ce3aef4b68c7acf114063061bcafd9e6315",
+        "sources": [
+          {
+            "ref": "10001/per_group/7001/8001/log/2",
+            "event_key": "10001/per_group/7001/8001/repair",
+            "row": {
+              "id": 2,
+              "group_id": "7001",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：repair",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "repair",
+              "ts_utc": "2027-01-16T08:00:00+00:00"
+            }
+          },
+          {
+            "ref": "10001/per_group/7002/8001/log/1",
+            "event_key": "10001/per_group/7002/8001/violation",
+            "row": {
+              "id": 1,
+              "group_id": "7002",
+              "user_id": "8001",
+              "delta": 0.0,
+              "favor_before": 0.0,
+              "favor_after": 0.0,
+              "reason": "关系事件",
+              "source": "judge",
+              "message": "合成片段：violation",
+              "reversed": false,
+              "relation_delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "event_id": "violation",
+              "ts_utc": "2027-01-15T08:00:00+00:00"
+            }
+          }
+        ],
+        "analysis_sqlite_changes": 0,
+        "source_contracts": {
+          "same_sources": true,
+          "same_content": true,
+          "counts_match_summary": true,
+          "all_sources_accounted": true,
+          "no_analysis_writes": true
+        },
+        "formal_trust": 0.0
+      }
+    ],
+    "contract_pass": {
+      "numerator": 6,
+      "denominator": 6,
+      "value": 1.0
+    },
+    "zero_analysis_writes": {
+      "numerator": 6,
+      "denominator": 6,
+      "value": 1.0
+    },
+    "existing_shadow_checks": {
+      "same_sources": {
+        "numerator": 13,
+        "denominator": 13
+      },
+      "same_content": {
+        "numerator": 13,
+        "denominator": 13
+      },
+      "counts_match_summary": {
+        "numerator": 13,
+        "denominator": 13
+      },
+      "all_sources_accounted": {
+        "numerator": 13,
+        "denominator": 13
+      },
+      "no_analysis_writes": {
+        "numerator": 13,
+        "denominator": 13
+      }
+    },
+    "existing_shadow_case_count": 13,
+    "production_positive_repair": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "semantic_gain": null,
+    "persistent_false_update_gain": null
+  },
+  "protected_source_sha256": {
+    "core/assessment.py": "bfb70217d7aaa266f425e94693aa73947a5a1301d50bd23776914d12c5735b6b",
+    "core/config_migrations.py": "48fc466d72a04a35c591289bb6bcc24326ff9f7d14cbe70bda646b34c37fae5f",
+    "core/decay.py": "0700e20545170bc21d1355e0c55b8015fb1e60d33630c2a1648bd25051655688",
+    "core/decimal.py": "84da258a8fa7cd41b071c0dbccf3f8ae4ca75f52ba515b5cd487f54f2df99ea7",
+    "core/identity.py": "d5727d9f328e021cafda0ab09d1f854c658cfcbbdd2601fd0a2d91a7f1e911f5",
+    "core/impression.py": "42b82ae3b4a3885d3c0fac1ec7de80bbb046056b567d0a2031ba75ff332fca14",
+    "core/impression_points.py": "9c7809fb4b84fae5e8877eac5d56b3a6709211a753108fbe0e2128fbec4b952a",
+    "core/judge_context.py": "0756180cc48e51a693309109e05e2f05504dd0a1d99bf3a797a770080de8dada",
+    "core/judge_parse.py": "4f9394f9ccaf18469c92eeda1f042fcb22938cb1a9c062758d64490d11de07e1",
+    "core/judge_prompt.py": "6fa4c2ecadad4b7d069fec7dccff94c81747e9714c62c286817e3f8fe3d4cc01",
+    "core/levels.py": "3143ba95164861085e85bfde631fafaa7ee9761e36c590c9e419ab88f88084e9",
+    "core/level_economy.py": "43c7e50f23cf5bb88c8c473863ad4c063533b9177825cd10cba9608a6d62529c",
+    "core/maisoul_probe.py": "e16e62c1e9214eef4eedae37865de787878fd3e5cfad00d0584345448f154c65",
+    "core/member_names.py": "62c7f680e0a723e7bcebe72908d88f80587f3b6d3d0bbcc1c502fe2ee39a8d3b",
+    "core/models.py": "a7fe6e64650d28e54654efe90b12a422af315e13d2e468136a93ca75061e1592",
+    "core/naming.py": "fc5a72cc05fd8e5281660d17fe368c662111254711d32f753e987acfccb95f6c",
+    "core/relationship.py": "00378efe8a79ed5b553edbadc8655f5be60d8856c5b5fd02509d02831f2df2a0",
+    "core/relation_policy.py": "e5209450924fc1cd9c8d28c0f6dbfe5fc418bf93f4f63fe75b016487677f4be2",
+    "core/sanitize.py": "5e41741fd9968821f7598243901824326fe7f031c18f4de6b8875e945b32ba61",
+    "core/scope.py": "68ebee6470f5569b8afdf7d943c3d757ffdfdd5de82be5f01bb742e77ea32f04",
+    "core/settings.py": "9f888e7b500207e9460dc57f058f36cbf7d9bb83f7bfed690e3dfbf34dda5dc1",
+    "core/taskregistry.py": "485ede1e9846a23cdbcce87c9f62455d2b20cbeae3105556ccc906081b1dd64d",
+    "core/__init__.py": "eaba046a4bdbb5a48767ad776ff91bd73bbd783bb03c1536348778277c0939a8",
+    "api/commands.py": "367ee1396df941b7918d537b72fd558cf61e744ac516cd007ed7e792c7ea0af0",
+    "api/emotion_bridge.py": "e476473d9c904af7fd539084b517a137700cb295f5bf7ec51f836ac4e7d97347",
+    "api/facade.py": "34546374e2af8bf5aa6a10b9a0c70a3879639108a961f89b8e7b7e8653095cc2",
+    "api/listeners.py": "713a4e38630e201930b7a38c5642a1ce25492d20a3a93a99b4fbf994eabfcc24",
+    "api/llm_tools.py": "517b7b7470da405bd7543b65f2c6662dcce158a10d4da336ef9e7530d448e397",
+    "api/page_api.py": "d6334aef66ecd8dfdb2ad826851f00589ec6a36fcb7dab2c5206c71d161cb4bd",
+    "api/rank_image.py": "c112bc1e02cde216e39b730ef6b67d6b624dfe42f1bf994c75b542ceea2fe09a",
+    "api/__init__.py": "75e328433f72667e6a9d97bbed3f536a7ecf1c7cf6423c29f98f963b761e896d",
+    "services/assessment_service.py": "6882e3d532dce27fe2be206a8a4a260b37c5028c6007a1db7d74b4e54f748fac",
+    "services/bot_discovery.py": "898fd3aded669fe7c0df12eb7169ea47f557f149dc16be1b18ef8072c4a6a144",
+    "services/favor_service.py": "1b3867dc3909d1cef8052b9eea06b1f07c3d3c10262df9f02a66f05ccde73503",
+    "services/impression_service.py": "0cbc7800c9773047d4761bd5d1d4fff2f5eacc63372d9254f2d1cf1f5c98f4e9",
+    "services/inject_service.py": "bd2a36cfc99c294acd46c2a95d73f0b67d65446ce9fa18b0889703e894b5b2a1",
+    "services/judge_service.py": "639e94f20060c5e2ac341acd3dc56d35f93b92877d58504846ed6339e861dc1b",
+    "services/prompt_service.py": "a91139a7e5a48db3534d121fcdbe20ea24f04feaf4578c6b1f58101bbb81ed9c",
+    "services/runtime_service.py": "d67b3ef7735e662592b8d85e264256c977203d80fffd2846888ecc521159395e",
+    "services/__init__.py": "cdb9d4984e3b8c717833a3382a252f1d1b487b0e29920b8275deb5d7f2eed287",
+    "storage/base.py": "441cff7fb6e787f1fa1a71817279c211d68ee6c593df2aa9211b9a5efc81580e",
+    "storage/migrations.py": "5cb4352232797d0288244fdf0c7e98de485569de423e174fc42537a9454c5b2c",
+    "storage/pragma_version.py": "5ded02e152c88b7791bf9a13a1a4519adae6964cadc7dfa8336333172b38c600",
+    "storage/router.py": "e1604247dbc4b2d2a73ef3354dfdc636804a86be97332910eca159e5827d288e",
+    "storage/sqlite_backend.py": "fec9ec65e7b29b2ecea29f3a6348bb77641c0d92a891fd56cde5c1408c1ec4d6",
+    "storage/__init__.py": "dc8ea0f21ec194d106c4ac3a745edd150ed93e7039a53e97fe77d91ce315dd6a",
+    "main.py": "c8fa18b11a142157c81eca0482a0f70c4a6dd7b3e8dd7b4bcf5237520f489f6c",
+    "_conf_schema.json": "09797744eb5c4b95b0d84cecfe64b7e075df0115d575cf6c42aca93f4f58bdfd",
+    "tests/fixtures/research/scenarios.json": "27c309eae9e2200d3e6649faf0233f463d98a5a067d5caf19bba28812d9562db",
+    "tests/research_support.py": "3982e169e3225d9867377e14126c743a6a9db249b6eb60e1ec2df5bd693c69a5",
+    "tests/fixtures/research/trust_evidence_shadow.json": "eb24d042bccccc25d19568f4303248c1d4bf1977726992f5b423a6226190ede3",
+    "scripts/replay_trust_evidence.py": "1a14b81005f0c5a81243b7c7fcf4c0f28fea8304446f77d066d32e1cc950f178"
+  },
+  "source_files_unchanged": true,
+  "semantic_accuracy": null,
+  "production_repair_positive": {
+    "numerator": 0,
+    "denominator": 0,
+    "value": null
+  },
+  "production_quote_recommendation": "defer_quote_gate_semantics_not_identifiable_from_quote_geometry"
+}
