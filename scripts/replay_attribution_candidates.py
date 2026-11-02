@@ -73,7 +73,7 @@ def quote_geometry(text, evidence):
     reason = (
         "ambiguous_quote_syntax"
         if ambiguous
-        else "quoted_or_ambiguous_evidence" if overlap else "outside_supported_quotes"
+        else ("quoted_or_ambiguous_evidence" if overlap else "outside_supported_quotes")
     )
     return dict(
         abstain=ambiguous or bool(overlap),

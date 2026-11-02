@@ -50,8 +50,9 @@ def compare(replay=None):
             for row in scenario["rows"]:
                 if "before" not in row or "after" not in row:
                     continue
-                before, after = RelationState(**row["before"]), RelationState(
-                    **row["after"]
+                before, after = (
+                    RelationState(**row["before"]),
+                    RelationState(**row["after"]),
                 )
                 old_pair = [old.resolve(before), old.resolve(after)]
                 new_pair = [new.resolve(before), new.resolve(after)]
@@ -147,7 +148,7 @@ def markdown(report):
             "| --- | ---: | ---: | ---: |",
         ]
         lines.extend(
-            f'| {r["id"]} | {r["events"]} | {r["old_flips"]} | {r["new_flips"]} |'
+            f"| {r['id']} | {r['events']} | {r['old_flips']} | {r['new_flips']} |"
             for r in report["trajectories"]
         )
     return "\n".join(lines) + "\n"
@@ -165,7 +166,7 @@ def main():
     )
     (args.output / "RELATION_LEXICON.md").write_text(markdown(report), encoding="utf-8")
     print(
-        f'{report["terms"]}词条，{len(report["cells"])}组合，{len(report["trajectories"])}条轨迹；未调用Provider。'
+        f"{report['terms']}词条，{len(report['cells'])}组合，{len(report['trajectories'])}条轨迹；未调用Provider。"
     )
 
 

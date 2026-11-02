@@ -148,7 +148,7 @@ class DiagnosticRecorder:
                 clean[key] = (
                     dict(value)
                     if type(value) is dict
-                    else list(value) if type(value) in (tuple, list) else value
+                    else (list(value) if type(value) in (tuple, list) else value)
                 )
         return clean
 

@@ -172,8 +172,9 @@ class Clock:
                 return original.fromtimestamp(clock.value, tz)
 
         # wall time 和 UTC 预算换日共同推进；不修改 asyncio 的 monotonic。
-        with patch("time.time", lambda: self.value), patch(
-            "datetime.datetime", FrozenDatetime
+        with (
+            patch("time.time", lambda: self.value),
+            patch("datetime.datetime", FrozenDatetime),
         ):
             yield
 

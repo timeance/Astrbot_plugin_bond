@@ -75,7 +75,7 @@ python scripts/replay_relations.py --arms baseline model-a --output <本次测�
 python scripts/smoke_message_metadata.py --session-dir <本次测试目录>/metadata
 ```
 
-使用 AstrBot 4.28.0 的真实 OneBot 转换代码和合成 action 响应，禁止网络及子进程。此检查验证 message_str、At/Reply 和本地过滤，不代表真实 QQ、Provider、浏览器或真人语义验收。方法、风险和基线见 [研究 RFC](research/RFC_PHASE0.md)。
+使用 AstrBot 4.28.0 的真实 OneBot 转换代码和合成 action 响应，禁止网络及子进程。此检查验证 message_str、At/Reply 和本地过滤，不代表真实 QQ、Provider、浏览器或真人语义验收。基线指标见 [合成回放基线](research/BASELINE.md)，方法与局限见 [关系建模短论文](research/EMOTION_MODEL_PAPER.md)。
 
 
 ## 可选诊断检查
