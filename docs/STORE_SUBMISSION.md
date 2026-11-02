@@ -66,4 +66,4 @@ astrbot_version: ">=4.28,<5"
 - [发布指南](https://docs.astrbot.app/dev/star/plugin-publish.html)：Cloud 入口、元数据读取、可选标签及 16MB 包限制。
 - [插件开发指南](https://docs.astrbot.app/dev/star/plugin-new.html)：Logo、平台 key、版本范围、依赖声明、测试与 Ruff 格式化要求。
 - [市场 JSON 规范（2026-06-27）](https://docs.astrbot.app/dev/plugin-market/2026-06-27.html)：必填与可选字段、插件身份一致性。
-- [AstrBot 4.28.0 依赖声明](https://github.com/AstrBotDevs/AstrBot/blob/v4.28.0/pyproject.toml)：Python >=3.12、Pillow >=11.2.1、Quart >=0.20.0，以及该版本采用的 Ruff 版本。
+- [AstrBot 4.28.0 依赖声明](https://raw.githubusercontent.com/AstrBotDevs/astrbot/v4.28.0/pyproject.toml)：Python >=3.12、Pillow >=11.2.1、Quart >=0.20.0，以及该版本采用的 Ruff 版本。
