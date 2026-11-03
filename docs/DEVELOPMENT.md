@@ -133,3 +133,5 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 5. 查看 Release 的附件和 Actions 结果。普通 PR、分支推送和本地 ZIP 验证都不会创建 Release，也不会提交插件商店。
 
 构建失败时修复原因并重新检查。若发布结果不确定，先查看远端 tag、Release 与附件，再决定是否重跑；已存在的 Release 会使创建命令失败，不会覆盖附件。工作流结构检查和本地干跑不能证明真正发布成功，首次正式发布仍须核对远端结果。
+
+久别旧友现状可运行 `python scripts/replay_reconnection.py --output artifacts/reconnection-run`；使用新的空输出目录，对照写实/Galgame在90天沉默与三次友好互动后的三维值。研究结论见 [久别旧识评估](research/RECONNECTION_ASSESSMENT.md)，不启用额外回暖机制。

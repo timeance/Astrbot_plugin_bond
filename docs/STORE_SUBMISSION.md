@@ -44,7 +44,7 @@ astrbot_version: ">=4.28,<5"
 | 运行依赖 | [requirements.txt](../requirements.txt) 声明 Pillow、Quart、aiohttp，最低版本与 AstrBot 4.28.0 的宿主依赖一致；字体制作、测试工具不列为插件运行依赖。 |
 | Logo | 根目录 [logo.png](../logo.png) 为 1254×1254 PNG，符合 1:1 要求；官方推荐 256×256，并未要求必须为该尺寸。 |
 | 许可与来源 | [LICENSE](../LICENSE)、[NOTICE](../NOTICE) 及 README 保留上游署名、来源与 AGPL v3 说明。 |
-| 代码格式 | 使用 Ruff 0.15.22 和 Black 26.5.1 检查，106 个 Python 文件通过。 |
+| 代码格式 | 使用 Ruff 0.15.22 和 Black 26.5.1 检查，107 个 Python 文件通过。 |
 | 可重复检查 | [开发指南](DEVELOPMENT.md) 提供元数据、测试、合成装配和打包命令；[验收记录](ACCEPTANCE.md) 区分已通过检查与真实运行缺口。 |
 
 公开压缩包须小于或等于 **16MB**。0.3.5 增加写实/Galgame模板、固定中性衰减基线及带头像的权限排行；schema仍为15，无数据迁移。推荐配置和验证范围见 [两套节奏与图片排行](research/RELATION_MODES_AND_RANKING.md) 及 [默认值与观察记录](research/RECOMMENDED_DEFAULTS.md)。提交前核对最终公开分支的 CI 和压缩包，不用旧结果代替新版本检查。

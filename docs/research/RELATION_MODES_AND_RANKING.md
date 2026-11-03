@@ -61,8 +61,8 @@
 | --- | --- |
 | `python -m pytest tests/ -q --basetemp=<会话目录>/ranking-full-tests` | 829通过、1跳过；跳过为Windows真实符号链接权限，已有替代路径测试 |
 | `node --test tests/dashboard.test.cjs` | 34通过；填入两套推荐值不自动保存、不修改权限和身份 |
-| `python -m black --check .` | 106文件通过 |
-| `python -m ruff format --check .` | 106文件通过 |
+| `python -m black --check .` | 107文件通过 |
+| `python -m ruff format --check .` | 107文件通过 |
 | `python scripts/check_project.py` | 0.3.5元数据和装配检查通过 |
 | `python scripts/smoke_astrbot.py --session-dir <空目录> --runtime-dir <空目录>/runtime` | 真实框架装配通过；三入口拒绝、真实图片消息组件、两模板、旧非零基线、两Bot/四库、重载与卸载 |
 | `python scripts/smoke_message_metadata.py --session-dir <空目录>` | 24条合成OneBot元数据转换通过 |
