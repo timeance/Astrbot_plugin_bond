@@ -89,7 +89,7 @@ DEFAULT_LABELS: dict[str, str] = {
 
 
 def _number(value: object, name: str) -> float:
-    """校验数值类型并收敛到一位小数。"""
+    """校验有限数值类型，不提前舍入。"""
     if isinstance(value, bool) or not isinstance(value, Real):
         raise ValueError(f"{name} 必须是数字且不能是 bool")
     number = float(value)
@@ -146,7 +146,12 @@ class RelationPolicy:
         self,
         rules: Mapping[str, Mapping[str, float]] | None = None,
         event_caps: Mapping[str, Mapping[str, float] | float] | None = None,
+        *,
+        positive_multiplier: float = 1.0,
     ) -> None:
+        self.positive_multiplier = _number(positive_multiplier, "正向模式倍率")
+        if self.positive_multiplier < 0:
+            raise ValueError("正向模式倍率不能为负")
         self._rules = {event: dict(DEFAULT_RULES[event]) for event in EVENT_TYPES}
         for raw_event, raw_rule in (rules or {}).items():
             event = _event_name(raw_event)
@@ -181,35 +186,63 @@ class RelationPolicy:
     def snapshot(self):
         """诊断用规则快照；复制嵌套映射，不允许观察者修改计算规则。"""
         return {
+            "positive_multiplier": self.positive_multiplier,
             "rules": {key: dict(value) for key, value in self._rules.items()},
             "event_caps": {key: dict(value) for key, value in self._event_caps.items()},
         }
 
-    def limit_deltas(self, event_type, deltas):
-        """经济规则调整后再次执行同一单事件上限。"""
-        event = _event_name(event_type)
-        return {
-            key: round1(
-                max(
-                    -self._event_caps[event][key],
-                    min(self._event_caps[event][key], _number(deltas[key], key)),
-                )
-            )
-            for key in RELATION_DIMENSIONS
-        }
+    def limit_deltas(
+        self, event_type, deltas, *, familiarity_multiplier=1.0, rounded=True
+    ):
+        """截断已应用曲线及模式的请求，不重复放大。
 
-    def deltas(self, event_type: str, intensity: float = 1) -> dict[str, float]:
-        """返回事件的三维增量；不接受用户指定总分。"""
+        正向上限随模式缩放；熟悉度正向上限还随其曲线缩放。
+        负向上限始终使用用户配置的基础值。
+        """
+        event = _event_name(event_type)
+        f_mult = _number(familiarity_multiplier, "熟悉度倍率")
+        if f_mult < 0:
+            raise ValueError("熟悉度倍率不能为负")
+        result = {}
+        for key in RELATION_DIMENSIONS:
+            cap = self._event_caps[event][key]
+            positive_cap = cap * self.positive_multiplier
+            if key == "familiarity":
+                positive_cap *= f_mult
+            value = max(-cap, min(positive_cap, _number(deltas[key], key)))
+            result[key] = round1(value) if rounded else value
+        return result
+
+    def base_deltas(self, event_type: str, intensity: float = 1) -> dict[str, float]:
+        """基础事件请求先限幅，不舍入；供事务内曲线计算使用。"""
         event = _event_name(event_type)
         factor = _number(intensity, "intensity")
         if factor < 0:
             raise ValueError("intensity 不能为负")
-        result: dict[str, float] = {}
+        result = {}
         for dimension in RELATION_DIMENSIONS:
             requested = self._rules[event].get(dimension, 0.0) * factor
             cap = self._event_caps[event][dimension]
-            result[dimension] = round1(max(-cap, min(cap, requested)))
+            result[dimension] = max(-cap, min(cap, requested))
         return result
+
+    def scale_positive(self, deltas, *, rounded=True) -> dict[str, float]:
+        """仅缩放正向请求一次；不重复限幅或改变负向请求。"""
+        result = {}
+        for key in RELATION_DIMENSIONS:
+            value = _number(deltas[key], key)
+            if value > 0:
+                value *= self.positive_multiplier
+            result[key] = round1(value) if rounded else value
+        return result
+
+    def deltas(
+        self, event_type: str, intensity: float = 1, *, rounded=True
+    ) -> dict[str, float]:
+        """基础单次限幅后应用模式倍率；曲线由事务内回调按当前状态计算。"""
+        return self.scale_positive(
+            self.base_deltas(event_type, intensity), rounded=rounded
+        )
 
 
 class RelationResolver:

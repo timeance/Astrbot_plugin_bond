@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 17
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -148,6 +148,37 @@ MIGRATIONS: dict[int, list[str]] = {
     15: [
         "CREATE TABLE relation_override (group_id TEXT NOT NULL,user_id TEXT NOT NULL,revision INTEGER NOT NULL,active INTEGER NOT NULL,started_at REAL NOT NULL,expires_at REAL NOT NULL,values_json TEXT NOT NULL,PRIMARY KEY(group_id,user_id))",
         "CREATE TABLE override_audit (id INTEGER PRIMARY KEY AUTOINCREMENT,group_id TEXT NOT NULL,user_id TEXT NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,ts REAL NOT NULL,details TEXT NOT NULL)",
+    ],
+    # v16：独立方向额度、Trust 时间锚与调用窗口；不重算既有关系奖励。
+    16: [
+        "ALTER TABLE favor ADD COLUMN trust_updated_at REAL NOT NULL DEFAULT 0",
+        # 结束覆盖会统一补回完整暂停时长；先扣除升级前已暂停部分，防止重复延后。
+        "UPDATE favor SET trust_updated_at=CAST(strftime('%s','now') AS REAL)-COALESCE("
+        "(SELECT MAX(0,MIN(CAST(strftime('%s','now') AS REAL),expires_at)-started_at) "
+        "FROM relation_override WHERE relation_override.group_id=favor.group_id "
+        "AND relation_override.user_id=favor.user_id AND active=1),0) WHERE trust != 0",
+        "ALTER TABLE daily_gain ADD COLUMN familiarity_up REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN familiarity_down REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN affinity_up REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN affinity_down REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN trust_up REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN trust_down REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN positive_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE daily_gain ADD COLUMN split_ready INTEGER NOT NULL DEFAULT 0",
+        "UPDATE daily_gain SET familiarity_up=MAX(0,familiarity_gain),familiarity_down=MAX(0,-familiarity_gain),affinity_up=MAX(0,gain),affinity_down=MAX(0,-gain),trust_up=MAX(0,trust_gain),trust_down=MAX(0,-trust_gain)",
+        "ALTER TABLE favor_log ADD COLUMN origin_group_id TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX idx_relation_context ON favor_log(origin_group_id,user_id,ts DESC)",
+        "ALTER TABLE assessment_call ADD COLUMN started_at REAL NOT NULL DEFAULT 0",
+        "CREATE INDEX idx_assessment_window ON assessment_call(tier,user_id,started_at)",
+        "CREATE INDEX idx_assessment_event_tier ON assessment_call(event_id,tier)",
+    ],
+    # v17：F 独立固定半衰期；旧记录从升级开始，覆盖结束只补回一次暂停。
+    17: [
+        "ALTER TABLE favor ADD COLUMN familiarity_updated_at REAL NOT NULL DEFAULT 0",
+        "UPDATE favor SET familiarity_updated_at=CAST(strftime('%s','now') AS REAL)-COALESCE("
+        "(SELECT MAX(0,MIN(CAST(strftime('%s','now') AS REAL),expires_at)-started_at) "
+        "FROM relation_override WHERE relation_override.group_id=favor.group_id "
+        "AND relation_override.user_id=favor.user_id AND active=1),0) WHERE familiarity != 0",
     ],
 }
 

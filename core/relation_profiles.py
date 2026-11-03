@@ -1,28 +1,53 @@
-"""关系增长模板：构造规则和每日限幅，不保存或重算成员状态。"""
+"""统一关系模式：仅缩放正向请求与正向每日额度。"""
 
-from .relation_policy import DEFAULT_RULES, RelationPolicy
+from collections.abc import Mapping
+import math
+from numbers import Real
+
+from .relation_policy import RELATION_DIMENSIONS, RelationPolicy
+
+DEFAULT_DAILY_CAPS = {
+    "familiarity": (5.0, 0.0),
+    "affinity": (10.0, 8.0),
+    "trust": (2.0, 5.0),
+}
 
 
-def build_relation_profile(mode: str) -> tuple[RelationPolicy, dict]:
-    """返回独立规则实例及每日正/负额度；Galgame 只加快 F/A 正向请求。"""
+def positive_mode_multiplier(mode: str = "galgame") -> float:
+    """模式只决定统一正向倍率。"""
     if mode not in ("realistic", "galgame"):
         raise ValueError(f"未知关系增长模式: {mode}")
+    return 2.0 if mode == "galgame" else 1.0
 
-    caps = dict(familiarity=(2, 0), affinity=(3, 6), trust=(1, 4))
-    if mode == "realistic":
-        return RelationPolicy(), caps
 
-    # 在规则构造时缩放，沿用 RelationPolicy 的强度、舍入和单次上限。
-    rules = {
-        event: {
-            dimension: (
-                value * 1.25
-                if dimension in ("familiarity", "affinity") and value > 0
-                else value
-            )
-            for dimension, value in rule.items()
-        }
-        for event, rule in DEFAULT_RULES.items()
-    }
-    caps.update(familiarity=(3, 0), affinity=(4.5, 6))
-    return RelationPolicy(rules=rules), caps
+def build_relation_profile(
+    mode: str = "galgame",
+    *,
+    rules=None,
+    event_caps=None,
+    caps: Mapping | None = None,
+) -> tuple[RelationPolicy, dict]:
+    """显式基础配置优先；模式不修改基础规则，不触及模型或衰减配置。"""
+    multiplier = positive_mode_multiplier(mode)
+    base_caps = dict(DEFAULT_DAILY_CAPS)
+    for dimension, pair in (caps or {}).items():
+        if dimension not in RELATION_DIMENSIONS:
+            raise ValueError(f"未知关系维度: {dimension}")
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise ValueError(f"每日额度 {dimension} 必须是正/负额度对")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, Real)
+            or not math.isfinite(float(value))
+            or value < 0
+            for value in pair
+        ):
+            raise ValueError(f"每日额度 {dimension} 必须是非负有限数值")
+        base_caps[dimension] = tuple(float(value) for value in pair)
+    return (
+        RelationPolicy(rules, event_caps, positive_multiplier=multiplier),
+        {
+            key: (positive * multiplier, negative)
+            for key, (positive, negative) in base_caps.items()
+        },
+    )

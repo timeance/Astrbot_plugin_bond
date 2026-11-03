@@ -18,10 +18,8 @@ function harness(timerOverrides={},deferredEndpoints=[]){
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8'),{
   Vue:{ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},onUnmounted:()=>{},createApp:options=>({mount(){ui=options.setup()}})},window:{AstrBotPluginPage:bridge},document:{documentElement:{dataset:{bondTheme:'dark'}}},console,setTimeout,clearTimeout,...timerOverrides
  });
- const dialog={open:false,showModal(){this.open=true;},close(){this.open=false;}};
- ui.recommendDialog.value=dialog;
  ui.bots.value=[{bot_id:'10001',scope_mode:'per_group'},{bot_id:'20002',scope_mode:'per_group'}];ui.selectedBot.value='10001';
- return {ui,pending,pendingGets,reads,dialog};
+ return {ui,pending,pendingGets,reads};
 }
 for(const operation of ['backup','restore']) test(`switching during ${operation} releases flags and ignores old completion`,async()=>{
  const {ui,pending}=harness();
@@ -396,50 +394,131 @@ test('returning to the shared log table reloads changed evaluation dimension eve
 });
 
 
-test('recommended rules are staged without saving or changing identity, models and privacy',async()=>{
+test('section defaults are staged and preserve other sections, identity and models',async()=>{
  const {ui,pending}=harness();
- ui.fillRecommendedRules();assert.equal(pending.length,0);
- const values={'decay.half_life_base':10,'decay.half_life_growth':1.3,'economy.negative_weight':1.5,'economy.repair_threshold':2,timezone:'UTC',master_ids:'8001',group_whitelist:['7001'],'diagnostics.enabled':false,'assessment.small_provider_id':'chosen','inject.enabled':false};
+ const values={relation_mode:'realistic','decay.half_life_base':10,'relation_daily_caps.affinity_up':12,
+  'decay.familiarity_enabled':false,'decay.familiarity_half_life':90,
+  'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20,
+  timezone:'UTC',master_ids:'8001','command.ranking_access':'master','judge.provider_id':'summary',
+  'assessment.small_provider_id':'chosen','inject.memory_days':4};
  ui.detailSettings.value={revision:'before',values:{...values},fields:[
-  {path:'decay.half_life_base',default:30},{path:'decay.half_life_growth',default:1},
-  {path:'economy.negative_weight',default:1},{path:'economy.repair_threshold',default:0},
-  {path:'timezone',default:'Asia/Shanghai'},{path:'master_ids',default:''},
-  {path:'group_whitelist',default:[]},{path:'diagnostics.enabled',default:true},
-  {path:'assessment.small_provider_id',default:''},{path:'inject.enabled',default:true}
- ]};
- ui.detailValues.value={...values};
- ui.detailLoading.value=true;ui.fillRecommendedRules();assert.equal(ui.detailValues.value['decay.half_life_base'],10);
- ui.detailLoading.value=false;ui.fillRecommendedRules();
+  {path:'relation_mode',group:'basic',default:'galgame'},
+  {path:'decay.familiarity_enabled',group:'rules',default:true},
+  {path:'decay.familiarity_half_life',group:'rules',default:60},
+  {path:'decay.familiarity_baseline',group:'rules',default:0},
+  {path:'decay.affinity_baseline',group:'rules',default:0},
+  {path:'decay.trust_baseline',group:'rules',default:0},
+  {path:'decay.half_life_base',group:'rules',default:30},
+  {path:'relation_daily_caps.affinity_up',group:'rules',default:10},
+  {path:'timezone',group:'rules',default:'Asia/Shanghai'},
+  {path:'master_ids',group:'basic',default:''},
+  {path:'command.ranking_access',group:'commands',default:'all'},
+  {path:'judge.provider_id',group:'memory',default:''},
+  {path:'inject.memory_days',group:'memory',default:7}
+ ]};ui.detailValues.value={...values};
+ ui.detailLoading.value=true;ui.restoreSectionDefaults('rules');
  assert.equal(ui.detailValues.value['decay.half_life_base'],10);
- ui.confirmRecommendedRules();
- const expected={'decay.half_life_base':30,'decay.half_life_growth':1,'economy.negative_weight':1,'economy.repair_threshold':0};
- assert.equal(JSON.stringify(ui.detailValues.value),JSON.stringify({...values,...expected}));
- assert.equal(ui.detailSettings.value.values['decay.half_life_base'],10);
+ ui.detailLoading.value=false;ui.restoreSectionDefaults('basic');
+ assert.equal(ui.detailValues.value.master_ids,'8001');
+ ui.restoreSectionDefaults('rules');
+ assert.equal(ui.detailValues.value.relation_mode,'realistic');
+ assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],10);
+ assert.equal(ui.detailValues.value['decay.familiarity_enabled'],true);
+ assert.equal(ui.detailValues.value['decay.familiarity_half_life'],60);
+ assert.equal(ui.detailSettings.value.values['decay.familiarity_enabled'],false);
+ assert.equal(ui.detailSettings.value.values['decay.familiarity_half_life'],90);
+ for(const dimension of ['familiarity','affinity','trust'])assert.equal(ui.detailValues.value[`decay.${dimension}_baseline`],0);
+ assert.equal(ui.detailSettings.value.values['decay.trust_baseline'],20);
+ assert.equal(ui.detailValues.value['command.ranking_access'],'master');
+ assert.equal(ui.detailValues.value['assessment.small_provider_id'],'chosen');
+ assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
  assert.equal(pending.length,0);
- const saving=ui.saveSettings();
- assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify(expected));
- assert.equal(pending[0].params.revision,'before');
- pending[0].resolve({success:true,revision:'after',values:{...values,...expected},fields:[]});await saving;
+ const save=ui.saveSettings();
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({'decay.half_life_base':30,'relation_daily_caps.affinity_up':10,'decay.familiarity_enabled':true,'decay.familiarity_half_life':60,'decay.familiarity_baseline':0,'decay.affinity_baseline':0,'decay.trust_baseline':0,timezone:'Asia/Shanghai'}));
+ pending[0].resolve({success:true,revision:'after',values:{...ui.detailValues.value},fields:ui.detailSettings.value.fields});await save;
  assert.match(ui.detailNotice.value,/重载/);
+ ui.restoreSectionDefaults('memory');
+ assert.equal(ui.detailValues.value['judge.provider_id'],'summary');
+ assert.equal(ui.detailValues.value['inject.memory_days'],7);
 });
 
-
-test('two recommended templates stage mode and keep ranking permission untouched',()=>{
- const {ui,pending}=harness();
- const values={relation_mode:'realistic','command.ranking_access':'master','decay.half_life_base':60,'economy.negative_weight':1.5};
- ui.detailSettings.value={revision:'r',values:{...values},fields:[
-  {path:'relation_mode',default:'realistic'},{path:'command.ranking_access',default:'all'},
-  {path:'decay.half_life_base',default:30},{path:'economy.negative_weight',default:1}
- ]};
- ui.detailValues.value={...values};ui.fillRecommendedRules('galgame');ui.confirmRecommendedRules();
- assert.equal(ui.detailValues.value.relation_mode,'galgame');
- assert.equal(ui.detailValues.value['command.ranking_access'],'master');
- assert.equal(ui.detailValues.value['decay.half_life_base'],30);
- assert.equal(ui.detailValues.value['economy.negative_weight'],1);
+test('mode previews multiply only positive base values and keep loaded runtime unchanged',()=>{
+ const {ui}=harness();
+ const values={relation_mode:'realistic','relation_daily_caps.affinity_up':12,'relation_daily_caps.affinity_down':8,
+ 'relation_daily_caps.familiarity_up':5,'relation_daily_caps.familiarity_down':0,
+ 'relation_daily_caps.trust_up':2,'relation_daily_caps.trust_down':5,
+ 'familiarity_growth.under10':1.5,'economy.level_mult.youhao':.75,
+ 'decay.familiarity_enabled':true,'decay.familiarity_half_life':60,
+ 'decay.enabled':true,'decay.half_life_base':30,'decay.trust_enabled':true,'decay.trust_half_life':90,
+ 'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20};
+ ui.detailSettings.value={values:{...values},active_values:{...values},fields:[]};ui.detailValues.value={...values};
+ ui.detailValues.value.relation_mode='galgame';
+ assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/基础值 12，当前模式实际 24/);
+ assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_down'}),/实际 8/);
+ assert.match(ui.effectiveSetting({path:'familiarity_growth.under10'}),/实际 3 倍/);
+ assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/实际 1.5 倍/);
+ assert.equal(ui.effectiveSetting({path:'decay.half_life_base'}),null);
+ ui.detailValues.value['economy.enabled']=false;
+ assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/不生效/);
+ assert.equal(ui.activeRuleSummary.value.mode,'基础 ×1');
+ assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
+ assert.equal(ui.activeRuleSummary.value.affinity,'30 天基础半衰期');
+ assert.equal(ui.activeRuleSummary.value.trust,'90 天半衰期');
+ assert.equal(JSON.stringify(ui.activeRuleSummary.value.baselines),JSON.stringify({familiarity:20,affinity:15,trust:20}));
+ assert.equal(ui.detailValues.value['decay.trust_baseline'],20);
+ ui.detailValues.value['decay.trust_baseline']=50;
+ assert.equal(ui.activeRuleSummary.value.baselines.trust,20);
+ ui.detailValues.value['decay.familiarity_half_life']=90;
+ ui.detailValues.value['decay.familiarity_enabled']=false;
+ assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
+ assert.equal(ui.effectiveSetting({path:'decay.familiarity_half_life'}),null);
+ ui.detailSettings.value.active_values['decay.familiarity_enabled']=false;
+ assert.equal(ui.activeRuleSummary.value.familiarity,'关闭');
+ assert.equal(ui.activeRuleSummary.value.caps[1].up,12);
  assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
- ui.fillRecommendedRules('invalid');assert.equal(ui.detailValues.value.relation_mode,'galgame');
- ui.fillRecommendedRules('realistic');ui.confirmRecommendedRules();assert.equal(ui.detailValues.value.relation_mode,'realistic');
+ assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],12);
+ ui.detailValues.value.relation_mode='realistic';
+ assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/实际 12/);
+});
+
+test('evaluation defaults preserve selected models and mode and save only allowed parameters',async()=>{
+ const {ui,pending}=harness();
+ ui.modelConfig.value={enabled:true,small_provider_id:'chosen',large_provider_id:'review',assessment_mode:'single',cooldown_sec:120,window_sec:90,window_max_calls:1};
+ ui.restoreEvaluationDefaults();
+ assert.equal(ui.modelConfig.value.small_provider_id,'chosen');
+ assert.equal(ui.modelConfig.value.large_provider_id,'review');
+ assert.equal(ui.modelConfig.value.assessment_mode,'single');
+ assert.equal(ui.modelConfig.value.enabled,true);
+ assert.equal(ui.modelConfig.value.window_sec,300);assert.equal(ui.modelConfig.value.window_max_calls,5);
+ assert.equal(ui.modelConfig.value.per_user_daily_small_cap,30);assert.equal(ui.modelConfig.value.per_user_daily_large_cap,8);
+ assert.equal(ui.modelConfig.value.per_bot_daily_small_cap,300);assert.equal(ui.modelConfig.value.per_bot_daily_large_cap,100);
+ assert.equal(ui.modelConfig.value.context_chars,4000);assert.equal(ui.modelConfig.value.context_events,8);
  assert.equal(pending.length,0);
+ ui.modelRevision.value='before';
+ const save=ui.saveModels();const payload=pending[0].params.config;
+ for(const key of ['enabled','assessment_mode','small_provider_id','large_provider_id','cooldown_sec'])assert.equal(payload[key],undefined);
+ assert.equal(payload.window_sec,300);assert.equal(payload.context_events,8);
+ pending[0].resolve({success:true,restart_required:true});await save;
+ assert.match(ui.modelNotice.value,/重载/);
+});
+
+for(const [key,value] of [['window_sec',0],['window_max_calls',1.5],['per_user_daily_small_cap',-1],['context_chars',''],['context_events',NaN],['context_turns',21],['context_chars',20001],['context_days',91],['context_events',21]])test(`invalid ${key} is rejected before saving`,async()=>{
+ const {ui,pending}=harness();ui.restoreEvaluationDefaults();ui.modelRevision.value='before';ui.modelConfig.value[key]=value;
+ await ui.saveModels();assert.equal(pending.length,0);assert.equal(ui.modelNoticeError.value,true);
+});
+
+test('rule and assessment controls keep a single entry and explain saved versus runtime',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
+ assert.match(source,/UTC 00:00/);assert.match(source,/当前运行关系参数/);
+ assert.match(source,/熟悉度衰减：{{ activeRuleSummary.familiarity }}/);
+ assert.doesNotMatch(source,/熟悉度不随时间衰减/);
+ assert.match(source,/两种模式使用相同衰减规则/);
+ assert.match(source,/衰减基线：熟悉度 {{ activeRuleSummary.baselines.familiarity }}/);
+ assert.match(source,/距对应基线的差值减半/);
+ assert.match(source,/区间外向同号基线收敛/);
+ assert.match(source,/:max="field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
+ assert.match(source,/历史不重新计分/);assert.match(source,/不同实质互动可分别计分/);
 });
 
 test('settings can open and save without a Bot or scope',async()=>{
@@ -530,27 +609,6 @@ test('list placeholders distinguish groups, ignored bots and owners',()=>{
  assert.deepEqual(Array.from(ui.detailValues.value.ignored_bot_ids),['9001','9002','9003']);
 });
 
-test('recommendation dialog cancels without mutations and confirms only a local preset',()=>{
- const {ui,pending,dialog}=harness();
- const values={relation_mode:'realistic','decay.half_life_base':81,'economy.negative_weight':2,'assessment.enabled':true,'inject.enabled':true,'command.ranking_access':'master'};
- ui.detailSettings.value={revision:'r',values:{...values},fields:[
-  {path:'relation_mode',default:'realistic'},
-  {path:'decay.half_life_base',default:30},
-  {path:'economy.negative_weight',default:1},
-  {path:'assessment.enabled',default:false},
-  {path:'inject.enabled',default:false},
-  {path:'command.ranking_access',default:'all'}
- ]};
- ui.detailValues.value={...values};
- ui.fillRecommendedRules('galgame');assert.equal(dialog.open,true);assert.equal(ui.recommendedMode.value,'galgame');
- assert.equal(JSON.stringify(ui.detailValues.value),JSON.stringify(values));
- ui.cancelRecommendedRules();assert.equal(dialog.open,false);assert.equal(ui.recommendedMode.value,'');
- ui.confirmRecommendedRules();assert.equal(JSON.stringify(ui.detailValues.value),JSON.stringify(values));
- ui.fillRecommendedRules('galgame');ui.confirmRecommendedRules();
- assert.equal(dialog.open,false);assert.equal(pending.length,0);
- assert.equal(JSON.stringify(ui.detailValues.value),JSON.stringify({...values,relation_mode:'galgame','decay.half_life_base':30,'economy.negative_weight':1}));
- assert.equal(JSON.stringify(ui.detailSettings.value.values),JSON.stringify(values));
-});
 
 test('evaluation saves require a loaded revision and adopt the revision from each save',async()=>{
  const {ui,pending,pendingGets}=harness({},['models']);
@@ -606,18 +664,17 @@ test('manual theme choice is persisted independently of the host',()=>{
  assert.deepEqual(writes,[['bond-theme','light'],['bond-theme','dark']]);
 });
 
-test('quick start layout, dialog accessibility and theme styling match the page contract',()=>{
+test('quick start layout, section defaults and theme styling match the page contract',()=>{
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
  const css=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.css'),'utf8');
  const toolbar=source.match(/<div class="xx-settings-toolbar xx-detail-toolbar">([\s\S]*?)<\/div>/)[1];
  assert.match(toolbar,/刷新设置/);assert.match(toolbar,/xx-btn-primary/);assert.doesNotMatch(toolbar,/填入/);
- assert.match(source,/group.group === 'basic'[\s\S]*xx-recommend-actions/);
+ assert.doesNotMatch(source,/fillRecommendedRules|recommendDialog|填入写实推荐|填入 Galgame 推荐/);
+ assert.match(source,/restoreSectionDefaults\(group.group\)/);
  assert.match(source,/:open="group.group === 'basic'"/);
- assert.match(source,/先完成基础设置，再按需填入写实或 Galgame 推荐设置；保存并重载插件后开始使用。/);
+ assert.match(source,/基础设置（快速开始）/);
+ assert.match(source,/模式不覆盖基础参数/);
  assert.doesNotMatch(source,/v-model="modelConfig.assessment_mode"|请在 AstrBot 的 Bond 插件配置中修改|亲近度基线固定为0/);
- assert.match(source,/将覆盖当前表单中的关系节奏、增长与衰减设置，包括这些项目尚未保存的修改。填入后仍需保存才能生效。/);
- assert.match(source,/<dialog[^>]*aria-labelledby="xx-recommend-title"[^>]*aria-describedby="xx-recommend-warning"[^>]*@cancel.prevent="cancelRecommendedRules"/);
- assert.match(source,/<button[^>]*autofocus[^>]*@click="cancelRecommendedRules">取消/);
  assert.match(source,/暂无可用模型，请先在 AstrBot 配置文本模型。/);
  assert.match(css,/--xx-bg: #10172D/);assert.match(css,/--xx-card: #19233D/);assert.match(css,/--xx-ink: #E8EDFA/);
  assert.match(css,/:root\[data-bond-theme="light"\]/);assert.doesNotMatch(css,/\[data-theme/);

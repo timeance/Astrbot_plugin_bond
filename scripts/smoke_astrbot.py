@@ -49,11 +49,14 @@ async def _response_parts(value):
 async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     import astrbot
     from astrbot.api import AstrBotConfig
+    from astrbot.api.provider import LLMResponse
     from astrbot.api.star import Context, StarTools
     from quart import Quart, g
 
     from astrbot_plugin_bond.main import BondPlugin
+    from astrbot_plugin_bond.storage.migrations import SCHEMA_VERSION
 
+    assert astrbot.__version__ == "4.28.0", astrbot.__version__
     schema = json.loads((plugin_dir / "_conf_schema.json").read_text(encoding="utf-8"))
     config_path = runtime_dir / "bond_config.json"
     config = AstrBotConfig(str(config_path), schema=schema)
@@ -61,7 +64,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     config["livingmemory"] = {"enabled": True, "read_enabled": True}
     config["group_whitelist"] = [OLD_GROUP]
     config["master_ids"] = OLD_USER
-    config["decay"]["baseline"] = 42  # 存量键留档，装配固定采用中性基线0。
+    config["decay"]["baseline"] = 42  # 旧键留档，不能覆盖独立的 affinity_baseline。
     config["inject"]["enabled"] = True
     config["judge"]["roster"] = "synthetic-preserved"
     config["inject"]["memory_days"] = 9
@@ -184,10 +187,52 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert {path.name for path in db_paths} == {"group.db", "global.db"}
         assert not (data_dir / "bond.db").exists()
         assert plugin._storage.known_bot_ids() == sorted(BOT_IDS)
+        for bot_id in BOT_IDS:
+            for mode in ("per_group", "global"):
+                backend = await plugin._storage.get(bot_id, mode)
+                assert (
+                    backend._c().execute("PRAGMA user_version").fetchone()[0]
+                    == SCHEMA_VERSION
+                )
+                assert "familiarity_updated_at" in {
+                    row[1] for row in backend._c().execute("PRAGMA table_info(favor)")
+                }
 
         old_deps = await plugin._runtime.select(BOT_IDS[0], "per_group")
         # 通过真实 main 装配确认新安装默认，而非仅检查配置快照。
+        assert config["relation_mode"] == "galgame"
+        assert old_deps.favor._relation_caps == dict(
+            familiarity=(10, 0), affinity=(20, 8), trust=(4, 5)
+        )
+        assert old_deps.favor._relation_policy.positive_multiplier == 2.0
+        assert old_deps.favor._relation_policy.deltas("friendly")["affinity"] == 1.6
         assert old_deps.favor._decay == (30.0, 1.0, 120.0, 0.0)
+        assert old_deps.favor._trust_half_life == 90.0
+        assert config["decay"]["familiarity_enabled"] is True
+        assert config["decay"]["familiarity_half_life"] == 60
+        assert old_deps.favor._familiarity_half_life == 60.0
+        for dimension in ("familiarity", "affinity", "trust"):
+            assert config["decay"][dimension + "_baseline"] == 0
+        # 宿主剔除废弃的 baseline 键；旧值42不能激活新亲近度基线。
+        assert "baseline" not in config["decay"]
+        assembled = old_deps.assessment.config
+        assert assembled.enabled is False
+        assert assembled.small_provider_id == assembled.large_provider_id == ""
+        assert (assembled.window_sec, assembled.window_max_calls) == (300, 5)
+        assert (
+            assembled.per_user_daily_small_cap,
+            assembled.per_user_daily_large_cap,
+            assembled.per_bot_daily_small_cap,
+            assembled.per_bot_daily_large_cap,
+        ) == (30, 8, 300, 100)
+        assert (
+            assembled.context_turns,
+            assembled.context_chars,
+            assembled.context_events,
+            assembled.context_days,
+        ) == (6, 4000, 8, 7)
+        assert old_deps.assessment.capacity is plugin._assessment_capacity
+        assert plugin._assessment_capacity.limit == 2
         assert old_deps.favor._economy.negative_weight == 1.0
         assert old_deps.favor._economy.repair_threshold == 0.0
         entered = asyncio.Event()
@@ -384,6 +429,31 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         event.message_obj.message_id = "message-mutated"
         await plugin._runtime.switch_mode(BOT_IDS[0], "global")
         global_deps = await plugin._runtime.select(BOT_IDS[0], "global")
+        # 宿主回复完成时事件和模式可能已变化，钩子须沿用入场时绑定。
+        binding = event._bond_assessment_binding
+        assert binding[0] is old_deps
+        assert (binding[1].bot_id, binding[1].group_id, binding[1].user_id) == (
+            BOT_IDS[0],
+            OLD_GROUP,
+            OLD_USER,
+        )
+        await plugin._on_llm_resp(
+            event, LLMResponse(role="assistant", completion_text="合成 Bot 回复")
+        )
+        reply_key = (BOT_IDS[0], OLD_GROUP, OLD_USER)
+        reply_turns = old_deps.assessment.capacity.recent[reply_key]
+        assert any(
+            turn["role"] == "bot"
+            and turn["message_id"] == "response:message-old"
+            and turn["text"] == "合成 Bot 回复"
+            for turn in reply_turns
+        )
+        assert (BOT_IDS[1], "9001", "9002") not in old_deps.assessment.capacity.recent
+        before = list(reply_turns)
+        await plugin._on_llm_resp(
+            FakeEvent(), LLMResponse(role="assistant", completion_text="未入场回复")
+        )
+        assert list(reply_turns) == before
         judge_task = next(
             task
             for task, name in plugin._registry._tasks.items()
@@ -392,11 +462,24 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         release.set()
         await asyncio.wait_for(dispatch, timeout=2)
         await asyncio.wait_for(judge_task, timeout=2)
-        assert seen["payload"] == {
+        assert {
+            key: seen["payload"][key] for key in ("target_bot", "sender", "text")
+        } == {
             "target_bot": BOT_IDS[0],
             "sender": OLD_USER,
             "text": "冻结身份测试",
         }
+        assert set(seen["payload"]) == {
+            "target_bot",
+            "sender",
+            "text",
+            "trusted_metadata",
+            "recent_turns",
+            "scored_events",
+        }
+        assert isinstance(seen["payload"]["trusted_metadata"], dict)
+        assert isinstance(seen["payload"]["recent_turns"], list)
+        assert isinstance(seen["payload"]["scored_events"], list)
         old_record = await old_deps.favor.get(OLD_GROUP, OLD_USER)
         assert old_record is not None and old_record.favor > 0
         mutated_record = await old_deps.favor.get("9001", "9002")
@@ -651,6 +734,22 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         )
         assert status == 200 and settings["values"]["inject.memory_days"] == 9
         assert settings["providers"] == []
+        context.provider_manager.provider_insts.append(
+            SimpleNamespace(
+                meta=lambda: SimpleNamespace(id="smoke", model="synthetic-model")
+            )
+        )
+        try:
+            status, listed = await call(
+                page.handle_settings,
+                "/astrbot_plugin_bond/settings",
+                username="dashboard-admin",
+            )
+            assert status == 200
+            assert listed["providers"] == [{"id": "smoke", "model": "synthetic-model"}]
+            assert listed["revision"] == settings["revision"]
+        finally:
+            context.provider_manager.provider_insts.clear()
         status, saved = await call(
             page.handle_settings,
             "/astrbot_plugin_bond/settings",
@@ -677,7 +776,24 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             username="dashboard-admin",
         )
         assert status == 200 and "active" in body and "configured" in body
+        assert body["revision"] == saved["revision"] != settings["revision"]
         configured = dict(body["configured"], small_provider_id="new-provider")
+        # 两个设置入口共用修订号，详细设置保存后旧模型表单不能覆盖它。
+        status, stale = await call(
+            page.handle_models,
+            "/astrbot_plugin_bond/models",
+            "POST",
+            dict(
+                target,
+                config=configured,
+                max_concurrent_assessments=3,
+                revision=settings["revision"],
+            ),
+            "dashboard-admin",
+        )
+        assert status == 409 and not stale["success"]
+        assert config["assessment"]["small_provider_id"] == ""
+        assert config["assessment"]["max_concurrent_assessments"] == 2
         status, body = await call(
             page.handle_models,
             "/astrbot_plugin_bond/models",
@@ -691,6 +807,26 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             "dashboard-admin",
         )
         assert status == 200 and body["restart_required"]
+        model_revision = body["revision"]
+        assert model_revision != saved["revision"]
+        status, current = await call(
+            page.handle_settings,
+            "/astrbot_plugin_bond/settings",
+            username="dashboard-admin",
+        )
+        assert status == 200 and current["revision"] == model_revision
+        # 反方向亦受保护：模型设置保存后旧详细设置表单不能覆盖它。
+        status, stale = await call(
+            page.handle_settings,
+            "/astrbot_plugin_bond/settings",
+            "POST",
+            dict(values={"inject.memory_days": 11}, revision=saved["revision"]),
+            "dashboard-admin",
+        )
+        assert status == 409 and not stale["success"]
+        assert config["inject"]["memory_days"] == 10
+        assert config["assessment"]["small_provider_id"] == "new-provider"
+        assert plugin._runtime.detailed_settings()["revision"] == model_revision
         assert old_deps.assessment.config.small_provider_id == "smoke"
         assert (
             await plugin._runtime.select(BOT_IDS[1], "global")
@@ -833,6 +969,13 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     config2["decay"].update(
         enabled=False, half_life_base=10, half_life_growth=1.3, half_life_max=60
     )
+    # 新维度的自定义半衰期独立生效，不影响上述旧亲近度配置。
+    config2["decay"].update(
+        familiarity_half_life=90,
+        familiarity_baseline=10,
+        affinity_baseline=5,
+        trust_baseline=3,
+    )
     config2["economy"].update(negative_weight=1.5, repair_threshold=2)
     config2.save_config()
     config2 = AstrBotConfig(str(config_path), schema=schema)
@@ -844,12 +987,26 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
         assert len(context2.registered_web_apis) == 17
         assert plugin2._prompts.load_error
-        deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
+        # 保留旧亲近度关闭输入，并直接核验真实工厂收到三维独立基线。
+        with patch(
+            "astrbot_plugin_bond.main.FavorService", wraps=type(old_deps.favor)
+        ) as assembled_favor:
+            deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
+        assert assembled_favor.call_count == 1
+        assert assembled_favor.call_args.kwargs["familiarity_baseline"] == 10
+        assert assembled_favor.call_args.kwargs["decay_baseline"] == 5
+        assert assembled_favor.call_args.kwargs["trust_baseline"] == 3
+        # 宿主重载后，运行配置也不保留已剔除的废弃键。
+        assert "baseline" not in plugin2._dependency_config["decay"]
         assert deps2.favor._decay is None
         assert deps2.favor._relation_caps == dict(
-            familiarity=(3, 0), affinity=(4.5, 6), trust=(1, 4)
+            familiarity=(10, 0), affinity=(20, 8), trust=(4, 5)
         )
-        assert deps2.favor._relation_policy.deltas("friendly")["affinity"] == 1.0
+        assert deps2.favor._relation_policy.deltas("friendly")["affinity"] == 1.6
+        # 亲近度显式关闭不隐式关闭另一维的默认衰减。
+        assert deps2.favor._trust_half_life == 90.0
+        assert deps2.favor._familiarity_half_life == 90.0
+        assert plugin2._dependency_config["decay"]["familiarity_half_life"] == 90
         assert plugin2._dependency_config["decay"]["half_life_base"] == 10
         assert plugin2._dependency_config["decay"]["half_life_max"] == 60
         assert plugin2._dependency_config["decay"]["half_life_growth"] == 1.3
@@ -891,7 +1048,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "新旧衰减配置、scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
+        "Galgame×2额度、F60/A30/T90衰减、三维独立基线、新旧配置、窗口预算、回复钩子、scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

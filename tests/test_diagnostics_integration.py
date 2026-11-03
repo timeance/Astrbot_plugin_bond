@@ -111,7 +111,7 @@ def test_enabled_and_disabled_observe_identical_real_transactions(tmp_path):
         assert relation["after"] == on["state"]
         assert relation["delta"] == on["logs"][0]["relation_delta"]
         assert relation["term_before"] == "r13"
-        assert relation["policy_version"] == "0.2.5"
+        assert relation["policy_version"] == "0.3.8"
         assert len(relation["config_hash"]) == 64
         call = next(r for r in on["rows"] if r["kind"] == "call")
         assert call["tokens"] is None

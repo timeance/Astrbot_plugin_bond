@@ -30,6 +30,7 @@ def test_defaults_and_hidden_fields_preserve_schema():
     assert not schema["assessment"]["items"]["enabled"].get("invisible")
     assert not schema["master_ids"]["invisible"]
     assert schema["group_whitelist"]["default"] == []
+    assert "baseline" not in schema["decay"]["items"]
     for key in ("small_provider_id", "large_provider_id"):
         assert schema["assessment"]["items"][key]["_special"] == "select_provider"
     data = snapshot({})
@@ -221,6 +222,18 @@ def test_models_and_details_share_revision_and_merge_preserved_fields():
         {"assessment.max_concurrent_assessments": 3},
         {"assessment.large_timeout_sec": 45},
         {"assessment.per_bot_daily_large_cap": 40},
+        {"assessment.window_sec": 240},
+        {"assessment.window_max_calls": 4},
+        {"assessment.per_user_daily_small_cap": 25},
+        {"assessment.context_chars": 3000},
+        {"relation_daily_caps.familiarity_up": 6},
+        {"familiarity_growth.under10": 1.6},
+        {"decay.trust_half_life": 200},
+        {"decay.familiarity_enabled": False},
+        {"decay.familiarity_half_life": 90},
+        {"decay.familiarity_baseline": 20},
+        {"decay.affinity_baseline": 15},
+        {"decay.trust_baseline": 20},
         {"ignored_bot_ids": ["10001"]},
         {"inject.memory_days": 8},
     ],
@@ -234,7 +247,7 @@ def test_host_configuration_changes_invalidate_both_editors(change):
             target = config
             parts = path.split(".")
             for part in parts[:-1]:
-                target = target[part]
+                target = target.setdefault(part, {})
             target[parts[-1]] = value
         before = copy.deepcopy(dict(config))
         with pytest.raises(SettingsRevisionError, match="设置已变更"):
@@ -310,3 +323,303 @@ def test_concurrent_editors_reject_second_save_after_lock_acquisition():
         assert config == {"inject": {"enabled": True}}
 
     asyncio.run(run())
+
+
+def test_framework_defaults_custom_values_and_single_assessment_entry():
+    data = snapshot({})
+    values = data["values"]
+    expected = {
+        "relation_mode": "galgame",
+        "relation_daily_caps.familiarity_up": 5,
+        "relation_daily_caps.familiarity_down": 0,
+        "relation_daily_caps.affinity_up": 10,
+        "relation_daily_caps.affinity_down": 8,
+        "relation_daily_caps.trust_up": 2,
+        "relation_daily_caps.trust_down": 5,
+        "decay.familiarity_enabled": True,
+        "decay.familiarity_half_life": 60,
+        "decay.enabled": True,
+        "decay.half_life_base": 30,
+        "decay.trust_enabled": True,
+        "decay.trust_half_life": 90,
+        "decay.familiarity_baseline": 0,
+        "decay.affinity_baseline": 0,
+        "decay.trust_baseline": 0,
+    }
+    for key, value in expected.items():
+        assert values[key] == value
+    assert [
+        values["familiarity_growth." + key]
+        for key in ("under10", "under30", "under55", "under80", "under95", "at95")
+    ] == [1.5, 1.2, 0.8, 0.5, 0.3, 0.15]
+    assert {key for key in values if key.startswith("assessment.")} == {
+        "assessment.enabled",
+        "assessment.assessment_mode",
+        "assessment.small_provider_id",
+        "assessment.large_provider_id",
+    }
+    custom = snapshot(
+        {
+            "relation_mode": "realistic",
+            "relation_daily_caps": {"affinity_up": 12},
+            "familiarity_growth": {"under10": 1.1},
+            "decay": {
+                "familiarity_enabled": False,
+                "familiarity_half_life": 90,
+                "trust_enabled": False,
+                "half_life_base": 75,
+            },
+        }
+    )["values"]
+    assert custom["relation_mode"] == "realistic"
+    assert custom["relation_daily_caps.affinity_up"] == 12
+    assert custom["familiarity_growth.under10"] == 1.1
+    assert custom["decay.half_life_base"] == 75
+    assert custom["decay.trust_enabled"] is False
+    assert custom["decay.familiarity_enabled"] is False
+    assert custom["decay.familiarity_half_life"] == 90
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        ("relation_daily_caps.affinity_up", -1),
+        ("relation_daily_caps.trust_down", True),
+        ("familiarity_growth.at95", float("inf")),
+        ("decay.trust_half_life", 0),
+        ("decay.familiarity_half_life", 0),
+        ("decay.familiarity_half_life", 4.9),
+        ("decay.familiarity_half_life", True),
+        ("decay.familiarity_half_life", float("inf")),
+        ("decay.familiarity_enabled", "true"),
+    ],
+)
+def test_framework_invalid_values(path, value):
+    with pytest.raises(ValueError):
+        validate_patch({path: value})
+
+
+def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
+    async def run():
+        config = Config(
+            relation_mode="realistic",
+            relation_daily_caps={"affinity_up": 12},
+            decay={"familiarity_enabled": False, "familiarity_half_life": 90},
+            master_ids="8001",
+            assessment={"small_provider_id": "chosen"},
+        )
+        runtime = RuntimeService(None, config, None)
+        initial = runtime.detailed_settings()
+        await runtime.save_detailed_settings(
+            {
+                "relation_mode": "galgame",
+                "relation_daily_caps.affinity_up": 15,
+                "decay.familiarity_enabled": True,
+                "decay.familiarity_half_life": 60,
+                "decay.familiarity_baseline": 20,
+                "decay.affinity_baseline": 15,
+                "decay.trust_baseline": 20,
+            },
+            initial["revision"],
+        )
+        saved = runtime.detailed_settings()
+        assert saved["values"]["relation_mode"] == "galgame"
+        assert saved["values"]["relation_daily_caps.affinity_up"] == 15
+        assert saved["active_values"]["relation_mode"] == "realistic"
+        assert saved["active_values"]["relation_daily_caps.affinity_up"] == 12
+        assert saved["values"]["decay.familiarity_enabled"] is True
+        assert saved["values"]["decay.familiarity_half_life"] == 60
+        assert saved["active_values"]["decay.familiarity_enabled"] is False
+        assert saved["active_values"]["decay.familiarity_half_life"] == 90
+        for dimension, baseline in (
+            ("familiarity", 20),
+            ("affinity", 15),
+            ("trust", 20),
+        ):
+            path = f"decay.{dimension}_baseline"
+            assert saved["values"][path] == baseline
+            assert saved["active_values"][path] == 0
+        assert config["assessment"]["small_provider_id"] == "chosen"
+        assert config["master_ids"] == "8001"
+        reloaded = RuntimeService(None, config, None).detailed_settings()
+        assert reloaded["active_values"] == reloaded["values"]
+
+    asyncio.run(run())
+
+
+def test_assessment_schema_and_saved_defaults_match_running_configuration():
+    from dataclasses import asdict
+    from astrbot_plugin_bond.services.assessment_service import AssessmentConfig
+
+    schema = json.loads(
+        (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
+    )["assessment"]["items"]
+    defaults = asdict(AssessmentConfig())
+    keys = (
+        "window_sec",
+        "window_max_calls",
+        "per_user_daily_small_cap",
+        "per_user_daily_large_cap",
+        "per_bot_daily_small_cap",
+        "per_bot_daily_large_cap",
+        "context_turns",
+        "context_chars",
+        "context_days",
+        "context_events",
+    )
+    for key in keys:
+        assert schema[key]["default"] == defaults[key]
+        assert schema[key]["invisible"] is True
+    assert schema["cooldown_sec"]["invisible"] is True
+
+    async def run():
+        config = Config(
+            assessment={
+                "enabled": True,
+                "small_provider_id": "chosen",
+                "large_provider_id": "review",
+                "assessment_mode": "single",
+                "window_sec": 240,
+                "context_chars": 3000,
+            }
+        )
+        runtime = RuntimeService(None, config, None)
+        configured, limit = runtime.assessment_settings()
+        assert configured["window_sec"] == 240
+        assert configured["context_chars"] == 3000
+        assert limit == 2
+        await runtime.save_assessment_settings(
+            {key: defaults[key] for key in keys},
+            2,
+            runtime.detailed_settings()["revision"],
+        )
+        assert config["assessment"]["small_provider_id"] == "chosen"
+        assert config["assessment"]["large_provider_id"] == "review"
+        assert config["assessment"]["enabled"] is True
+        assert config["assessment"]["assessment_mode"] == "single"
+        assert config["assessment"]["context_chars"] == 4000
+        before = copy.deepcopy(config)
+        config.fail = True
+        with pytest.raises(OSError):
+            await runtime.save_assessment_settings(
+                {"window_sec": 600}, 3, runtime.detailed_settings()["revision"]
+            )
+        assert config == before
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+@pytest.mark.parametrize(
+    "preset,expected",
+    [
+        ("galgame", (0.3, 1.2, 0.15, 0.9, 2.5, 36.0, 0.7)),
+        ("realistic", (0.6, 1.8, 0.35, 0.6, 1.8, 72.0, 0.35)),
+    ],
+)
+def test_legacy_economy_preset_snapshot_matches_base_parameters(
+    enabled, preset, expected
+):
+    config = {"economy": {"preset": preset, "enabled": enabled}}
+    before = copy.deepcopy(config)
+    data = snapshot(config)
+    paths = (
+        "noise_floor",
+        "negative_weight",
+        "same_day_decay",
+        "level_mult.youhao",
+        "repair_threshold",
+        "repair_hours",
+        "repair_factor",
+    )
+    assert tuple(data["values"]["economy." + path] for path in paths) == expected
+    assert data["values"]["economy.enabled"] is enabled
+    definitions = {field["path"]: field for field in data["fields"]}
+    assert definitions["economy.negative_weight"]["default"] == 1.0
+    assert definitions["economy.level_mult.youhao"]["default"] == 0.75
+    assert definitions["economy.repair_threshold"]["default"] == 0.0
+    assert config == before
+
+
+@pytest.mark.parametrize("level_key", ["youhao", "友好"])
+def test_legacy_economy_snapshot_preserves_explicit_overrides(level_key):
+    config = {
+        "economy": {
+            "preset": "galgame",
+            "enabled": False,
+            "negative_weight": 1.7,
+            "repair_threshold": 0,
+            "level_mult": {level_key: 0.83},
+        }
+    }
+    before = copy.deepcopy(config)
+    values = snapshot(config)["values"]
+    assert values["economy.negative_weight"] == 1.7
+    assert values["economy.repair_threshold"] == 0
+    assert values["economy.level_mult.youhao"] == 0.83
+    assert values["economy.level_mult.qinmi"] == 0.75
+    assert values["economy.enabled"] is False
+    assert config == before
+
+
+def test_legacy_economy_restore_defaults_saves_recommended_parameters():
+    from astrbot_plugin_bond.core.level_economy import EconomyConfig
+
+    async def run():
+        config = Config(
+            economy={"preset": "galgame"},
+            assessment={"small_provider_id": "chosen"},
+            master_ids="8001",
+        )
+        runtime = RuntimeService(None, config, None)
+        initial = runtime.detailed_settings()
+        patch = {
+            field["path"]: field["default"]
+            for field in initial["fields"]
+            if field["path"].startswith("economy.")
+            and field["default"] != initial["values"][field["path"]]
+        }
+        assert patch["economy.negative_weight"] == 1.0
+        assert patch["economy.level_mult.youhao"] == 0.75
+        await runtime.save_detailed_settings(patch, initial["revision"])
+        expected = EconomyConfig.from_config({})
+        assert EconomyConfig.from_config(config["economy"]) == expected
+        saved = runtime.detailed_settings()
+        assert saved["values"]["economy.negative_weight"] == 1.0
+        assert saved["active_values"]["economy.negative_weight"] == 1.2
+        reloaded = RuntimeService(None, config, None).detailed_settings()
+        assert reloaded["active_values"] == saved["values"]
+        assert config["economy"]["preset"] == "galgame"
+        assert config["assessment"]["small_provider_id"] == "chosen"
+        assert config["master_ids"] == "8001"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("dimension", ["familiarity", "affinity", "trust"])
+def test_independent_baseline_bounds_and_legacy_value_ignored(dimension):
+    path = f"decay.{dimension}_baseline"
+    legacy = {"decay": {"baseline": 77}}
+    before = copy.deepcopy(legacy)
+    data = snapshot(legacy)
+    field = next(field for field in data["fields"] if field["path"] == path)
+    assert field["group"] == "rules" and field["default"] == 0
+    assert data["values"][path] == 0
+    assert data["values"] == snapshot({})["values"]
+    assert "decay.baseline" not in data["values"]
+    for value in (0, 20.5, 100):
+        validate_patch({path: value})
+        assert (
+            snapshot({"decay": {"baseline": 77, f"{dimension}_baseline": value}})[
+                "values"
+            ][path]
+            == value
+        )
+    assert legacy == before
+
+
+@pytest.mark.parametrize("dimension", ["familiarity", "affinity", "trust"])
+@pytest.mark.parametrize("value", [-0.1, 100.1, True, float("nan")])
+def test_independent_baseline_invalid_values(dimension, value):
+    with pytest.raises(ValueError):
+        validate_patch({f"decay.{dimension}_baseline": value})

@@ -1,4 +1,4 @@
-"""亲近度时间衰减的纯函数。
+"""关系时间衰减的纯函数。
 
 使用 baseline + (stored - baseline) * 0.5 ** (闲置天数 / h)。这是产品节奏
 模型，不是经过真人关系校准的记忆规律。新安装参数由配置与 main.py 装配。
@@ -8,10 +8,20 @@
 
 from __future__ import annotations
 
+import math
+
 from .decimal import round1
 
 # 半衰期下限（保险丝）：即使配置被改坏，最快也是每天 ~13% 的比例损失
 HALF_LIFE_MIN = 5.0
+
+
+def decay_target(stored: float, baseline: float) -> float:
+    """停止范围内保持原值，范围外向同号边界收敛；baseline 为非负幅度。"""
+    baseline = float(baseline)
+    if not math.isfinite(baseline) or baseline < 0:
+        raise ValueError("衰减停止范围须为有限非负数")
+    return max(-baseline, min(baseline, stored))
 
 
 def effective_favor(
@@ -22,6 +32,7 @@ def effective_favor(
     half_life: float,
     baseline: float,
     floor: float | None = None,
+    rounded: bool = True,
 ) -> float:
     """指数遗忘：存量距离按 0.5^(闲置天数/h) 衰减，向 baseline 收敛不越界。
 
@@ -32,11 +43,11 @@ def effective_favor(
       floor——挚爱最多衰到"亲密"下沿，久别重逢不掉出熟悉区间。仅当
       floor 高于 baseline 时生效（地板必须落在衰减目标之上才有意义）；
       stored 本身低于 floor 时不抬高（地板只托底不上涨）。
-    - 返回值收敛到一位小数。
+    - rounded=True 返回一位小数；写入结算可保留未舍入值。
     """
     h = max(HALF_LIFE_MIN, float(half_life)) if half_life else HALF_LIFE_MIN
     if updated_at <= 0 or now <= updated_at:
-        return round1(stored)
+        return round1(stored) if rounded else float(stored)
     idle_days = (now - updated_at) / 86400.0
     factor = 0.5 ** (idle_days / h)
     eff = baseline + (stored - baseline) * factor
@@ -48,7 +59,7 @@ def effective_favor(
     # 等级地板：托底不上涨（stored 已在地板下则维持衰减结果）
     if floor is not None and stored > floor > baseline:
         eff = max(float(floor), eff)
-    return round1(eff)
+    return round1(eff) if rounded else eff
 
 
 def resolve_half_life(h: float, *, base: float, growth: float, h_max: float) -> float:

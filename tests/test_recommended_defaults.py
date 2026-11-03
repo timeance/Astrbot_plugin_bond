@@ -11,6 +11,7 @@ from astrbot_plugin_bond.core.levels import LevelTable
 from astrbot_plugin_bond.core.settings import snapshot, validate_patch
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
+from astrbot_plugin_bond.storage.migrations import SCHEMA_VERSION
 from astrbot_plugin_bond.scripts.replay_recommended_defaults import replay, START
 
 
@@ -31,6 +32,29 @@ def test_new_defaults_and_explicit_custom_settings():
     assert values["economy.negative_weight"] == eco.negative_weight == 1
     assert values["economy.repair_threshold"] == eco.repair_threshold == 0
     assert values["decay.half_life_growth"] == 1
+    assert values["decay.familiarity_enabled"] is True
+    assert values["decay.familiarity_half_life"] == 60
+    assert values["decay.half_life_base"] == 30
+    assert values["decay.trust_half_life"] == 90
+    for dimension in ("familiarity", "affinity", "trust"):
+        key = "decay." + dimension + "_baseline"
+        assert values[key] == 0
+        assert snapshot({"decay": {dimension + "_baseline": 10}})["values"][key] == 10
+    legacy = snapshot({"decay": {"baseline": 42}})["values"]
+    assert "decay.baseline" not in legacy
+    assert legacy["decay.affinity_baseline"] == 0
+    assert (
+        snapshot({"decay": {"familiarity_enabled": False}})["values"][
+            "decay.familiarity_enabled"
+        ]
+        is False
+    )
+    assert (
+        snapshot({"decay": {"familiarity_half_life": 90}})["values"][
+            "decay.familiarity_half_life"
+        ]
+        == 90
+    )
     old = {"negative_weight": 1.5, "repair_threshold": 2}
     assert EconomyConfig.from_config(old).negative_weight == 1.5
     assert EconomyConfig.from_config(old).repair_threshold == 2
@@ -42,7 +66,17 @@ def test_new_defaults_and_explicit_custom_settings():
     )
     for name in ("assessment", "inject", "diagnostics", "coupling"):
         assert schema[name]["items"]["enabled"]["default"] is False
-    for name in ("decay.half_life_base", "decay.half_life_max"):
+    assert schema["decay"]["items"]["familiarity_enabled"]["default"] is True
+    assert schema["decay"]["items"]["familiarity_half_life"]["default"] == 60
+    assert schema["decay"]["items"]["half_life_base"]["default"] == 30
+    assert schema["decay"]["items"]["trust_half_life"]["default"] == 90
+    for dimension in ("familiarity", "affinity", "trust"):
+        assert schema["decay"]["items"][dimension + "_baseline"]["default"] == 0
+    for name in (
+        "decay.half_life_base",
+        "decay.half_life_max",
+        "decay.familiarity_half_life",
+    ):
         with pytest.raises(ValueError):
             validate_patch({name: 4})
         validate_patch({name: 5})
@@ -80,16 +114,19 @@ def test_fixed_half_life_changes_existing_reads_and_writes_without_migration(
                 result = await service.apply_relation_event(
                     "g", "u", "normal_question", event_id="question"
                 )
-                assert (
-                    result["before"]["affinity"] == result["after"]["affinity"] == 14.1
-                )
+                assert result["before"]["affinity"] == result["after"]["affinity"]
+                assert round(result["after"]["affinity"], 1) == 14.1
+                assert (await service.get_relation("g", "u")).affinity == 14.1
                 assert (await store.get("g", "u")).half_life == 60
                 logs = await store.query_logs("g", "u")
                 await service.undo_log(logs[0]["id"])
                 assert (await service.get_relation("g", "u")).as_dict() == dict(
                     familiarity=40, affinity=14.1, trust=-20
                 )
-                assert store._c().execute("PRAGMA user_version").fetchone()[0] == 15
+                assert (
+                    store._c().execute("PRAGMA user_version").fetchone()[0]
+                    == SCHEMA_VERSION
+                )
         finally:
             await store.close()
 
@@ -189,7 +226,7 @@ def test_replay_is_deterministic_and_does_not_inflate_trust(tmp_path):
             r["delta"]["trust"] for r in old[name]["rows"]
         ]
     assert new["neutral_3_days"]["rows"][-1]["state"] == dict(
-        familiarity=2.1, affinity=0, trust=0
+        familiarity=3.15, affinity=0, trust=0
     )
     assert new["violation_apology_repeat"]["rows"][1]["delta"]["trust"] == 0
     assert new["violation_apology_repeat"]["rows"][-1]["state"]["trust"] == -4

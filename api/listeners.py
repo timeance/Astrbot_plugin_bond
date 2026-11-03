@@ -101,6 +101,34 @@ def _chain_flags(event: AstrMessageEvent) -> tuple[bool, bool]:
     return bool(ats), bool(replies)
 
 
+def _reply_metadata(event):
+    """只读取已通过结构冲突检查的目标 Bot 引用，不从引文解析身份。"""
+    if not _chain_flags(event)[1]:
+        return {}
+    reply = next(c for c in event.message_obj.message if isinstance(c, Reply))
+    text = getattr(reply, "message_str", None)
+    if not isinstance(text, str):
+        text = getattr(reply, "text", "")
+    return dict(
+        reply_message_id=str(reply.id),
+        reply_sender_id=str(reply.sender_id),
+        reply_text=text[:2000] if isinstance(text, str) else "",
+    )
+
+
+async def on_llm_response(deps: Deps, event: AstrMessageEvent, response) -> None:
+    """使用入场时冻结的服务与身份，不按回复完成时的配置重新选择空间。"""
+    binding = getattr(event, "_bond_assessment_binding", None)
+    if not isinstance(binding, tuple) or len(binding) != 2 or binding[0] is not deps:
+        return
+    interaction = binding[1]
+    if not isinstance(interaction, Interaction):
+        return
+    text = getattr(response, "completion_text", None)
+    if deps.assessment is not None and isinstance(text, str) and text:
+        deps.assessment.remember_bot_reply(interaction, text)
+
+
 # X10：后台评审任务经 Deps.registry（TaskRegistry）发起——裸 create_task
 # 只被事件循环弱引用可能被 GC 中途回收，且卸载时需 cancel_and_wait
 
@@ -131,6 +159,8 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     # 保留平台原文用于证据校验，不把清洗后的字符串伪装成原始证据。
     text = event.message_str or ""
     has_at_bot, is_reply_bot = _chain_flags(event)
+    reply_metadata = _reply_metadata(event)
+    original_event = event
     event = AssessmentEvent(
         str(group_id),
         str(user_id),
@@ -141,6 +171,30 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     )
 
     admission_state = await deps.favor.temporary_state(group_id, user_id)
+    admitted_interaction = None
+    if (
+        deps.assessment is not None
+        and deps.assessment.config.enabled
+        and (has_at_bot or is_reply_bot)
+        and not admission_state["active"]
+    ):
+        from ..core.assessment import locally_relevant
+
+        if locally_relevant(text, True):
+            try:
+                admitted_interaction = Interaction(
+                    event.bot_id,
+                    event.group_id,
+                    event.user_id,
+                    event.platform_name,
+                    event.message_id,
+                    text,
+                    **reply_metadata,
+                )
+                original_event._bond_assessment_binding = (deps, admitted_interaction)
+                deps.assessment.remember_admitted_interaction(admitted_interaction)
+            except (ValueError, TypeError):
+                admitted_interaction = None
 
     async def _bg() -> None:
         try:
@@ -153,13 +207,14 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                 and deps.assessment.config.enabled
                 and text.strip()
             ):
-                interaction = Interaction(
+                interaction = admitted_interaction or Interaction(
                     event.bot_id,
                     event.group_id,
                     event.user_id,
                     event.platform_name,
                     event.message_id,
                     text,
+                    **reply_metadata,
                 )
                 status = await deps.assessment.assess(
                     interaction,

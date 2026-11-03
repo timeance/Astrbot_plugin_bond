@@ -18,21 +18,15 @@ from ..core.models import FavorRecord
 
 
 def clamp_daily(
-    delta: float, gain: float, cap_up: float, cap_down: float
+    delta: float, used: tuple[float, float], cap_up: float, cap_down: float
 ) -> tuple[float, bool]:
-    """按当日净增量做双向限幅（单一实现，base 兼容路径与 SQLite 事务内共用）。
-
-    gain 为当日已记净增量；返回 (限幅后 delta, 是否触顶截断)。
-    allowed 收敛到 1 位小数：cap_up - used 这类减法会引入 IEEE-754 噪声
-    （如 0.3-0.1=0.1999…），不收敛会让 clamped 标志被误判。"""
+    """按独立正负累计用量限幅；小数余量也占额度，不以净值抵消。"""
     if delta > 0:
-        used = max(0.0, gain)
-        allowed = max(0.0, min(delta, cap_up - used))
+        allowed = max(0.0, min(delta, cap_up - used[0]))
     else:
-        used = max(0.0, -gain)
-        allowed = -max(0.0, min(-delta, cap_down - used))
-    allowed = round1(allowed)
-    return allowed, allowed != delta
+        allowed = -max(0.0, min(-delta, cap_down - used[1]))
+    allowed = round(allowed, 8)
+    return allowed, abs(allowed - delta) > 1e-8
 
 
 class StorageBackend(ABC):
@@ -93,12 +87,14 @@ class StorageBackend(ABC):
         daily_cap_up: float | None = None,
         daily_cap_down: float | None = None,
         effective=None,
+        day_start=None,
+        day_end=None,
     ) -> tuple[FavorRecord, float, float, bool]:
         """主写路径：每日限幅 + 数值变动 + 当日额度 + 流水（+ 冷却）。
 
         数值语义与 apply_delta 完全一致（衰减/封顶/收敛，见其 docstring）；
         real≠0 时同记 daily_gain 与 favor_log，cooldown_key 非空时刷新冷却。
-        daily_cap_* 与 day 同时给出时在写入前按当日净增量双向限幅
+        daily_cap_* 与 day 同时给出时在写入前按当日独立正负用量限幅
         （clamp_daily 单一实现）。allowed 归零时不动库直接返回。
         Returns: (更新后的记录, 实际生效的变化量, 限幅后拟写入量, 是否触顶截断)。
 
@@ -110,8 +106,10 @@ class StorageBackend(ABC):
 
         allowed, capped = delta, False
         if daily_cap_up is not None and daily_cap_down is not None and day:
-            gain = await self.daily_gain(group_id, user_id, day)
-            allowed, capped = clamp_daily(delta, gain, daily_cap_up, daily_cap_down)
+            usage = await self.daily_usage(group_id, user_id, day, day_start, day_end)
+            allowed, capped = clamp_daily(
+                delta, usage["affinity"], daily_cap_up, daily_cap_down
+            )
         if allowed == 0:
             rec = await self.get(group_id, user_id)
             base_favor = rec.favor if rec else float(default_favor or 0.0)
@@ -252,6 +250,10 @@ class StorageBackend(ABC):
     async def daily_gain(self, group_id: str, user_id: str, day: str) -> float:
         """当日净增量（带符号，精度一位小数）。day 格式 YYYY-MM-DD。"""
 
+    async def daily_usage(self, group_id, user_id, day, day_start=None, day_end=None):
+        """独立正负额度；后端必须持久记账，不得由净增量代替。"""
+        raise NotImplementedError
+
     @abstractmethod
     async def add_daily_gain(
         self, group_id: str, user_id: str, day: str, delta: float
@@ -328,6 +330,8 @@ class StorageBackend(ABC):
         max_favor: float,
         min_favor: float,
         effective=None,
+        effective_trust=None,
+        effective_familiarity=None,
         default_favor: float = 0.0,
         actor: str = "",
     ) -> dict:
@@ -367,6 +371,32 @@ class StorageBackend(ABC):
         self, event_id, group_id, user_id, tier, provider_id, user_cap, bot_cap
     ):
         """原子预留调用额度；耗尽返回 None。"""
+        raise NotImplementedError
+
+    async def assessment_call_exists(self, event_id, tier):
+        raise NotImplementedError
+
+    async def assessment_call_counts(self, user_id, tier, *, window_sec=300):
+        raise NotImplementedError
+
+    async def reserve_assessment_call(
+        self,
+        event_id,
+        group_id,
+        user_id,
+        tier,
+        provider_id,
+        user_cap,
+        bot_cap,
+        *,
+        window_sec=300,
+        window_max_calls=5,
+    ):
+        raise NotImplementedError
+
+    async def assessment_context_events(
+        self, group_id, user_id, *, origin_group_id, limit=8, days=7
+    ):
         raise NotImplementedError
 
     async def finish_assessment_call(self, call_id, status, tokens):

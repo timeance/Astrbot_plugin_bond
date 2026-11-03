@@ -218,6 +218,14 @@ class World:
             large_timeout_sec=self.case.get("timeout", 2.0),
             per_user_daily_large_cap=self.case.get("user_large_cap", 2),
             per_bot_daily_large_cap=self.case.get("bot_large_cap", 20),
+            # 历史规则对照固定为无历史输入，避免实验臂不同写入反过来改变 Provider 输入。
+            # 新上下文能力另由 test_assessment_context 验证；覆盖值会进入报告快照。
+            context_turns=self.case.get("context_turns", 0),
+            context_events=self.case.get("context_events", 0),
+            window_sec=self.case.get("window_sec", 300),
+            window_max_calls=self.case.get("window_max_calls", 5),
+            per_user_daily_small_cap=self.case.get("user_small_cap", 30),
+            per_bot_daily_small_cap=self.case.get("bot_small_cap", 300),
         )
 
         self.config_snapshot = asdict(cfg)
@@ -277,14 +285,14 @@ class World:
             await asyncio.Event().wait()
         raw = response.get("raw")
         if raw is None:
-            raw = json.dumps(
-                dict(
-                    event_type=response.get("event_type", "uncertain"),
-                    confidence=response.get("confidence", 0.95),
-                    evidence=response.get("evidence", payload["text"]),
-                ),
-                ensure_ascii=False,
+            data = dict(
+                event_type=response.get("event_type", "uncertain"),
+                confidence=response.get("confidence", 0.95),
+                evidence=response.get("evidence", payload["text"]),
             )
+            if "should_update" in response:
+                data["should_update"] = response["should_update"]
+            raw = json.dumps(data, ensure_ascii=False)
         return SimpleNamespace(
             completion_text=raw, usage=SimpleNamespace(total=response.get("tokens"))
         )
