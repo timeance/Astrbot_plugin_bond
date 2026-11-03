@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from astrbot_plugin_bond.core.levels import LevelTable
+from astrbot_plugin_bond.core.taskregistry import TaskRegistry
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.services.impression_service import ImpressionService
 from astrbot_plugin_bond.storage.router import BotScopeStorageRouter
@@ -224,7 +225,9 @@ def test_impression_paused_and_old_generation_rejected(tmp_path, monkeypatch):
     async def run():
         db, favor, _, _ = await setup(tmp_path)
         await favor.set_temporary("789", "456", VALUES, 60, "admin")
-        impressions = ImpressionService(db, summarizer=object())
+        impressions = ImpressionService(
+            db, registry=TaskRegistry(), summarizer=object()
+        )
         assert not (await impressions.refresh_now("789", "456"))[0]
         await favor.set_temporary("789", "456", None, None, "admin")
         with pytest.raises(ValueError, match="版本"):

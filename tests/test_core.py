@@ -13,26 +13,6 @@ from pathlib import Path
 
 import pytest
 
-# CI 等无 AstrBot 的环境：注入最小桩 astrbot.api.logger——本仓库测试
-# 契约是离线可跑（AGENTS.md），taskregistry 模块级与服务层 lazy import
-# 的 logger 需要它（容器内有真实 astrbot 时不生效，仍用真 logger）
-try:
-    from astrbot.api import logger  # noqa: F401
-except ImportError:
-    import sys as _sys
-    import types as _types
-
-    class _OfflineLogger:
-        def __getattr__(self, name):
-            return lambda *a, **k: None
-
-    _pkg = _types.ModuleType("astrbot")
-    _api = _types.ModuleType("astrbot.api")
-    _api.logger = _OfflineLogger()
-    _pkg.api = _api
-    _sys.modules.setdefault("astrbot", _pkg)
-    _sys.modules.setdefault("astrbot.api", _api)
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from astrbot_plugin_bond.core.config_migrations import (
@@ -45,6 +25,7 @@ from astrbot_plugin_bond.core.identity import (
     parse_master_ids,
 )  # noqa: E402
 from astrbot_plugin_bond.core.levels import LevelTable  # noqa: E402
+from astrbot_plugin_bond.core.taskregistry import TaskRegistry
 from astrbot_plugin_bond.core.relationship import RelationshipTable  # noqa: E402
 from astrbot_plugin_bond.core.models import FavorRecord  # noqa: E402
 from astrbot_plugin_bond.services.favor_service import FavorService  # noqa: E402
@@ -1066,7 +1047,7 @@ class TestImpressionStorage:
         asyncio.run(b.set_impression("g", "u", "旧印象", ["a"]))
         from astrbot_plugin_bond.services.impression_service import ImpressionService
 
-        svc = ImpressionService(b)
+        svc = ImpressionService(b, registry=TaskRegistry())
         asyncio.run(svc.set_tags("g", "u", ["手改"]))
         rec = asyncio.run(b.get("g", "u"))
         assert rec.impression == "旧印象" and rec.parsed_tags() == ["手改"]
@@ -1075,7 +1056,7 @@ class TestImpressionStorage:
         # 未绑定 summarizer（评审关闭/未装配）时立即刷新给出明确失败，不抛异常
         from astrbot_plugin_bond.services.impression_service import ImpressionService
 
-        svc = ImpressionService(self._backend(tmp_path))
+        svc = ImpressionService(self._backend(tmp_path), registry=TaskRegistry())
         ok, msg = asyncio.run(svc.refresh_now("g", "u"))
         assert ok is False and "未启用" in msg
 
@@ -1084,7 +1065,7 @@ class TestImpressionStorage:
         from astrbot_plugin_bond.services.impression_service import ImpressionService
 
         b = self._backend(tmp_path)
-        svc = ImpressionService(b)
+        svc = ImpressionService(b, registry=TaskRegistry())
         asyncio.run(svc.maybe_refresh("g", "u"))  # 不应抛异常
         assert asyncio.run(b.get("g", "u")) is None
 
@@ -1109,7 +1090,9 @@ class TestImpressionStorage:
             async def resolve_summary_provider(self):
                 return _HangProvider()
 
-        svc = ImpressionService(b, summarizer=_FakeJudge(), timeout_sec=0.05)
+        svc = ImpressionService(
+            b, registry=TaskRegistry(), summarizer=_FakeJudge(), timeout_sec=0.05
+        )
         ok, msg = asyncio.run(svc.refresh_now("g", "u"))
         assert ok is False and "刷新失败" in msg
         rec = asyncio.run(b.get("g", "u"))
@@ -1347,7 +1330,7 @@ class TestImpressionPoints:
 
         b = SQLiteBackend(tmp_path / "t.db")
         asyncio.run(b.init())
-        svc = ImpressionService(b)
+        svc = ImpressionService(b, registry=TaskRegistry())
         ok, msg = asyncio.run(svc.refresh_now("g", "u"))
         assert ok is False and "未启用" in msg
 
@@ -1428,6 +1411,61 @@ class TestTaskRegistry:
 
         assert asyncio.run(_scenario()) is True
         asyncio.run(TaskRegistry().cancel_and_wait_all())  # 幂等
+
+    def test_task_exception_uses_framework_logger(self, monkeypatch):
+        from unittest.mock import Mock
+        from astrbot import api
+
+        logger = Mock()
+        monkeypatch.setattr(api, "logger", logger)
+        failure = RuntimeError("synthetic task failure")
+
+        async def run():
+            registry = TaskRegistry()
+
+            async def fail():
+                raise failure
+
+            task = registry.spawn(fail(), name="synthetic-failure")
+            with pytest.raises(RuntimeError):
+                await task
+            await asyncio.sleep(0)
+            assert registry.size == 0
+
+        asyncio.run(run())
+        logger.debug.assert_called_once()
+        assert "synthetic-failure" in logger.debug.call_args.args[0]
+        assert logger.debug.call_args.kwargs["exc_info"] is failure
+
+    def test_cancel_timeout_uses_framework_logger(self, monkeypatch):
+        from unittest.mock import Mock
+        from astrbot import api
+
+        logger = Mock()
+        monkeypatch.setattr(api, "logger", logger)
+
+        async def run():
+            registry = TaskRegistry()
+            started, release = asyncio.Event(), asyncio.Event()
+
+            async def delay_cancellation():
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    await release.wait()
+
+            task = registry.spawn(delay_cancellation(), name="slow-cancel")
+            await started.wait()
+            try:
+                await registry.cancel_and_wait_all(timeout=0)
+                logger.warning.assert_called_once()
+                assert "1 个后台任务" in logger.warning.call_args.args[0]
+            finally:
+                release.set()
+                await task
+
+        asyncio.run(run())
 
     def test_heavy_reads_off_loop(self, tmp_path):
         # X9：to_thread 读路径与直写语义一致（同一把锁互斥）

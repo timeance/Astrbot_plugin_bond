@@ -1,5 +1,6 @@
 """交付门禁：拒绝不匹配版本、缺失许可证及混入运行数据的发布包。"""
 
+import ast
 import json
 import shutil
 import subprocess
@@ -227,3 +228,27 @@ def test_release_accepts_annotated_tag_on_main(git_project):
         "fixture",
     )
     validate_tag("v0.3.0", "0.3.0")
+
+
+def test_runtime_logging_and_task_entrypoints_follow_store_rules():
+    files = [ROOT / "main.py", ROOT / "__init__.py"]
+    for directory in ("api", "core", "services", "storage"):
+        files.extend((ROOT / directory).rglob("*.py"))
+    for path in files:
+        relative = path.relative_to(ROOT).as_posix()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            location = f"{relative}:{getattr(node, 'lineno', 0)}"
+            if isinstance(node, ast.Import):
+                modules = {n.name.split(".")[0] for n in node.names}
+                assert "logging" not in modules, location
+            if isinstance(node, ast.ImportFrom):
+                assert (node.module or "").split(".")[0] != "logging", location
+                if any(n.name == "logger" for n in node.names):
+                    assert node.module == "astrbot.api", location
+                if node.module == "asyncio" and any(
+                    n.name == "create_task" for n in node.names
+                ):
+                    assert relative == "core/taskregistry.py", location
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr == "create_task":
+                    assert relative == "core/taskregistry.py", location
