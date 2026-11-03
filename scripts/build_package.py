@@ -53,6 +53,8 @@ def validate_archive(archive: Path) -> None:
             "README.md",
             "requirements.txt",
             "logo.png",
+            "resources/fonts/BondSansSC-Regular.ttf",
+            "resources/fonts/OFL.txt",
             "metadata.yaml",
             "main.py",
             "_conf_schema.json",

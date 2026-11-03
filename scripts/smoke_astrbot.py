@@ -61,6 +61,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     config["livingmemory"] = {"enabled": True, "read_enabled": True}
     config["group_whitelist"] = [OLD_GROUP]
     config["master_ids"] = OLD_USER
+    config["decay"]["baseline"] = 42  # 存量键留档，装配固定采用中性基线0。
     config["inject"]["enabled"] = True
     config["judge"]["roster"] = "synthetic-preserved"
     config["inject"]["memory_days"] = 9
@@ -232,6 +233,16 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
                     message=[At(qq=BOT_IDS[0])], message_id=self.message_id
                 )
 
+            def plain_result(self, text):
+                from astrbot.api.event import AstrMessageEvent
+
+                return AstrMessageEvent.plain_result(self, text)
+
+            def image_result(self, path):
+                from astrbot.api.event import AstrMessageEvent
+
+                return AstrMessageEvent.image_result(self, path)
+
             def get_group_id(self):
                 return self.group
 
@@ -316,6 +327,50 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert rank_context["subject"] == "当前 Bot"
         assert rank_context["facts"]["objects"] == "当前群成员"
         assert len(rank_context["facts"]["ranking"]) <= 10
+        # 新排行权限由三种真实装配入口统一检查，不因群管理员或模型工具绕过。
+        from unittest.mock import AsyncMock, patch
+
+        plugin._ranking_access = "master"
+        denied = FakeEvent()
+        denied.user = "8002"
+        with patch.object(old_deps.favor, "ranking", new=AsyncMock()) as queried:
+            with patch.object(
+                plugin._ranking_avatars, "load", new=AsyncMock()
+            ) as fetched:
+                assert (
+                    json.loads(await plugin._tool_rank(denied))["status"]
+                    == "unavailable"
+                )
+                assert len([item async for item in plugin._cmd_rank(denied)]) == 1
+                plugin._text_wake_enabled = True
+                denied.message_str = "好感排行"
+                denied._bond_cmd_done = False
+                with patch(
+                    "astrbot_plugin_bond.main.on_group_message", new=AsyncMock()
+                ):
+                    denied_replies = [
+                        item async for item in plugin._on_group_msg(denied)
+                    ]
+                    assert len(denied_replies) == 1
+                    assert (
+                        denied_replies[0].chain[0].text
+                        == "本群排行仅允许配置的主人查询。"
+                    )
+                queried.assert_not_called()
+                fetched.assert_not_called()
+        await old_deps.favor.observe_member(OLD_GROUP, OLD_USER)
+        with patch.object(
+            plugin._ranking_avatars, "load", new=AsyncMock(return_value=[None])
+        ) as fetched:
+            # 渲染确实生成本地PNG；头像为合成占位，不连接真实平台。
+            replies = [item async for item in plugin._cmd_rank(FakeEvent())]
+            assert len(replies) == 1
+            fetched.assert_awaited_once()
+            assert any(
+                type(component).__name__ == "Image" for component in replies[0].chain
+            )
+        plugin._ranking_access = "all"
+        plugin._text_wake_enabled = False
 
         event = FakeEvent()
         dispatch = asyncio.create_task(_drain(plugin._on_group_msg(event)))
@@ -767,6 +822,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     prompts_path.write_text("{broken", encoding="utf-8")
     config2 = AstrBotConfig(str(config_path), schema=schema)
     config2["inject"]["enabled"] = True
+    config2["relation_mode"] = "galgame"
     # 存量显式关闭和旧参数不能被升级后的默认值覆盖。
     config2["decay"].update(
         enabled=False, half_life_base=10, half_life_growth=1.3, half_life_max=60
@@ -784,6 +840,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert plugin2._prompts.load_error
         deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
         assert deps2.favor._decay is None
+        assert deps2.favor._relation_caps == dict(
+            familiarity=(3, 0), affinity=(4.5, 6), trust=(1, 4)
+        )
+        assert deps2.favor._relation_policy.deltas("friendly")["affinity"] == 1.0
         assert plugin2._dependency_config["decay"]["half_life_base"] == 10
         assert plugin2._dependency_config["decay"]["half_life_max"] == 60
         assert plugin2._dependency_config["decay"]["half_life_growth"] == 1.3

@@ -63,34 +63,58 @@ async def tool_query_favor(
     )
 
 
+def ranking_denial(svc: FavorService, event: AstrMessageEvent, access: str) -> str:
+    """三种排行入口共用访问检查；先判断权限，再读取任何榜单资料。"""
+    if not event.get_group_id():
+        return "请在群聊中查询本群排行。"
+    if access == "all":
+        return ""
+    if access == "master":
+        if svc.is_master(str(event.get_sender_id())):
+            return ""
+        return "本群排行仅允许配置的主人查询。"
+    return "排行查询权限配置无效，请联系维护者。"
+
+
+async def ranking_rows(svc: FavorService, event: AstrMessageEvent, limit: int):
+    """构造文字、图片与模型共用的公开行；不把数值、印象或账号交给绘图层。"""
+    count = min(10, max(1, int(limit)))
+    group_id = event.get_group_id()
+    rows = await svc.ranking(group_id, count)
+    public, self_rank, avatar_ids = [], None, []
+    for i, record in enumerate(rows[:count], 1):
+        label = " ".join((record.nickname or "").split())[:40] or "未命名成员"
+        title = await svc.relation_title(group_id, record.user_id)
+        public.append({"rank": i, "member": label, "relation_title": title})
+        avatar_ids.append(str(record.user_id))
+        if str(record.user_id) == str(event.get_sender_id()):
+            self_rank = i
+    return public, self_rank, avatar_ids
+
+
+def ranking_text(rows: list[dict]) -> str:
+    if not rows:
+        return "本群还没有关系记录。"
+    return "本群关系排行（按亲近度排序）：\n" + "\n".join(
+        f"{row['rank']}. {row['member']}：{row['relation_title']}" for row in rows
+    )
+
+
 async def tool_query_ranking(
     svc: FavorService,
     event: AstrMessageEvent,
     limit: int = 10,
     *,
     for_llm: bool = False,
+    ranking_access: str = "all",
 ) -> str:
-    """本群按亲近度排序，最多十人，只公开称谓。"""
-    group_id = event.get_group_id()
-    if not group_id:
-        return _reply("请在群聊中查询本群排行。", for_llm=for_llm, status="unavailable")
-    rows = await svc.ranking(group_id, min(10, max(1, int(limit))))
-    ranking = []
-    for i, record in enumerate(rows, 1):
-        label = " ".join((record.nickname or record.user_id).split())[:40]
-        title = await svc.relation_title(group_id, record.user_id)
-        ranking.append({"rank": i, "member": label, "relation_title": title})
-    public = (
-        "本群关系排行（按亲近度排序）：\n"
-        + "\n".join(
-            f"{row['rank']}. {row['member']}：{row['relation_title']}"
-            for row in ranking
-        )
-        if ranking
-        else "本群还没有关系记录。"
-    )
+    """在权限允许时返回本群前十名称谓，模型工具不直接发送图片。"""
+    reason = ranking_denial(svc, event, ranking_access)
+    if reason:
+        return _reply(reason, for_llm=for_llm, status="unavailable")
+    ranking, _, _ = await ranking_rows(svc, event, limit)
     return _reply(
-        public,
+        ranking_text(ranking),
         for_llm=for_llm,
         objects="当前群成员",
         order="按当前 Bot 对成员的亲近度降序",

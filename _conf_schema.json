@@ -4,7 +4,7 @@
     "description": "主人 QQ",
     "default": "",
     "invisible": false,
-    "hint": "多个 QQ 号用英文逗号分隔。仅作为关系身份标记，沿用当前人格；不授予管理权限，关系数值照常变化。保存后重载插件生效。"
+    "hint": "多个QQ号用英文逗号分隔。用于关系身份标记；仅主人排行模式也按此名单核验。不授予管理权限、不豁免评分；称呼沿用当前人格。保存后重载插件生效。"
   },
   "max_favor": {
     "type": "float",
@@ -386,29 +386,45 @@
       "text_wake_enabled": {
         "type": "bool",
         "default": false,
-        "description": "无需斜杠，用指定短语查询本群文字排行；管理员指令仍需斜杠。"
+        "description": "无需斜杠，用指定短语查询本群排行；仍遵守排行权限。"
       },
       "text_wake_ranking": {
         "type": "string",
         "default": "好感排行,好感榜单,好感排名",
         "description": "文字唤醒「全群排行」的短语，逗号分隔（精确匹配整条消息）"
+      },
+      "ranking_access": {
+        "type": "string",
+        "default": "all",
+        "options": [
+          "all",
+          "master"
+        ],
+        "description": "排行查询权限",
+        "hint": "all＝所有人；master＝仅主人。主人按Bond的主人QQ配置与平台发言者ID匹配，未配置时无人可查。限制同时作用于命令、文字唤醒和模型工具；不授予管理权限，也不阻止获准者转发榜单。"
+      },
+      "ranking_image": {
+        "type": "bool",
+        "default": true,
+        "description": "图片排行",
+        "hint": "命令和文字唤醒使用八千代月读空间风格图片，最多10人，展示昵称、头像和关系称谓。会向QQ头像服务请求榜内成员头像；失败显示占位头像，绘图失败回退文字。模型工具仍返回关系资料。"
       }
     },
-    "invisible": true
+    "invisible": false
   },
   "render": {
     "type": "object",
-    "description": "旧图片排行配置留档；当前公开查询使用文字排行，这些选项不影响当前输出。",
+    "description": "图片排行字体；其余旧布局参数仅留档。",
     "items": {
       "font_path": {
         "type": "string",
         "default": "",
-        "description": "CJK 字体路径，留空自动探测；找不到则退回默认字体（中文可能变方框，数字不受影响）"
+        "description": "可选中文字体路径；留空使用随插件打包的开源中文字体，无需联网下载。"
       },
       "rows_per_col": {
         "type": "int",
         "default": 12,
-        "description": "每列行数上限；超过则向右新增列（左上最高、向下递减、再第二列）"
+        "description": "旧多列布局参数留档；当前排行固定为单列，最多10人。"
       }
     },
     "invisible": true
@@ -425,7 +441,8 @@
       "baseline": {
         "type": "float",
         "default": 0,
-        "description": "衰减基线（好感向此值收敛，不会越过）"
+        "description": "旧配置留档；当前插件固定以0为亲近度衰减基线，不再读取此值。",
+        "invisible": true
       },
       "floor_enabled": {
         "type": "bool",
@@ -457,7 +474,7 @@
       "preset": {
         "type": "string",
         "default": "default",
-        "description": "缺省参数预设；已保存的具体参数优先，仅改预设不会覆盖它们。",
+        "description": "旧缺省参数预设留档；保留已有自定义行为。新用户使用关系节奏模板，具体增长参数仍优先。",
         "options": [
           "default",
           "galgame",
@@ -467,7 +484,8 @@
           "default",
           "galgame",
           "realistic"
-        ]
+        ],
+        "invisible": true
       },
       "enabled": {
         "type": "bool",
@@ -791,5 +809,15 @@
         "hint": "记录脱敏后的关系状态、词条、评估状态和耗时；不新增聊天原文或模型原始输出。写入或导出时清理超过7天的内容，总量最多20MB，量大时会提前轮转。仅本机保存，供管理员导出；保存后重载插件生效。"
       }
     }
+  },
+  "relation_mode": {
+    "type": "string",
+    "description": "关系节奏模板",
+    "default": "realistic",
+    "options": [
+      "realistic",
+      "galgame"
+    ],
+    "hint": "realistic＝写实：沿用当前节奏。galgame＝Galgame：正向熟悉度/亲近度请求增量×1.25，每日上涨上限改为3/4.5；信任、负向变化、冷却与单次上限不变。切换不重置历史或当日已用额度，保存后重载生效。"
   }
 }

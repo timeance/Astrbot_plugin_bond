@@ -31,8 +31,8 @@ source .venv/bin/activate
 
 | 依赖文件 | 用途 |
 | --- | --- |
-| `requirements.txt` | 插件运行依赖：Pillow 生成排行图片，Quart 提供页面 API。AstrBot 由宿主提供。 |
-| `requirements-test.txt` | 离线测试使用的 pytest、PyYAML 和 Windows 时区数据。CI 与本地共用版本。 |
+| `requirements.txt` | 插件运行依赖：Pillow 生成排行图片，aiohttp 有界获取 QQ 头像，Quart 提供页面 API。AstrBot 由宿主提供。 |
+| `requirements-test.txt` | 离线测试使用的 pytest、PyYAML、图片/头像测试依赖和 Windows 时区数据。CI 与本地共用版本。 |
 | `requirements-dev.txt` | 引用测试依赖，再加入固定版本的 Black、Ruff。普通开发安装这一份即可。 |
 
 离线环境不安装 AstrBot，不连接平台或模型。真实框架检查使用另一个环境，避免测试桩掩盖导入错误。Python 3.10 只验证核心层兼容性，不代表宿主支持该版本。
@@ -133,3 +133,5 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 5. 查看 Release 的附件和 Actions 结果。普通 PR、分支推送和本地 ZIP 验证都不会创建 Release，也不会提交插件商店。
 
 构建失败时修复原因并重新检查。若发布结果不确定，先查看远端 tag、Release 与附件，再决定是否重跑；已存在的 Release 会使创建命令失败，不会覆盖附件。工作流结构检查和本地干跑不能证明真正发布成功，首次正式发布仍须核对远端结果。
+
+久别旧友现状可运行 `python scripts/replay_reconnection.py --output artifacts/reconnection-run`；使用新的空输出目录，对照写实/Galgame在90天沉默与三次友好互动后的三维值。研究结论见 [久别旧识评估](research/RECONNECTION_ASSESSMENT.md)，不启用额外回暖机制。

@@ -410,3 +410,22 @@ test('recommended rules are staged without saving or changing identity, models a
  pending[0].resolve({success:true,revision:'after',values:{...values,...expected},fields:[]});await saving;
  assert.match(ui.detailNotice.value,/重载/);
 });
+
+
+test('two recommended templates stage mode and keep ranking permission untouched',()=>{
+ const {ui,pending}=harness();
+ const values={relation_mode:'realistic','command.ranking_access':'master','decay.half_life_base':60,'economy.negative_weight':1.5};
+ ui.detailSettings.value={revision:'r',values:{...values},fields:[
+  {path:'relation_mode',default:'realistic'},{path:'command.ranking_access',default:'all'},
+  {path:'decay.half_life_base',default:30},{path:'economy.negative_weight',default:1}
+ ]};
+ ui.detailValues.value={...values};ui.fillRecommendedRules('galgame');
+ assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ assert.equal(ui.detailValues.value['command.ranking_access'],'master');
+ assert.equal(ui.detailValues.value['decay.half_life_base'],30);
+ assert.equal(ui.detailValues.value['economy.negative_weight'],1);
+ assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
+ ui.fillRecommendedRules('invalid');assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ ui.fillRecommendedRules('realistic');assert.equal(ui.detailValues.value.relation_mode,'realistic');
+ assert.equal(pending.length,0);
+});

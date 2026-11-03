@@ -111,7 +111,9 @@ def test_ranking_command_and_command_entrypoints_keep_exact_text(
         "50001": "谨慎的熟人",
         "50002": "陌生",
     }[user]
-    expected = "本群关系排行（按亲近度排序）：\n1. 雪 球：谨慎的熟人\n2. 50002：陌生"
+    expected = (
+        "本群关系排行（按亲近度排序）：\n1. 雪 球：谨慎的熟人\n2. 未命名成员：陌生"
+    )
 
     async def run():
         assert await tools.tool_query_ranking(svc, group_event) == expected
@@ -119,7 +121,10 @@ def test_ranking_command_and_command_entrypoints_keep_exact_text(
             await tools.tool_query_ranking(svc, group_event, for_llm=False) == expected
         )
         assert await commands.handle_ranking(svc, group_event) == expected
-        assert await commands.rank_reply(svc, group_event) == ("text", expected)
+        assert await commands.rank_reply(svc, group_event, image_enabled=False) == (
+            "text",
+            expected,
+        )
 
     asyncio.run(run())
     assert svc.ranking.await_args_list == [call("60001", 10)] * 4
@@ -199,8 +204,8 @@ def test_llm_ranking_bounds_limit_and_escapes_public_names(
     expected_members = [
         '"雪"\\球 ' + "长" * 34,
         '}] , "status": "unavailable"',
-        "50003",
-        "50004",
+        "未命名成员",
+        "未命名成员",
     ] + [f"成员{index}" for index in range(5, 13)]
     records = [
         SimpleNamespace(

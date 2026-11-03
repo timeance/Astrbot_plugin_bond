@@ -1,274 +1,247 @@
-"""心弦好感度 - 排行图片渲染（PIL）。
-
-把群内好感度排行画成**列优先网格**：左上最高、向下递减、再第二列同理；
-查询人高亮。每格：等级色温条 + 名次 + 昵称(QQ后4位) + 右对齐好感度（按色温轴着色）。
-标题下为冷→暖渐变「弦线」，与 WebUI 面板同一套视觉语言。
-字体自动探测 CJK（容器内自带 + 其他插件）；找不到退回 PIL 默认（仅 ASCII）。
-"""
+"""月读空间风格的公开排行；固定十人以内，仅绘制昵称、头像和关系称谓。"""
 
 from __future__ import annotations
 
-import math
-import os
+import io
 import tempfile
+import threading
 import time
+import unicodedata
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-# 临时图带专属前缀，渲染前顺手清理 1 小时前的旧图（图片发出后文件即无用，
-# 否则常驻进程会往 /tmp 无限累积）
-_TMP_PREFIX = "xinxian_rank_"
-
-# 自动探测的 CJK 字体候选（容器内常见位置 + 其他插件自带）
-_CJK_CANDIDATES = [
-    "/AstrBot/data/plugin_data/astrbot_plugin_shoubanhua/fonts/NotoSansCJKsc-Regular.otf",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-    "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
-]
-
-# 千咲（朽叶千咲）配色：黑长直黑发 + 红瞳 + 红黑剪刀 + 湮灭暗调 → 深底 + 绯红强调
-_BG = (26, 24, 30)  # 页面底：近黑微紫（湮灭/暗调）
-_TITLE = (236, 230, 232)  # 标题：近白
-_ACCENT = (172, 36, 50)  # 千咲红（红瞳 / 红黑剪刀）：高亮与强调
-_CELL_BG = (40, 36, 46)  # 单元格底：深紫黑
-_CELL_BORDER = (74, 46, 56)  # 单元格边：暗红紫
-_TEXT = (228, 224, 230)  # 正文：浅
-_HL_BG = _ACCENT  # 查询人高亮：千咲红
-_HL_BORDER = (214, 64, 79)  # 高亮描边：亮绯
-_HL_TEXT = (255, 255, 255)  # 高亮文字：白
-_EMPTY = (150, 142, 150)
-_DIM = (122, 115, 128)  # 弱化：名次/页脚
-_TOP3 = (238, 84, 99)  # 前三名：亮绯
-
-# 七级好感色温轴（深底可读版）：冷蓝紫(厌恶) → 灰 → 玫瑰 → 亮绯(挚爱)
-# 与 WebUI 面板同源，按深底提亮
-_LEVEL_COLORS = {
-    "厌恶": (139, 151, 224),
-    "陌生": (168, 163, 174),
-    "认识": (195, 156, 201),
-    "友好": (217, 138, 160),
-    "亲密": (232, 122, 140),
-    "挚友": (238, 84, 99),
-    "挚爱": (255, 96, 112),
-}
-_RAMP = list(_LEVEL_COLORS.values())  # 弦线渐变停靠点
+_ROOT = Path(__file__).resolve().parents[1]
+_FONT = _ROOT / "resources/fonts/BondSansSC-Regular.ttf"
+_RENDER_SLOTS = threading.BoundedSemaphore(2)
+_LAST_CLEANUP = 0.0
+_WIDTH = 960
+_INK = "#f3f0ff"
+_MUTED = "#aaa9cf"
+_GOLD = "#f4d799"
 
 
-def _level_color(row: dict):
-    """行 → 色温轴颜色；level 缺失时按默认阈值回退估算。"""
-    lv = str(row.get("level") or "")
-    if lv in _LEVEL_COLORS:
-        return _LEVEL_COLORS[lv]
-    try:
-        f = float(row.get("favor") or 0)
-    except (TypeError, ValueError):
-        f = 0.0
-    for name, lo in (
-        ("挚爱", 95),
-        ("挚友", 80),
-        ("亲密", 55),
-        ("友好", 30),
-        ("认识", 10),
-        ("陌生", 0),
-    ):
-        if f >= lo:
-            return _LEVEL_COLORS[name]
-    return _LEVEL_COLORS["厌恶"]
-
-
-def _load_font(path: str | None, size: int) -> ImageFont.FreeTypeFont:
-    for p in [path] + _CJK_CANDIDATES if path else _CJK_CANDIDATES:
-        if p and os.path.exists(p):
+def _font(custom: str, size: int):
+    for path in (custom, str(_FONT)):
+        if path:
             try:
-                return ImageFont.truetype(p, size)
-            except Exception:
+                return ImageFont.truetype(path, size)
+            except OSError:
                 continue
-    return ImageFont.load_default()
+    # 缺字时回退文字消息，避免向群内发送满是方框的图片。
+    raise OSError("排行中文字体不可用")
 
 
-def _last4(uid) -> str:
-    s = str(uid or "")
-    return s[-4:] if len(s) >= 4 else s
+def _label(value: object, limit: int = 80) -> str:
+    text = str(value or "")[: limit * 2]
+    text = "".join(c for c in text if not unicodedata.category(c).startswith("C"))
+    return " ".join(text.split())[:limit]
 
 
-def _favor_str(v) -> str:
-    try:
-        f = float(v)
-    except Exception:
-        return str(v)
-    return ("%g" % f) if f == int(f) else ("%.1f" % f)
-
-
-def _fit(draw, text: str, font, max_w: int) -> str:
-    """按实际文字宽度截断 text 到 max_w 内（超出加 …），保证不溢出格子。"""
-    if draw.textbbox((0, 0), text, font=font)[2] <= max_w:
+def _fit(draw, text, font, width):
+    if draw.textlength(text, font=font) <= width:
         return text
-    lo, hi = 1, len(text)
+    lo, hi = 0, len(text)
     while lo < hi:
         mid = (lo + hi + 1) // 2
-        if draw.textbbox((0, 0), text[:mid] + "…", font=font)[2] <= max_w:
+        if draw.textlength(text[:mid] + "…", font=font) <= width:
             lo = mid
         else:
             hi = mid - 1
-    return text[: max(lo, 1)] + "…"
+    return text[:lo] + "…"
 
 
-def _text_vh(
-    draw, x: int, y_center: int, text: str, font, fill, *, right_x: int | None = None
-):
-    """垂直居中画文本；right_x 给定时右对齐到该 x。"""
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    tx = (right_x - tw - bbox[0]) if right_x is not None else (x - bbox[0])
-    draw.text((tx, y_center - th / 2 - bbox[1]), text, font=font, fill=fill)
+def _center(draw, box, text, font, fill):
+    x0, y0, x1, y1 = box
+    draw.text(((x0 + x1) / 2, (y0 + y1) / 2), text, font=font, fill=fill, anchor="mm")
 
 
-def _gradient_string(
-    img: Image.Image, x0: int, y: int, width: int, height: int = 3
-) -> None:
-    """冷→暖渐变「弦线」（圆角），停靠点取色温轴七级色。"""
-    grad = Image.new("RGB", (width, height))
-    gd = ImageDraw.Draw(grad)
-    last = len(_RAMP) - 1
-    for gx in range(width):
-        t = gx / max(width - 1, 1) * last
-        i = min(int(t), last - 1)
-        f = t - i
-        c = tuple(
-            round(_RAMP[i][k] + (_RAMP[i + 1][k] - _RAMP[i][k]) * f) for k in range(3)
-        )
-        gd.line([(gx, 0), (gx, height)], fill=c)
-    mask = Image.new("L", (width, height), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, width - 1, height - 1], radius=height // 2, fill=255
+def _star(draw, x, y, radius, fill):
+    draw.polygon(
+        [
+            (x, y - radius),
+            (x + radius / 3, y - radius / 3),
+            (x + radius, y),
+            (x + radius / 3, y + radius / 3),
+            (x, y + radius),
+            (x - radius / 3, y + radius / 3),
+            (x - radius, y),
+            (x - radius / 3, y - radius / 3),
+        ],
+        fill=fill,
     )
-    img.paste(grad, (x0, y), mask)
 
 
-def _cleanup_stale_tmp() -> None:
-    """best-effort 删除 1 小时前生成的旧排行图；任何失败忽略。"""
-    try:
-        cutoff = time.time() - 3600
-        for p in Path(tempfile.gettempdir()).glob(f"{_TMP_PREFIX}*.png"):
+def _avatar(image, draw, x, y, name, data, font, accent):
+    size = 56
+    photo = None
+    if isinstance(data, bytes) and len(data) <= 131072:
+        try:
+            with Image.open(io.BytesIO(data)) as original:
+                if (
+                    original.format in {"PNG", "JPEG", "WEBP"}
+                    and max(original.size) <= 512
+                ):
+                    photo = ImageOps.fit(
+                        original.convert("RGB"),
+                        (size, size),
+                        method=Image.Resampling.LANCZOS,
+                    )
+        except (OSError, ValueError, Image.DecompressionBombError):
+            pass
+    draw.ellipse((x - 3, y - 3, x + size + 3, y + size + 3), fill=accent)
+    if photo is None:
+        draw.ellipse((x, y, x + size, y + size), fill="#343255")
+        _center(draw, (x, y, x + size, y + size), name[:1] or "·", font, _INK)
+    else:
+        mask = Image.new("L", (size, size))
+        ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+        image.paste(photo, (x, y), mask)
+
+
+def _output_dir():
+    global _LAST_CLEANUP
+    directory = Path(tempfile.gettempdir()) / "astrbot_plugin_bond" / "ranking"
+    directory.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    if now - _LAST_CLEANUP > 60:
+        _LAST_CLEANUP = now
+        # 仅扫描本插件的专用目录，不在系统临时目录扫描其他应用文件。
+        for path in directory.glob("bond_rank_*.png"):
             try:
-                if p.stat().st_mtime < cutoff:
-                    p.unlink()
+                if path.stat().st_mtime < now - 3600:
+                    path.unlink()
             except OSError:
                 pass
-    except Exception:
-        pass
+    return directory
 
 
 def render_ranking(
     rows: list[dict],
-    querier_id,
+    self_rank: int | None = None,
     *,
     font_path: str = "",
-    rows_per_col: int = 12,
-    title: str = "本群好感度排行",
+    avatars: list[bytes | None] | None = None,
 ) -> str:
-    """渲染排行图片，返回临时 PNG 路径。
+    """有界线程绘制；拒绝忙碌时排队分配大图，由调用方回退文字。"""
+    if not _RENDER_SLOTS.acquire(blocking=False):
+        raise RuntimeError("排行图片绘制繁忙")
+    try:
+        return _render(rows[:10], self_rank, font_path, (avatars or [])[:10])
+    finally:
+        _RENDER_SLOTS.release()
 
-    rows: list[dict]（含 user_id/favor，**已按 favor 降序**；有 level 则按色温轴着色）。
-    querier_id: 当前查询人 QQ（该格高亮）。
-    """
-    _cleanup_stale_tmp()
-    n = len(rows)
-    cols = max(1, math.ceil(n / rows_per_col)) if n else 1
-    rows_in_col = math.ceil(n / cols) if n else 1
 
-    cell_w, cell_h = 372, 48
-    gap_x, gap_y = 14, 12
-    pad = 28
-    title_h = 68
-    footer_h = 36
-
-    img_w = pad * 2 + cols * cell_w + max(0, cols - 1) * gap_x
-    img_h = (
-        pad * 2
-        + title_h
-        + rows_in_col * cell_h
-        + max(0, rows_in_col - 1) * gap_y
-        + footer_h
+def _render(rows, self_rank, font_path, avatars):
+    height = 380 + max(1, len(rows)) * 86 + 100
+    image = Image.new("RGB", (_WIDTH, height))
+    draw = ImageDraw.Draw(image)
+    # 少量逐行渐变和固定星点，无逐像素 Python 循环。
+    for y in range(height):
+        t = y / height
+        draw.line(
+            (0, y, _WIDTH, y), fill=(int(18 + 8 * t), int(25 - 4 * t), int(58 + 4 * t))
+        )
+    for i in range(52):
+        x, y = (i * 173 + 31) % 940 + 10, (i * 97 + 19) % 330
+        if i % 7 == 0:
+            _star(draw, x, y, 5, "#c1c2eb")
+        else:
+            draw.ellipse((x, y, x + 2, y + 2), fill="#727aa9")
+    draw.arc((555, -155, 1050, 342), 5, 340, fill="#576599", width=2)
+    draw.arc((575, -135, 1030, 322), 35, 325, fill="#b0bfe0", width=1)
+    draw.line(
+        [(28, 303), (178, 278), (330, 315), (484, 280), (612, 320), (930, 290)],
+        fill="#536180",
+        width=1,
     )
-    img = Image.new("RGB", (img_w, img_h), _BG)
-    draw = ImageDraw.Draw(img)
+    for x, y in ((178, 278), (330, 315), (484, 280), (612, 320)):
+        _star(draw, x, y, 4, _GOLD)
 
-    f_title = _load_font(font_path, 28)
-    f_cell = _load_font(font_path, 20)
-    f_rank = _load_font(font_path, 18)
-    f_small = _load_font(font_path, 16)
-
-    # ---- 头部：红瞳圆点 + 标题 + 右侧人数 + 渐变弦线 ----
-    dot_cx, dot_cy = pad + 7, pad + 17
-    draw.ellipse(
-        [dot_cx - 10, dot_cy - 10, dot_cx + 10, dot_cy + 10], fill=(58, 34, 42)
+    title_font = _font(font_path, 48)
+    heading_font = _font(font_path, 32)
+    body_font = _font(font_path, 25)
+    small_font = _font(font_path, 20)
+    tiny_font = _font(font_path, 17)
+    draw.rounded_rectangle(
+        (42, 38, 255, 72), radius=16, fill="#303652", outline="#646b93"
     )
-    draw.ellipse([dot_cx - 5, dot_cy - 5, dot_cx + 5, dot_cy + 5], fill=_ACCENT)
-    draw.text((pad + 24, pad + 2), title, font=f_title, fill=_TITLE)
-    if n:
-        _text_vh(draw, 0, dot_cy, f"共 {n} 人", f_small, _DIM, right_x=img_w - pad)
-    _gradient_string(img, pad, pad + 46, img_w - pad * 2)
-    querier = str(querier_id or "")
+    _center(draw, (42, 38, 255, 72), "TSUKUYOMI · BOND", tiny_font, _GOLD)
+    draw.text((42, 94), "月读空间", font=title_font, fill=_INK)
+    draw.text((44, 169), "相处的轨迹，都在这里。", font=body_font, fill="#c2c7e6")
+    draw.text((44, 218), "熟悉 · 亲近 · 信任", font=small_font, fill=_MUTED)
+    with Image.open(_ROOT / "logo.png") as source:
+        logo = source.convert("RGBA")
+        logo.thumbnail((288, 288), Image.Resampling.LANCZOS)
+        image.paste(logo, (642, 24), logo)
+    draw.line((42, 333, 918, 333), fill="#575d83", width=1)
+    draw.text((44, 345), "本群关系排行", font=heading_font, fill=_INK)
+    draw.text((915, 359), "按亲近度排序", font=small_font, fill=_MUTED, anchor="rm")
 
-    if n == 0:
-        draw.text((pad, pad + title_h + 20), "暂无成员", font=f_cell, fill=_EMPTY)
-
-    # ---- 单元格：色温条 + 名次 + 昵称(QQ后4位) + 右对齐好感 ----
-    for i, r in enumerate(rows):
-        col = i // rows_in_col
-        row = i % rows_in_col
-        x = pad + col * (cell_w + gap_x)
-        y = pad + title_h + row * (cell_h + gap_y)
-        cy = y + cell_h / 2
-        is_q = str(r.get("user_id", "")) == querier
+    for i, row in enumerate(rows):
+        y = 400 + i * 86
+        own = row.get("rank") == self_rank
+        accent = "#a5dcec" if own else (_GOLD if i == 0 else "#8d91ba")
         draw.rounded_rectangle(
-            [x, y, x + cell_w, y + cell_h],
-            radius=10,
-            fill=_HL_BG if is_q else _CELL_BG,
-            outline=_HL_BORDER if is_q else _CELL_BORDER,
+            (40, y, 920, y + 74),
+            radius=17,
+            fill="#303b60" if own else "#242d4d",
+            outline=accent if own else "#444664",
+            width=2 if own else 1,
         )
-        lc = _level_color(r)
-        fg = _HL_TEXT if is_q else _TEXT
-
-        # 左：等级色温条
+        _center(
+            draw,
+            (50, y, 105, y + 74),
+            f"{i + 1:02d}",
+            body_font,
+            _GOLD if i < 3 else _MUTED,
+        )
+        member = _label(row.get("member")) or "群成员"
+        title = _label(row.get("relation_title")) or "关系未记录"
+        _avatar(
+            image,
+            draw,
+            115,
+            y + 9,
+            member,
+            avatars[i] if i < len(avatars) else None,
+            body_font,
+            accent,
+        )
+        nick = _fit(draw, member, body_font, 350)
+        draw.text((190, y + 37), nick, font=body_font, fill=_INK, anchor="lm")
+        if own:
+            nx = min(550, int(202 + draw.textlength(nick, font=body_font)))
+            draw.rounded_rectangle(
+                (nx, y + 24, nx + 35, y + 50), radius=10, fill="#a5dcec"
+            )
+            _center(draw, (nx, y + 24, nx + 35, y + 50), "你", tiny_font, "#22314f")
         draw.rounded_rectangle(
-            [x + 10, y + 11, x + 14, y + cell_h - 11],
-            radius=2,
-            fill=_HL_TEXT if is_q else lc,
+            (600, y + 17, 896, y + 57), radius=20, fill="#353957", outline="#62678c"
         )
-        # 名次（前三亮绯）
-        rank_color = _HL_TEXT if is_q else (_TOP3 if i < 3 else _DIM)
-        _text_vh(draw, x + 24, cy, str(i + 1), f_rank, rank_color)
-
-        # 好感（右对齐，色温轴着色）→ 先量宽，再给昵称留位
-        favor_txt = _favor_str(r.get("favor", 0))
-        fw = draw.textbbox((0, 0), favor_txt, font=f_cell)[2]
-        favor_color = _HL_TEXT if is_q else lc
-        _text_vh(draw, 0, cy, favor_txt, f_cell, favor_color, right_x=x + cell_w - 16)
-
-        # 昵称(QQ后4位)：QQ 段永不截断
-        last4 = _last4(r.get("user_id", ""))
-        suffix = f"({last4})"
-        suffix_w = draw.textbbox((0, 0), suffix, font=f_cell)[2]
-        nick_x = x + 66
-        nick_max = (x + cell_w - 16 - fw - 14) - nick_x
-        nick = str(r.get("nickname") or "").strip()
-        nick = (
-            _fit(draw, nick, f_cell, max(nick_max - suffix_w - 6, 30)) if nick else ""
+        _center(
+            draw,
+            (610, y + 17, 886, y + 57),
+            _fit(draw, title, body_font, 266),
+            body_font,
+            "#e8dfff",
         )
-        label = f"{nick} {suffix}" if nick else suffix
-        _text_vh(draw, nick_x, cy, label, f_cell, fg)
+    if not rows:
+        _center(draw, (40, 400, 920, 474), "本群还没有关系记录", body_font, _MUTED)
+    footer = height - 61
+    draw.line((42, footer - 15, 918, footer - 15), fill="#434c70", width=1)
+    draw.text((44, footer), "关系有层次，表达有个性。", font=small_font, fill=_MUTED)
+    draw.text((916, footer), "BOND", font=small_font, fill=_GOLD, anchor="ra")
 
-    # ---- 页脚 ----
-    fy = img_h - pad - footer_h / 2 + 4
-    _text_vh(draw, 0, fy, "心弦 · 好感度", f_small, _DIM, right_x=img_w - pad)
-
-    path = tempfile.NamedTemporaryFile(
-        prefix=_TMP_PREFIX, suffix=".png", delete=False
-    ).name
-    img.save(path, "PNG")
-    return path
+    with tempfile.NamedTemporaryFile(
+        prefix="bond_rank_", suffix=".png", dir=_output_dir(), delete=False
+    ) as handle:
+        path = Path(handle.name)
+    try:
+        image.save(path, "PNG")
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    finally:
+        image.close()
+    return str(path)
