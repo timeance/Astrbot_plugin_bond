@@ -1,5 +1,5 @@
 pytest==9.2.0
 PyYAML==6.0.3
-Pillow==11.2.1
+Pillow==13.0.0
 tzdata==2026.6; sys_platform == "win32"
 aiohttp==3.14.5
