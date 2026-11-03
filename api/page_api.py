@@ -296,12 +296,23 @@ class PageApi:
                     raise _PageRequestError
             else:
                 user_id = self._optional_account(params, "user_id")
+            dimension = params.get("dimension") or None
+            source = params.get("source") or None
+            if dimension not in (
+                None,
+                "familiarity",
+                "affinity",
+                "trust",
+            ) or source not in (None, "judge"):
+                raise _PageRequestError
             logs = await deps.favor.query_logs(
                 group_id,
                 user_id,
                 self._limit(params, "limit", 300, 1000),
                 self._offset(params),
                 fuzzy=fuzzy,
+                dimension=dimension,
+                source=source,
             )
             return self._response({"success": True, "logs": logs, "count": len(logs)})
 
@@ -320,13 +331,32 @@ class PageApi:
             params = await self._params()
             _bot_id, _mode, deps = await self._deps(params)
             group_id = self._optional_account(params, "group_id")
-            users = await deps.favor.standings(
+            page = self._positive_int(params.get("page", 1))
+            page_size = self._positive_int(params.get("page_size", 50))
+            search = params.get("search", "")
+            include_zero = params.get("include_zero", "0")
+            if (
+                page_size not in (30, 50, 100, 200)
+                or not isinstance(search, str)
+                or len(search) > 32
+                or (search.strip() and not search.strip().isascii())
+                or (search.strip() and not search.strip().isdigit())
+            ):
+                raise _PageRequestError
+            if type(include_zero) is bool:
+                expanded = include_zero
+            elif type(include_zero) is str and include_zero in {"0", "1"}:
+                expanded = include_zero == "1"
+            else:
+                raise _PageRequestError
+            result = await deps.favor.standings_page(
                 group_id,
-                self._limit(params, "limit", 500, 2000),
+                page=page,
+                page_size=page_size,
+                search=search,
+                include_zero=expanded,
             )
-            return self._response(
-                {"success": True, "users": users, "count": len(users)}
-            )
+            return self._response({"success": True, **result})
 
         return await self._invoke(run)
 
@@ -567,6 +597,7 @@ class PageApi:
                     "configured": configured,
                     "active": asdict(deps.assessment.config),
                     "max_concurrent_assessments": limit,
+                    "active_max_concurrent_assessments": deps.assessment.capacity.limit,
                 }
             )
 

@@ -624,3 +624,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .xx-help-button { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; padding: 0; border: 1px solid var(--xx-line-2); border-radius: 50%; background: transparent; color: var(--xx-ink-3); font-size: 11px; cursor: help; }
 .xx-help-tooltip { display: none; position: absolute; z-index: 5; top: calc(100% + 6px); left: -24px; width: min(280px, 65vw); padding: 8px 10px; border: 1px solid var(--xx-line); border-radius: 6px; background: var(--xx-card); color: var(--xx-ink-2); font-size: 11px; line-height: 1.6; box-shadow: 0 3px 12px #0002; }
 .xx-field-help:hover .xx-help-tooltip, .xx-field-help:focus-within .xx-help-tooltip { display: block; }
+
+/* 成员分页与折叠入口在窄屏自动换行。 */
+.xx-member-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; font-size: 13px; color: var(--xx-ink-2); }
+.xx-member-pagination label { display: inline-flex; align-items: center; gap: 5px; }
+.xx-member-pagination select { padding: 5px; border: 1px solid var(--xx-line); border-radius: 5px; background: var(--xx-card); color: inherit; }
