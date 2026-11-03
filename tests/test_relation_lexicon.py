@@ -14,7 +14,7 @@ from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
 
 def test_all_combinations_have_distinct_dimension_meanings():
     resolver = RelationResolver()
-    centers = ((0, 15, 30, 50, 85), (-70, -25, 0, 25, 70), (-70, -25, 0, 25, 70))
+    centers = ((0, 3, 20, 50, 85), (-70, -25, 0, 25, 70), (-70, -25, 0, 25, 70))
     seen = set()
     for bands in product(range(5), repeat=3):
         desc = resolver.describe(
@@ -37,10 +37,10 @@ def test_all_combinations_have_distinct_dimension_meanings():
 @pytest.mark.parametrize(
     "dimension,value,expected",
     [
-        (0, 9.9, 0),
-        (0, 10, 1),
-        (0, 24.9, 1),
-        (0, 25, 2),
+        (0, 0.9, 0),
+        (0, 1, 1),
+        (0, 4.9, 1),
+        (0, 5, 2),
         (0, 39.9, 2),
         (0, 40, 3),
         (0, 69.9, 3),

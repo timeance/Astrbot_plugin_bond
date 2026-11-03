@@ -185,6 +185,8 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert plugin._storage.known_bot_ids() == sorted(BOT_IDS)
 
         old_deps = await plugin._runtime.select(BOT_IDS[0], "per_group")
+        # 通过真实 main 装配确认新安装默认，而非仅检查配置快照。
+        assert old_deps.favor._decay == (30.0, 1.3, 120.0, 0.0)
         entered = asyncio.Event()
         release = asyncio.Event()
         seen = {}
@@ -763,6 +765,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     prompts_path.write_text("{broken", encoding="utf-8")
     config2 = AstrBotConfig(str(config_path), schema=schema)
     config2["inject"]["enabled"] = True
+    # 存量显式关闭和旧参数不能被升级后的默认值覆盖。
+    config2["decay"].update(enabled=False, half_life_base=10, half_life_max=60)
+    config2.save_config()
+    config2 = AstrBotConfig(str(config_path), schema=schema)
     context2 = _context(Context, config2)
     plugin2 = BondPlugin(context2, config2)
     await plugin2.initialize()
@@ -772,6 +778,9 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert len(context2.registered_web_apis) == 17
         assert plugin2._prompts.load_error
         deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
+        assert deps2.favor._decay is None
+        assert plugin2._dependency_config["decay"]["half_life_base"] == 10
+        assert plugin2._dependency_config["decay"]["half_life_max"] == 60
         assert (await deps2.favor.get(OLD_GROUP, OLD_USER)).favor == 12
         event2 = SimpleNamespace(
             get_group_id=lambda: OLD_GROUP,
@@ -808,7 +817,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
+        "新旧衰减配置、scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

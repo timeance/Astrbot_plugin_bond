@@ -1,0 +1,1288 @@
+{
+  "kind": "synthetic fixed-clock comparison; no real model/people accuracy",
+  "baseline_source": "0d40b13af6acc1c2ec1d2ef7d6c9b553c65134bb",
+  "growth": {
+    "normal_question-2": {
+      "current": {
+        "1": {
+          "turn": 100,
+          "day": 50,
+          "state": {
+            "familiarity": 10.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "2": null,
+        "3": null,
+        "4": null
+      },
+      "early_moderate": {
+        "1": {
+          "turn": 20,
+          "day": 10,
+          "state": {
+            "familiarity": 2.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 80,
+          "day": 40,
+          "state": {
+            "familiarity": 8.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "3": null,
+        "4": null
+      },
+      "early_quick": {
+        "1": {
+          "turn": 10,
+          "day": 5,
+          "state": {
+            "familiarity": 1.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 50,
+          "day": 25,
+          "state": {
+            "familiarity": 5.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "3": null,
+        "4": null
+      }
+    },
+    "normal_question-10": {
+      "current": {
+        "1": {
+          "turn": 100,
+          "day": 10,
+          "state": {
+            "familiarity": 10.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "2": null,
+        "3": null,
+        "4": null
+      },
+      "early_moderate": {
+        "1": {
+          "turn": 20,
+          "day": 2,
+          "state": {
+            "familiarity": 2.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 80,
+          "day": 8,
+          "state": {
+            "familiarity": 8.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "3": null,
+        "4": null
+      },
+      "early_quick": {
+        "1": {
+          "turn": 10,
+          "day": 1,
+          "state": {
+            "familiarity": 1.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 50,
+          "day": 5,
+          "state": {
+            "familiarity": 5.0,
+            "affinity": 0.0,
+            "trust": 0.0
+          }
+        },
+        "3": null,
+        "4": null
+      }
+    },
+    "friendly-2": {
+      "current": {
+        "1": {
+          "turn": 34,
+          "day": 17,
+          "state": {
+            "familiarity": 10.2,
+            "affinity": 23.8,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 84,
+          "day": 42,
+          "state": {
+            "familiarity": 25.2,
+            "affinity": 50.6,
+            "trust": 0.0
+          }
+        },
+        "3": {
+          "turn": 134,
+          "day": 67,
+          "state": {
+            "familiarity": 40.2,
+            "affinity": 69.5,
+            "trust": 0.0
+          }
+        },
+        "4": null
+      },
+      "early_moderate": {
+        "1": {
+          "turn": 7,
+          "day": 4,
+          "state": {
+            "familiarity": 2.1,
+            "affinity": 5.0,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 27,
+          "day": 14,
+          "state": {
+            "familiarity": 8.1,
+            "affinity": 19.0,
+            "trust": 0.0
+          }
+        },
+        "3": {
+          "turn": 134,
+          "day": 67,
+          "state": {
+            "familiarity": 40.2,
+            "affinity": 69.5,
+            "trust": 0.0
+          }
+        },
+        "4": null
+      },
+      "early_quick": {
+        "1": {
+          "turn": 4,
+          "day": 2,
+          "state": {
+            "familiarity": 1.2,
+            "affinity": 2.8,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 17,
+          "day": 9,
+          "state": {
+            "familiarity": 5.1,
+            "affinity": 12.0,
+            "trust": 0.0
+          }
+        },
+        "3": {
+          "turn": 134,
+          "day": 67,
+          "state": {
+            "familiarity": 40.2,
+            "affinity": 69.5,
+            "trust": 0.0
+          }
+        },
+        "4": null
+      }
+    },
+    "friendly-10": {
+      "current": {
+        "1": {
+          "turn": 47,
+          "day": 5,
+          "state": {
+            "familiarity": 10.0,
+            "affinity": 14.6,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 124,
+          "day": 13,
+          "state": {
+            "familiarity": 25.2,
+            "affinity": 35.4,
+            "trust": 0.0
+          }
+        },
+        "3": {
+          "turn": 197,
+          "day": 20,
+          "state": {
+            "familiarity": 40.0,
+            "affinity": 49.7,
+            "trust": 0.0
+          }
+        },
+        "4": null
+      },
+      "early_moderate": {
+        "1": {
+          "turn": 7,
+          "day": 1,
+          "state": {
+            "familiarity": 2.0,
+            "affinity": 2.6,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 37,
+          "day": 4,
+          "state": {
+            "familiarity": 8.0,
+            "affinity": 11.6,
+            "trust": 0.0
+          }
+        },
+        "3": {
+          "turn": 197,
+          "day": 20,
+          "state": {
+            "familiarity": 40.0,
+            "affinity": 49.7,
+            "trust": 0.0
+          }
+        },
+        "4": null
+      },
+      "early_quick": {
+        "1": {
+          "turn": 4,
+          "day": 1,
+          "state": {
+            "familiarity": 1.2,
+            "affinity": 2.0,
+            "trust": 0.0
+          }
+        },
+        "2": {
+          "turn": 24,
+          "day": 3,
+          "state": {
+            "familiarity": 5.2,
+            "affinity": 8.0,
+            "trust": 0.0
+          }
+        },
+        "3": {
+          "turn": 197,
+          "day": 20,
+          "state": {
+            "familiarity": 40.0,
+            "affinity": 49.7,
+            "trust": 0.0
+          }
+        },
+        "4": null
+      }
+    }
+  },
+  "greetings_before": [
+    {
+      "text": "早安",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "早上好",
+      "calls": 5,
+      "final": {
+        "familiarity": 1.5,
+        "affinity": 2.2,
+        "trust": 0.0
+      },
+      "statuses": [
+        "accepted",
+        "duplicate_or_cooldown",
+        "accepted",
+        "accepted",
+        "accepted",
+        "accepted"
+      ]
+    },
+    {
+      "text": "晚安",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "晚安！🌙",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "晚安喵",
+      "calls": 5,
+      "final": {
+        "familiarity": 1.5,
+        "affinity": 2.2,
+        "trust": 0.0
+      },
+      "statuses": [
+        "accepted",
+        "duplicate_or_cooldown",
+        "accepted",
+        "accepted",
+        "accepted",
+        "accepted"
+      ]
+    },
+    {
+      "text": "晚安啦",
+      "calls": 5,
+      "final": {
+        "familiarity": 1.5,
+        "affinity": 2.2,
+        "trust": 0.0
+      },
+      "statuses": [
+        "accepted",
+        "duplicate_or_cooldown",
+        "accepted",
+        "accepted",
+        "accepted",
+        "accepted"
+      ]
+    },
+    {
+      "text": "我要休息了，可以跟我说声晚安吗？",
+      "calls": 5,
+      "final": {
+        "familiarity": 1.5,
+        "affinity": 2.2,
+        "trust": 0.0
+      },
+      "statuses": [
+        "accepted",
+        "duplicate_or_cooldown",
+        "accepted",
+        "accepted",
+        "accepted",
+        "accepted"
+      ]
+    }
+  ],
+  "greetings_after": [
+    {
+      "text": "早安",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "早上好",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "晚安",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "晚安！🌙",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "晚安喵",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "晚安啦",
+      "calls": 0,
+      "final": {
+        "familiarity": 0.0,
+        "affinity": 0.0,
+        "trust": 0.0
+      },
+      "statuses": [
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered",
+        "filtered"
+      ]
+    },
+    {
+      "text": "我要休息了，可以跟我说声晚安吗？",
+      "calls": 5,
+      "final": {
+        "familiarity": 1.5,
+        "affinity": 2.2,
+        "trust": 0.0
+      },
+      "statuses": [
+        "accepted",
+        "duplicate_or_cooldown",
+        "accepted",
+        "accepted",
+        "accepted",
+        "accepted"
+      ]
+    }
+  ],
+  "silence": {
+    "off": [
+      {
+        "start_affinity": 5,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      },
+      {
+        "start_affinity": 20,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          }
+        ]
+      },
+      {
+        "start_affinity": 60,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          }
+        ]
+      },
+      {
+        "start_affinity": -20,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          }
+        ]
+      }
+    ],
+    "current_on": [
+      {
+        "start_affinity": 5,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 4.7,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 3.1,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.6,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.1,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      },
+      {
+        "start_affinity": 20,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 18.7,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 12.3,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 2.5,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.3,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      },
+      {
+        "start_affinity": 60,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 56.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 36.9,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 10.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 10.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 10.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          }
+        ]
+      },
+      {
+        "start_affinity": -20,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -18.7,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -12.3,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -2.5,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -0.3,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -0.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      }
+    ],
+    "gentle_candidate": [
+      {
+        "start_affinity": 5,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 4.9,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 4.3,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 2.5,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 1.2,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.1,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      },
+      {
+        "start_affinity": 20,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 20.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 19.5,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 17.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 10.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 0.3,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      },
+      {
+        "start_affinity": 60,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 60.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 58.6,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 51.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 30.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 15.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": 10.0,
+              "trust": -20.0
+            },
+            "title": "亲近但谨慎"
+          }
+        ]
+      },
+      {
+        "start_affinity": -20,
+        "trajectory": [
+          {
+            "day": 0,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -20.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 1,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -19.5,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 7,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -17.0,
+              "trust": -20.0
+            },
+            "title": "谨慎往来"
+          },
+          {
+            "day": 30,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -10.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 60,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -5.0,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          },
+          {
+            "day": 180,
+            "state": {
+              "familiarity": 40.0,
+              "affinity": -0.3,
+              "trust": -20.0
+            },
+            "title": "谨慎的熟人"
+          }
+        ]
+      }
+    ]
+  },
+  "tested_base_commit": "65897e0359d6e1127b96e47b176e2a44c40a5f5f",
+  "source_hashes": {
+    "core/assessment.py": "f14639205e7bae39eacd2b5896f0ef3eba39c10e8d2bd0f23a791000f63bc117",
+    "core/relation_lexicon.py": "ad8caf34299e753c2a1b445e4b2ef061dc40246c0c7c5a670fa2f06fca9e279e",
+    "core/relation_policy.py": "919ba6b8131e0de990363141f4653d5ad0d2251bd72343497bf997b7efe9f36a",
+    "core/decay.py": "292a49dc1c3c5366119d7369c74f78ccbd961d78aa76f9dcbf1fc6dcbeecfb3b",
+    "services/favor_service.py": "4317b9ac4185916ab929e5c7b2ba8aa3fba5c483b058e70d1a5380d20ee07a83",
+    "_conf_schema.json": "58e0de7943b339b440ec65d8c63a32960973e3eb9df4a41a668fd056255d06dd",
+    "main.py": "1d7353b91d6b6674289deab32d4165570fad5765af4fd1419d0dbbe1c9ae2906"
+  },
+  "baseline_source_hashes": {
+    "core/assessment.py": "0ae260a226e65bba99f00eaac7d34418bea0871d59263e37c5ec57a050690c0a",
+    "core/relation_lexicon.py": "19639e78483a64a48d017b56b6fff66e13f5b1cd5b1dd38d89b1bcf24c341fb7",
+    "core/relation_policy.py": "919ba6b8131e0de990363141f4653d5ad0d2251bd72343497bf997b7efe9f36a",
+    "core/decay.py": "292a49dc1c3c5366119d7369c74f78ccbd961d78aa76f9dcbf1fc6dcbeecfb3b",
+    "services/favor_service.py": "4317b9ac4185916ab929e5c7b2ba8aa3fba5c483b058e70d1a5380d20ee07a83",
+    "_conf_schema.json": "c5f7b33ac905f40ffc9e9f90f4275f72827354fdd24096150bb0a1c14164b726",
+    "main.py": "153a5a054b6487b9c94b642cc08498ff0baa4ff0ac6d3c0bef97c9b3cd6ea826"
+  },
+  "repeatability": "Two final runs produced byte-identical results.json; fixed synthetic clock, no network."
+}

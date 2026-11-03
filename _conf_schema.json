@@ -32,13 +32,13 @@
   },
   "daily_cap_up": {
     "type": "float",
-    "description": "每日好感度上涨上限（规则+评估合计，支持一位小数）。真实关系节奏建议 4：挚友约 2 个月、挚爱 3~4 个月",
+    "description": "旧标量写入通道的每日上涨限额，不控制新版三维评估；三维每日限幅分别计算。",
     "default": 4,
     "invisible": true
   },
   "daily_cap_down": {
     "type": "float",
-    "description": "每日好感度下降上限（绝对值，支持一位小数）。默认比上涨上限宽（负性偏向：坏事比好事重）",
+    "description": "旧标量写入通道的每日下降限额，不控制新版三维评估。",
     "default": 8,
     "invisible": true
   },
@@ -55,7 +55,7 @@
         "type": "string",
         "_special": "select_provider",
         "default": "",
-        "description": "评估用模型，留空跟随会话当前模型（建议选便宜小模型）"
+        "description": "印象汇总使用的模型；留空由宿主解析默认模型，可能与当前群会话模型不同。不控制三维评估。"
       },
       "cooldown_sec": {
         "type": "int",
@@ -351,13 +351,13 @@
       "memory_count": {
         "type": "int",
         "default": 3,
-        "description": "注入「近期印象」的最近变动条数（从流水取，让当前助手记得具体的事）。0=关闭",
+        "description": "向回复补充近期事件类别/理由，最多10条；0关闭。不补充聊天原文或具体分值。",
         "invisible": true
       },
       "memory_days": {
         "type": "int",
         "default": 7,
-        "description": "「近期印象」只取最近 N 天内的变动（超出的视为淡忘，不注入）",
+        "description": "近期事件的回顾天数；0取消时间筛选，不删除历史流水。",
         "invisible": true
       },
       "memory_sig_threshold": {
@@ -386,7 +386,7 @@
       "text_wake_enabled": {
         "type": "bool",
         "default": false,
-        "description": "群聊直接发文字（不用 /）唤醒全群排行（出图）；管理员指令仍需 /"
+        "description": "无需斜杠，用指定短语查询本群文字排行；管理员指令仍需斜杠。"
       },
       "text_wake_ranking": {
         "type": "string",
@@ -398,7 +398,7 @@
   },
   "render": {
     "type": "object",
-    "description": "排行图片渲染（PIL）",
+    "description": "旧图片排行配置留档；当前公开查询使用文字排行，这些选项不影响当前输出。",
     "items": {
       "font_path": {
         "type": "string",
@@ -415,12 +415,12 @@
   },
   "decay": {
     "type": "object",
-    "description": "时间衰减（真人记忆规律）：好感度按指数遗忘曲线连续向基线收敛——常聊天的人衰减慢（每次正向互动巩固半衰期），久不聊天衰减快。依据艾宾浩斯遗忘曲线 + SM-2 间隔巩固",
+    "description": "亲近度随时间向基线靠近；熟悉度和信任度不随沉默衰减。这是产品节奏设置，不是经过验证的人际关系定律。",
     "items": {
       "enabled": {
         "type": "bool",
-        "default": false,
-        "description": "总开关。开启后所有人都连续衰减（速率由各自半衰期决定），不再是\"只有闲置才掉分\""
+        "default": true,
+        "description": "新安装默认开启温和衰减。仅影响亲近度；临时关系期间暂停。已有显式开关保持原值。"
       },
       "baseline": {
         "type": "float",
@@ -430,34 +430,34 @@
       "floor_enabled": {
         "type": "bool",
         "default": true,
-        "description": "等级衰减地板：衰减后的好感最多跌到当前等级往下两级的下沿（挚爱最多衰到亲密档）——久别重逢不掉出熟悉区间，回来仍是老朋友"
+        "description": "沿用旧亲近度数值档位的两级托底；不是五档三维关系称谓的两级变化。仅托底，不主动加分。"
       },
       "half_life_base": {
         "type": "float",
-        "default": 10,
-        "description": "新关系初始半衰期（天）：存量距离每天约损 6.6%。halved=降到一半所需天数"
+        "default": 30,
+        "description": "新关系的初始半衰期（天）：未巩固时，与基线的差距约30天缩小一半。"
       },
       "half_life_growth": {
         "type": "float",
         "default": 1.3,
-        "description": "每次正向互动的巩固系数：半衰期 ×该值（SM-2 温和版）。1=不巩固"
+        "description": "正向亲近度实际增长后，半衰期乘以该值，上限由最长半衰期限制。1表示不巩固。"
       },
       "half_life_max": {
         "type": "float",
-        "default": 60,
-        "description": "半衰期上限（天）：每天聊的老朋友每天约损 1.1%——连续但极慢，老交情抗衰减"
+        "default": 120,
+        "description": "正向互动巩固后的半衰期上限（天）。这是节奏参数，不表示信任自动修复。"
       }
     },
     "invisible": true
   },
   "economy": {
     "type": "object",
-    "description": "防通胀经济学（仅评审路径）：真实关系的增长规律——寒暄不推进关系、高阶段增长更难、坏事比好事重",
+    "description": "亲近度增长控制：复用同日递减、阶段乘数和恢复抑制；不改变熟悉度/信任度，不保证识别所有重复表达。",
     "items": {
       "preset": {
         "type": "string",
         "default": "default",
-        "description": "手感预设：default=标准防通胀；galgame=易升难降（娱乐群，努力有回报）；realistic=难升易降（拟人向，好感金贵、得罪一次疼很久）。显式设置的具体参数优先于预设",
+        "description": "缺省参数预设；已保存的具体参数优先，仅改预设不会覆盖它们。",
         "options": [
           "default",
           "galgame",
@@ -482,7 +482,7 @@
       "negative_weight": {
         "type": "float",
         "default": 1.5,
-        "description": "负面权重放大倍数（负性偏向：坏事比好事重 2~5 倍）。1=不放大"
+        "description": "负向亲近度增量的倍数；1表示不放大。该参数不是心理学定律，误判也会被放大。"
       },
       "same_day_decay": {
         "type": "float",
@@ -665,7 +665,7 @@
   },
   "coupling": {
     "type": "object",
-    "description": "§6.6 情绪-关系耦合（与 astrbot_plugin_maisoul 双向数值联动）",
+    "description": "旧麦麦情绪联动配置留档，当前自动评估主链路不使用，不建议启用。",
     "items": {
       "enabled": {
         "type": "bool",
@@ -697,7 +697,7 @@
         "default": false,
         "description": "自动评估互动",
         "invisible": false,
-        "hint": "根据你与 Bot 的互动更新关系，会调用下方选择的模型。"
+        "hint": "根据明确指向 Bot 的互动更新关系，会调用所选模型。关闭自动评估后仍记录本地成员资料；停用插件才停止观察。"
       },
       "small_provider_id": {
         "type": "string",

@@ -77,7 +77,7 @@ def parse_verdict(raw: str, interaction: Interaction) -> Verdict:
 
 def locally_relevant(text: str, directed: bool) -> bool:
     stripped = text.strip()
-    # 只归一化边缘装饰以比较整句寒暄，不修改交给 Provider 的原文证据。
+    # 只比较整句寒暄及常见语气词，不吞掉后续实质内容，也不修改原文证据。
     greeting = stripped.casefold()
 
     def decoration(char):
@@ -98,8 +98,22 @@ def locally_relevant(text: str, directed: bool) -> bool:
         directed
         and 2 <= len(stripped) <= 2000
         and not stripped.startswith(("/", "!", "！"))
-        and greeting[start:end]
-        not in {"你好", "早", "早安", "晚安", "hi", "hello", "在吗"}
+        and greeting[start:end].rstrip("呀啊啦哦喵哟噢呢咯")
+        not in {
+            "你好",
+            "早",
+            "早安",
+            "早上好",
+            "上午好",
+            "中午好",
+            "午安",
+            "下午好",
+            "晚上好",
+            "晚安",
+            "hi",
+            "hello",
+            "在吗",
+        }
     )
 
 

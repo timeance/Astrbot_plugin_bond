@@ -5,9 +5,9 @@ from __future__ import annotations
 from bisect import bisect_right
 from dataclasses import dataclass
 
-LEXICON_VERSION = "1"
+LEXICON_VERSION = "2"
 BAND_EDGES = (
-    (10.0, 25.0, 40.0, 70.0),
+    (1.0, 5.0, 40.0, 70.0),
     (-40.0, -10.0, 10.0, 40.0),
     (-40.0, -10.0, 10.0, 40.0),
 )

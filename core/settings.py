@@ -18,7 +18,7 @@ SECTIONS = {
         "印象与近期事件",
         ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
     ),
-    "commands": ("查询与排行", ["command", "render"]),
+    "commands": ("查询与排行", ["command"]),
     "diagnostics": ("关系诊断", ["diagnostics"]),
 }
 LABELS = {
@@ -42,8 +42,14 @@ LABELS = {
         "每日限额时区",
         "决定关系每日限额的换日时间，例如 Asia/Shanghai。复核次数按 UTC 换日。",
     ),
-    "memory_count": ("近期事件条数", "最多向当前群对话补充多少条事件；0 表示不补充。"),
-    "memory_days": ("近期事件保留天数", "仅补充这个时间范围内的事件。"),
+    "memory_count": (
+        "近期事件条数",
+        "向当前群补充事件类别/理由，最多10条；0关闭。不包含原文或分值。",
+    ),
+    "memory_days": (
+        "近期事件保留天数",
+        "只回顾这个天数内的事件；0取消时间筛选，不删除历史流水。",
+    ),
     "memory_sig_threshold": (
         "重要事件变化阈值",
         "达到这个变化幅度的事件使用更长的回顾时间；0 表示关闭。",
@@ -59,7 +65,7 @@ LABELS = {
     ),
     "judge.provider_id": (
         "印象汇总模型（可选）",
-        "留空时使用当前会话模型。只用于汇总印象，不参与三维互动评分。",
+        "留空由宿主解析默认模型，可能不同于当前群模型。印象会另行调用，不计入互动评估次数预算。",
     ),
     "judge.timeout_sec": (
         "印象汇总超时（秒）",
@@ -73,9 +79,15 @@ LABELS = {
         "填写 AstrBot 所在设备的字体路径。留空自动查找，缺少中文字体时文字可能无法显示。",
     ),
     "rows_per_col": ("排行每列行数", "超过这个数量后换到下一列。"),
-    "decay.enabled": ("启用时间衰减", "亲近度随时间向下方基线靠近。"),
+    "decay.enabled": (
+        "启用时间衰减",
+        "新安装默认开启；仅亲近度向基线靠近，熟悉度和信任度不变。临时关系期间暂停。",
+    ),
     "baseline": ("亲近度衰减基线", "亲近度随时间靠近的数值。"),
-    "floor_enabled": ("限制衰减后的关系等级", "衰减最多降到原等级下两级的下沿。"),
+    "floor_enabled": (
+        "限制衰减后的关系等级",
+        "按旧亲近度数值档位托底，不等于三维称谓最多变化两级。",
+    ),
     "half_life_base": ("初始半衰期（天）", "亲近度与基线的差距缩小一半所需的时间。"),
     "half_life_growth": (
         "正向互动的巩固倍数",
@@ -86,7 +98,10 @@ LABELS = {
         "启用关系增长规则",
         "对亲近度变化应用重复衰减、负面权重和修复期规则。",
     ),
-    "preset": ("增长规则预设", "保留上游预设；下方具体参数优先于预设。"),
+    "preset": (
+        "缺省增长预设",
+        "只为缺失参数提供默认；仅切换此项不会覆盖下方已保存参数。",
+    ),
     "noise_floor": (
         "忽略微小变化",
         "亲近度变化的绝对值低于这个数时不计入。0 表示关闭。",
@@ -218,9 +233,16 @@ def validate_patch(values):
             )
             if path == "decay.baseline":
                 minimum = -100
-            if path in {"decay.half_life_growth", "inject.memory_sig_window_mult"}:
+            if path in {
+                "decay.half_life_growth",
+                "inject.memory_sig_window_mult",
+                "economy.repair_scale_high",
+                "economy.repair_scale_low",
+            }:
                 minimum = 1
             maximum = 100 if path == "decay.baseline" else 1000000
+            if path == "inject.memory_count":
+                maximum = 10
             if path in {"economy.repair_factor", "economy.same_day_decay"}:
                 maximum = 1
             if not minimum <= value <= maximum:
