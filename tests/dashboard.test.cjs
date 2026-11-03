@@ -397,11 +397,18 @@ test('returning to the shared log table reloads changed evaluation dimension eve
 test('section defaults are staged and preserve other sections, identity and models',async()=>{
  const {ui,pending}=harness();
  const values={relation_mode:'realistic','decay.half_life_base':10,'relation_daily_caps.affinity_up':12,
+  'decay.familiarity_enabled':false,'decay.familiarity_half_life':90,
+  'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20,
   timezone:'UTC',master_ids:'8001','command.ranking_access':'master','judge.provider_id':'summary',
   'assessment.small_provider_id':'chosen','inject.memory_days':4};
  ui.detailSettings.value={revision:'before',values:{...values},fields:[
   {path:'relation_mode',group:'basic',default:'galgame'},
-  {path:'decay.half_life_base',group:'rules',default:60},
+  {path:'decay.familiarity_enabled',group:'rules',default:true},
+  {path:'decay.familiarity_half_life',group:'rules',default:60},
+  {path:'decay.familiarity_baseline',group:'rules',default:0},
+  {path:'decay.affinity_baseline',group:'rules',default:0},
+  {path:'decay.trust_baseline',group:'rules',default:0},
+  {path:'decay.half_life_base',group:'rules',default:30},
   {path:'relation_daily_caps.affinity_up',group:'rules',default:10},
   {path:'timezone',group:'rules',default:'Asia/Shanghai'},
   {path:'master_ids',group:'basic',default:''},
@@ -416,12 +423,18 @@ test('section defaults are staged and preserve other sections, identity and mode
  ui.restoreSectionDefaults('rules');
  assert.equal(ui.detailValues.value.relation_mode,'realistic');
  assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],10);
+ assert.equal(ui.detailValues.value['decay.familiarity_enabled'],true);
+ assert.equal(ui.detailValues.value['decay.familiarity_half_life'],60);
+ assert.equal(ui.detailSettings.value.values['decay.familiarity_enabled'],false);
+ assert.equal(ui.detailSettings.value.values['decay.familiarity_half_life'],90);
+ for(const dimension of ['familiarity','affinity','trust'])assert.equal(ui.detailValues.value[`decay.${dimension}_baseline`],0);
+ assert.equal(ui.detailSettings.value.values['decay.trust_baseline'],20);
  assert.equal(ui.detailValues.value['command.ranking_access'],'master');
  assert.equal(ui.detailValues.value['assessment.small_provider_id'],'chosen');
  assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
  assert.equal(pending.length,0);
  const save=ui.saveSettings();
- assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({'decay.half_life_base':60,'relation_daily_caps.affinity_up':10,timezone:'Asia/Shanghai'}));
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({'decay.half_life_base':30,'relation_daily_caps.affinity_up':10,'decay.familiarity_enabled':true,'decay.familiarity_half_life':60,'decay.familiarity_baseline':0,'decay.affinity_baseline':0,'decay.trust_baseline':0,timezone:'Asia/Shanghai'}));
  pending[0].resolve({success:true,revision:'after',values:{...ui.detailValues.value},fields:ui.detailSettings.value.fields});await save;
  assert.match(ui.detailNotice.value,/重载/);
  ui.restoreSectionDefaults('memory');
@@ -435,7 +448,9 @@ test('mode previews multiply only positive base values and keep loaded runtime u
  'relation_daily_caps.familiarity_up':5,'relation_daily_caps.familiarity_down':0,
  'relation_daily_caps.trust_up':2,'relation_daily_caps.trust_down':5,
  'familiarity_growth.under10':1.5,'economy.level_mult.youhao':.75,
- 'decay.enabled':true,'decay.half_life_base':60,'decay.trust_enabled':true,'decay.trust_half_life':180};
+ 'decay.familiarity_enabled':true,'decay.familiarity_half_life':60,
+ 'decay.enabled':true,'decay.half_life_base':30,'decay.trust_enabled':true,'decay.trust_half_life':90,
+ 'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20};
  ui.detailSettings.value={values:{...values},active_values:{...values},fields:[]};ui.detailValues.value={...values};
  ui.detailValues.value.relation_mode='galgame';
  assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/基础值 12，当前模式实际 24/);
@@ -446,6 +461,19 @@ test('mode previews multiply only positive base values and keep loaded runtime u
  ui.detailValues.value['economy.enabled']=false;
  assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/不生效/);
  assert.equal(ui.activeRuleSummary.value.mode,'基础 ×1');
+ assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
+ assert.equal(ui.activeRuleSummary.value.affinity,'30 天基础半衰期');
+ assert.equal(ui.activeRuleSummary.value.trust,'90 天半衰期');
+ assert.equal(JSON.stringify(ui.activeRuleSummary.value.baselines),JSON.stringify({familiarity:20,affinity:15,trust:20}));
+ assert.equal(ui.detailValues.value['decay.trust_baseline'],20);
+ ui.detailValues.value['decay.trust_baseline']=50;
+ assert.equal(ui.activeRuleSummary.value.baselines.trust,20);
+ ui.detailValues.value['decay.familiarity_half_life']=90;
+ ui.detailValues.value['decay.familiarity_enabled']=false;
+ assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
+ assert.equal(ui.effectiveSetting({path:'decay.familiarity_half_life'}),null);
+ ui.detailSettings.value.active_values['decay.familiarity_enabled']=false;
+ assert.equal(ui.activeRuleSummary.value.familiarity,'关闭');
  assert.equal(ui.activeRuleSummary.value.caps[1].up,12);
  assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
  assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],12);
@@ -483,6 +511,13 @@ test('rule and assessment controls keep a single entry and explain saved versus 
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
  assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
  assert.match(source,/UTC 00:00/);assert.match(source,/当前运行关系参数/);
+ assert.match(source,/熟悉度衰减：{{ activeRuleSummary.familiarity }}/);
+ assert.doesNotMatch(source,/熟悉度不随时间衰减/);
+ assert.match(source,/两种模式使用相同衰减规则/);
+ assert.match(source,/衰减基线：熟悉度 {{ activeRuleSummary.baselines.familiarity }}/);
+ assert.match(source,/距对应基线的差值减半/);
+ assert.match(source,/区间外向同号基线收敛/);
+ assert.match(source,/:max="field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
  assert.match(source,/历史不重新计分/);assert.match(source,/不同实质互动可分别计分/);
 });
 

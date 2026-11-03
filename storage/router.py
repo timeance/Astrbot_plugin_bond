@@ -55,6 +55,7 @@ _REQUIRED_COLUMNS = {
         "familiarity",
         "trust",
         "trust_updated_at",
+        "familiarity_updated_at",
     },
     "daily_gain": {
         "group_id",

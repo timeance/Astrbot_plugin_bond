@@ -330,6 +330,8 @@ class StorageBackend(ABC):
         max_favor: float,
         min_favor: float,
         effective=None,
+        effective_trust=None,
+        effective_familiarity=None,
         default_favor: float = 0.0,
         actor: str = "",
     ) -> dict:

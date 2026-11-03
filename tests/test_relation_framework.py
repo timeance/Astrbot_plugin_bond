@@ -13,7 +13,7 @@ from astrbot_plugin_bond.core.level_economy import EconomyConfig
 from astrbot_plugin_bond.core.levels import LevelTable
 from astrbot_plugin_bond.core.relation_profiles import build_relation_profile
 from astrbot_plugin_bond.services.favor_service import FavorService
-from astrbot_plugin_bond.storage.migrations import MIGRATIONS, migrate
+from astrbot_plugin_bond.storage.migrations import MIGRATIONS, SCHEMA_VERSION, migrate
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
 
 START = datetime(2026, 11, 3, tzinfo=timezone.utc).timestamp()
@@ -382,7 +382,7 @@ def test_v15_local_day_reconstruction_excludes_admin_undo_and_other_day(tmp_path
     db = SQLiteBackend(path)
     run(db.init())
     try:
-        assert db._c().execute("PRAGMA user_version").fetchone()[0] == 16
+        assert db._c().execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert raw(db).trust == 40 and raw(db).trust_updated_at > 0
         with patch("time.time", return_value=START):
             svc = service(
@@ -426,7 +426,7 @@ def test_v16_migration_failure_rolls_back_schema_and_keeps_backup(
         assert saved.execute("SELECT trust FROM favor").fetchone()[0] == 40
 
 
-def test_schema16_backup_reopen_and_future_version_rejection(db, tmp_path):
+def test_current_schema_backup_reopen_and_future_version_rejection(db, tmp_path):
     with patch("time.time", return_value=START):
         svc = service(db)
         seed(svc, t=40)
@@ -439,17 +439,19 @@ def test_schema16_backup_reopen_and_future_version_rejection(db, tmp_path):
     try:
         assert raw(restored).familiarity == pytest.approx(95.015)
         assert raw(restored).trust_updated_at == START
-        assert restored._c().execute("PRAGMA user_version").fetchone()[0] == 16
+        assert (
+            restored._c().execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        )
     finally:
         run(restored.close())
     with sqlite3.connect(backup) as conn:
-        conn.execute("PRAGMA user_version=17")
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
     future = SQLiteBackend(backup)
     with pytest.raises(ValueError, match="未来"):
         run(future.init())
     run(future.close())
     with sqlite3.connect(backup) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 17
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION + 1
 
 
 def test_raw_fractional_state_isolated_across_bots_groups_and_spaces(tmp_path):

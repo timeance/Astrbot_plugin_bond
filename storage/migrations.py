@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -171,6 +171,14 @@ MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE assessment_call ADD COLUMN started_at REAL NOT NULL DEFAULT 0",
         "CREATE INDEX idx_assessment_window ON assessment_call(tier,user_id,started_at)",
         "CREATE INDEX idx_assessment_event_tier ON assessment_call(event_id,tier)",
+    ],
+    # v17：F 独立固定半衰期；旧记录从升级开始，覆盖结束只补回一次暂停。
+    17: [
+        "ALTER TABLE favor ADD COLUMN familiarity_updated_at REAL NOT NULL DEFAULT 0",
+        "UPDATE favor SET familiarity_updated_at=CAST(strftime('%s','now') AS REAL)-COALESCE("
+        "(SELECT MAX(0,MIN(CAST(strftime('%s','now') AS REAL),expires_at)-started_at) "
+        "FROM relation_override WHERE relation_override.group_id=favor.group_id "
+        "AND relation_override.user_id=favor.user_id AND active=1),0) WHERE familiarity != 0",
     ],
 }
 

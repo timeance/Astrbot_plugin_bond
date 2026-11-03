@@ -118,7 +118,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
     async def run():
         values = snapshot({})["values"]
         assert values["decay.enabled"] is True
-        assert values["decay.half_life_base"] == 60
+        assert values["decay.half_life_base"] == 30
         assert values["decay.half_life_growth"] == 1.0
         assert values["decay.half_life_max"] == 120
         old = snapshot(
@@ -149,7 +149,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
                 before = await favor.query_logs("g", "u")
             with patch("time.time", return_value=start + 60 * 86400):
                 assert (await favor.get_relation("g", "u")).as_dict() == dict(
-                    familiarity=40, affinity=10, trust=-20
+                    familiarity=40, affinity=5, trust=-20
                 )
                 assert await favor.query_logs("g", "u") == before
                 assert (await store.get("g", "u")).favor == 20

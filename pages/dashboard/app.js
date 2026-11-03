@@ -199,6 +199,12 @@ createApp({
           up: values[`relation_daily_caps.${key}_up`] * multiplier,
           down: values[`relation_daily_caps.${key}_down`],
         })),
+        baselines: {
+          familiarity: values["decay.familiarity_baseline"],
+          affinity: values["decay.affinity_baseline"],
+          trust: values["decay.trust_baseline"],
+        },
+        familiarity: values["decay.familiarity_enabled"] ? `${values["decay.familiarity_half_life"]} 天半衰期` : "关闭",
         affinity: values["decay.enabled"] ? `${values["decay.half_life_base"]} 天基础半衰期` : "关闭",
         trust: values["decay.trust_enabled"] ? `${values["decay.trust_half_life"]} 天半衰期` : "关闭",
       };
@@ -1459,7 +1465,7 @@ createApp({
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
         <p><strong>基础参数只配置一套；Galgame将全部正向增量与正向每日额度乘2。</strong></p>
-        <p class="xx-help">模式不覆盖基础参数，不改变扣分、模型或预算，不将已有分数翻倍。熟悉度不随时间衰减；亲近度和信任度独立向0收敛。普通有内容的问答可增加熟悉度，不自动增加亲近度；感谢、示好、道歉不直接恢复正信任。框架的数值约束不能消除模型误判。</p>
+        <p class="xx-help">模式不覆盖基础参数，不改变扣分、模型或预算，不将已有分数翻倍。三维各有独立的衰减开关、半衰期与基线，两种模式使用相同衰减规则。普通有内容的问答可增加熟悉度，不自动增加亲近度；感谢、示好、道歉不直接恢复正信任。框架的数值约束不能消除模型误判。</p>
         <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
         <p class="xx-help">模式、自动评估、回复中的关系信息和模型选择在下方“基础设置（快速开始）”编辑；额度、分段倍率和衰减在“关系变化”编辑。各区恢复默认只填入该区参数，不修改基础设置或模型；保存并重载后生效。</p>
         <p v-if="detailNotice" role="status" :class="['xx-status', detailNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ detailNotice }}</p>
@@ -1469,7 +1475,9 @@ createApp({
         </div>
         <div class="xx-form-card" v-if="activeRuleSummary">
           <h4>当前运行关系参数（重载前保持原值）</h4>
-          <p>模式：{{ activeRuleSummary.mode }}；亲近度衰减：{{ activeRuleSummary.affinity }}；信任度衰减：{{ activeRuleSummary.trust }}。</p>
+          <p>模式：{{ activeRuleSummary.mode }}；熟悉度衰减：{{ activeRuleSummary.familiarity }}；亲近度衰减：{{ activeRuleSummary.affinity }}；信任度衰减：{{ activeRuleSummary.trust }}。</p>
+          <p>衰减基线：熟悉度 {{ activeRuleSummary.baselines.familiarity }}；亲近度 ±{{ activeRuleSummary.baselines.affinity }}；信任度 ±{{ activeRuleSummary.baselines.trust }}。</p>
+          <p class="xx-help">熟悉度高于基线才衰减，低于或等于基线保持不变；亲近度和信任度在[-基线,+基线]内不动，区间外向同号基线收敛。半衰期表示距对应基线的差值减半，不是分值本身减半；区间内保持原值，区间外不跨过对应基线。</p>
           <p v-for="cap in activeRuleSummary.caps" :key="cap.key">{{ cap.label }}每日实际额度：+{{ cap.up }} / −{{ cap.down }}。</p>
           <p class="xx-help">下方输入为已保存或尚未保存的基础参数；“当前模式实际”是表单预览，不表示运行值已改变。</p>
         </div>
@@ -1489,7 +1497,7 @@ createApp({
               <p v-if="!detailSettings.providers?.length" class="xx-help" :id="'provider-hint-' + field.path">暂无可用模型，请先在 AstrBot 配置文本模型。</p>
             </div>
             <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
-            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
             <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="(detailValues[field.path] || []).join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :placeholder="field.path === 'master_ids' ? listPlaceholder(field.path) : ''">
             <span v-if="effectiveSetting(field) !== null" class="xx-help">{{ effectiveSetting(field) }}</span>

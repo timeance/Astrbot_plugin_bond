@@ -30,6 +30,7 @@ def test_defaults_and_hidden_fields_preserve_schema():
     assert not schema["assessment"]["items"]["enabled"].get("invisible")
     assert not schema["master_ids"]["invisible"]
     assert schema["group_whitelist"]["default"] == []
+    assert "baseline" not in schema["decay"]["items"]
     for key in ("small_provider_id", "large_provider_id"):
         assert schema["assessment"]["items"][key]["_special"] == "select_provider"
     data = snapshot({})
@@ -228,6 +229,11 @@ def test_models_and_details_share_revision_and_merge_preserved_fields():
         {"relation_daily_caps.familiarity_up": 6},
         {"familiarity_growth.under10": 1.6},
         {"decay.trust_half_life": 200},
+        {"decay.familiarity_enabled": False},
+        {"decay.familiarity_half_life": 90},
+        {"decay.familiarity_baseline": 20},
+        {"decay.affinity_baseline": 15},
+        {"decay.trust_baseline": 20},
         {"ignored_bot_ids": ["10001"]},
         {"inject.memory_days": 8},
     ],
@@ -330,10 +336,15 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
         "relation_daily_caps.affinity_down": 8,
         "relation_daily_caps.trust_up": 2,
         "relation_daily_caps.trust_down": 5,
+        "decay.familiarity_enabled": True,
+        "decay.familiarity_half_life": 60,
         "decay.enabled": True,
-        "decay.half_life_base": 60,
+        "decay.half_life_base": 30,
         "decay.trust_enabled": True,
-        "decay.trust_half_life": 180,
+        "decay.trust_half_life": 90,
+        "decay.familiarity_baseline": 0,
+        "decay.affinity_baseline": 0,
+        "decay.trust_baseline": 0,
     }
     for key, value in expected.items():
         assert values[key] == value
@@ -352,7 +363,12 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
             "relation_mode": "realistic",
             "relation_daily_caps": {"affinity_up": 12},
             "familiarity_growth": {"under10": 1.1},
-            "decay": {"trust_enabled": False, "half_life_base": 75},
+            "decay": {
+                "familiarity_enabled": False,
+                "familiarity_half_life": 90,
+                "trust_enabled": False,
+                "half_life_base": 75,
+            },
         }
     )["values"]
     assert custom["relation_mode"] == "realistic"
@@ -360,6 +376,8 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
     assert custom["familiarity_growth.under10"] == 1.1
     assert custom["decay.half_life_base"] == 75
     assert custom["decay.trust_enabled"] is False
+    assert custom["decay.familiarity_enabled"] is False
+    assert custom["decay.familiarity_half_life"] == 90
 
 
 @pytest.mark.parametrize(
@@ -369,6 +387,11 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
         ("relation_daily_caps.trust_down", True),
         ("familiarity_growth.at95", float("inf")),
         ("decay.trust_half_life", 0),
+        ("decay.familiarity_half_life", 0),
+        ("decay.familiarity_half_life", 4.9),
+        ("decay.familiarity_half_life", True),
+        ("decay.familiarity_half_life", float("inf")),
+        ("decay.familiarity_enabled", "true"),
     ],
 )
 def test_framework_invalid_values(path, value):
@@ -381,13 +404,22 @@ def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
         config = Config(
             relation_mode="realistic",
             relation_daily_caps={"affinity_up": 12},
+            decay={"familiarity_enabled": False, "familiarity_half_life": 90},
             master_ids="8001",
             assessment={"small_provider_id": "chosen"},
         )
         runtime = RuntimeService(None, config, None)
         initial = runtime.detailed_settings()
         await runtime.save_detailed_settings(
-            {"relation_mode": "galgame", "relation_daily_caps.affinity_up": 15},
+            {
+                "relation_mode": "galgame",
+                "relation_daily_caps.affinity_up": 15,
+                "decay.familiarity_enabled": True,
+                "decay.familiarity_half_life": 60,
+                "decay.familiarity_baseline": 20,
+                "decay.affinity_baseline": 15,
+                "decay.trust_baseline": 20,
+            },
             initial["revision"],
         )
         saved = runtime.detailed_settings()
@@ -395,6 +427,18 @@ def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
         assert saved["values"]["relation_daily_caps.affinity_up"] == 15
         assert saved["active_values"]["relation_mode"] == "realistic"
         assert saved["active_values"]["relation_daily_caps.affinity_up"] == 12
+        assert saved["values"]["decay.familiarity_enabled"] is True
+        assert saved["values"]["decay.familiarity_half_life"] == 60
+        assert saved["active_values"]["decay.familiarity_enabled"] is False
+        assert saved["active_values"]["decay.familiarity_half_life"] == 90
+        for dimension, baseline in (
+            ("familiarity", 20),
+            ("affinity", 15),
+            ("trust", 20),
+        ):
+            path = f"decay.{dimension}_baseline"
+            assert saved["values"][path] == baseline
+            assert saved["active_values"][path] == 0
         assert config["assessment"]["small_provider_id"] == "chosen"
         assert config["master_ids"] == "8001"
         reloaded = RuntimeService(None, config, None).detailed_settings()
@@ -550,3 +594,32 @@ def test_legacy_economy_restore_defaults_saves_recommended_parameters():
         assert config["master_ids"] == "8001"
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("dimension", ["familiarity", "affinity", "trust"])
+def test_independent_baseline_bounds_and_legacy_value_ignored(dimension):
+    path = f"decay.{dimension}_baseline"
+    legacy = {"decay": {"baseline": 77}}
+    before = copy.deepcopy(legacy)
+    data = snapshot(legacy)
+    field = next(field for field in data["fields"] if field["path"] == path)
+    assert field["group"] == "rules" and field["default"] == 0
+    assert data["values"][path] == 0
+    assert data["values"] == snapshot({})["values"]
+    assert "decay.baseline" not in data["values"]
+    for value in (0, 20.5, 100):
+        validate_patch({path: value})
+        assert (
+            snapshot({"decay": {"baseline": 77, f"{dimension}_baseline": value}})[
+                "values"
+            ][path]
+            == value
+        )
+    assert legacy == before
+
+
+@pytest.mark.parametrize("dimension", ["familiarity", "affinity", "trust"])
+@pytest.mark.parametrize("value", [-0.1, 100.1, True, float("nan")])
+def test_independent_baseline_invalid_values(dimension, value):
+    with pytest.raises(ValueError):
+        validate_patch({f"decay.{dimension}_baseline": value})

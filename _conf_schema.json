@@ -431,18 +431,32 @@
   },
   "decay": {
     "type": "object",
-    "description": "亲近度和信任度独立向0衰减，熟悉度不随时间衰减；临时关系期间暂停。这是产品节奏设置，不是经过验证的人际关系定律。",
+    "description": "三维关系分别向可调基线衰减，开关与半衰期独立；F低于基线不变，A/T在对称停止区间内不变。关系模式不改变衰减，临时关系期间暂停。这是产品节奏设置，不是经过验证的人际关系定律。",
     "items": {
+      "familiarity_baseline": {
+        "type": "float",
+        "default": 0,
+        "description": "熟悉度基线（0～100），默认0。高于基线向其收敛，低于或等于基线保持不变，不自动加分。"
+      },
+      "familiarity_enabled": {
+        "type": "bool",
+        "default": true,
+        "description": "启用熟悉度时间衰减；默认开启，高于熟悉度基线时向基线收敛，低于或等于基线不变；与其他两维独立。临时关系期间暂停。"
+      },
+      "familiarity_half_life": {
+        "type": "float",
+        "default": 60,
+        "description": "熟悉度半衰期（天，至少5天）；默认60天后距熟悉度基线的差值约减半，不是到期归零。保存并重载后对已有和新成员生效。"
+      },
+      "affinity_baseline": {
+        "type": "float",
+        "default": 0,
+        "description": "亲近度对称基线幅度（0～100），默认0。高于+b向+b收敛，低于-b向-b收敛，[-b,+b]内保持不变。"
+      },
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用亲近度时间衰减；向0收敛，熟悉度不随时间衰减。临时关系期间暂停。"
-      },
-      "baseline": {
-        "type": "float",
-        "default": 0,
-        "description": "旧配置留档；当前插件固定以0为亲近度衰减基线，不再读取此值。",
-        "invisible": true
+        "description": "启用亲近度时间衰减；正负两侧向同号基线收敛，±基线之间保持不变；与其他两维独立。临时关系期间暂停。"
       },
       "floor_enabled": {
         "type": "bool",
@@ -451,8 +465,8 @@
       },
       "half_life_base": {
         "type": "float",
-        "default": 60,
-        "description": "基础半衰期（天，至少5天）。巩固倍数为1时，已有和新成员都直接使用当前值；启用巩固时作为下限。保存并重载后生效，不需清库。"
+        "default": 30,
+        "description": "亲近度基础半衰期（天，至少5天），默认30天后距同号基线的差值约减半。巩固倍数为1时，已有和新成员都直接使用当前值；启用巩固时作为下限。保存并重载后生效，不需清库。"
       },
       "half_life_growth": {
         "type": "float",
@@ -464,15 +478,20 @@
         "default": 120,
         "description": "启用巩固时的半衰期上限（天，不应低于基础值）。重载后也限制已有成员；巩固倍数为1时使用基础半衰期。"
       },
+      "trust_baseline": {
+        "type": "float",
+        "default": 0,
+        "description": "信任度对称基线幅度（0～100），默认0。例如20表示高于+20向+20收敛、低于-20向-20收敛，区间内保持不变。"
+      },
       "trust_enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用信任度时间衰减；正负两侧均向0收敛，临时关系期间暂停。"
+        "description": "启用信任度时间衰减；正负两侧向同号基线收敛，±基线之间保持不变；临时关系期间暂停。"
       },
       "trust_half_life": {
         "type": "float",
-        "default": 180,
-        "description": "信任度半衰期（天）；180天后绝对值约减半，不会越过0。"
+        "default": 90,
+        "description": "信任度半衰期（天）；默认90天后距同号基线的差值约减半，不越过基线或变号。"
       }
     },
     "invisible": true

@@ -143,9 +143,29 @@ LABELS = {
         "可选。留空使用打包的开源中文字体；自定义字体不可用时回退到内置字体。",
     ),
     "rows_per_col": ("排行每列行数", "超过这个数量后换到下一列。"),
+    "decay.familiarity_baseline": (
+        "熟悉度基线",
+        "0～100，默认0；高于基线向其收敛，低于或等于基线保持不变，不自动加分。",
+    ),
+    "decay.affinity_baseline": (
+        "亲近度对称基线",
+        "0～100，默认0；设置b后，高于+b向+b收敛，低于-b向-b收敛，[-b,+b]内保持不变。",
+    ),
+    "decay.trust_baseline": (
+        "信任度对称基线",
+        "0～100，默认0；例如20表示向同号的+20或-20收敛，[-20,+20]内保持不变，不因衰减跨过0。",
+    ),
+    "decay.familiarity_enabled": (
+        "启用熟悉度衰减",
+        "默认开启，高于熟悉度基线向其收敛，低于或等于基线不变；开关与半衰期独立于亲近度和信任度。临时关系期间暂停，关系模式不改变衰减。",
+    ),
+    "decay.familiarity_half_life": (
+        "熟悉度半衰期（天）",
+        "默认60天；距熟悉度基线的差值约减半，而非到期归零。至少5天，保存并重载后对已有和新成员生效。",
+    ),
     "decay.enabled": (
         "启用亲近度衰减",
-        "默认开启，亲近度向0靠近；熟悉度不衰减，信任度由独立开关控制。临时关系期间暂停。",
+        "默认开启，亲近度向同号基线靠近，[-基线,+基线]区间内不变；三维各有独立开关与半衰期，关系模式不改变衰减。临时关系期间暂停。",
     ),
     "floor_enabled": (
         "限制衰减后的关系等级",
@@ -153,15 +173,15 @@ LABELS = {
     ),
     "decay.trust_enabled": (
         "启用信任度衰减",
-        "默认开启，正负信任均向0收敛，不会越过0。与亲近度独立，临时关系期间暂停。",
+        "默认开启，正负信任向同号基线收敛，[-基线,+基线]区间内不变，不会越过基线或变号。与亲近度独立，临时关系期间暂停。",
     ),
     "decay.trust_half_life": (
         "信任度半衰期（天）",
-        "默认180天；绝对值约减半而非到期归零。保存并重载后生效。",
+        "默认90天；距同号基线的差值约减半而非到期归零。保存并重载后生效。",
     ),
     "half_life_base": (
-        "基础半衰期（天）",
-        "至少5天。巩固倍数为1时全部成员使用此值；大于1时作为已有巩固值的下限。重载后也对已有成员生效。",
+        "亲近度基础半衰期（天）",
+        "默认30天，距同号基线的差值约减半；至少5天。巩固倍数为1时全部成员使用此值；大于1时作为已有巩固值的下限。重载后也对已有成员生效。",
     ),
     "half_life_growth": (
         "正向互动的巩固倍数",
@@ -354,6 +374,7 @@ def validate_patch(values):
                         "half_life_base",
                         "half_life_max",
                         "trust_half_life",
+                        "familiarity_half_life",
                     )
                 )
                 else 0
@@ -362,6 +383,7 @@ def validate_patch(values):
                 "decay.half_life_base",
                 "decay.half_life_max",
                 "decay.trust_half_life",
+                "decay.familiarity_half_life",
             }:
                 minimum = 5
             if path in {
@@ -371,7 +393,16 @@ def validate_patch(values):
                 "economy.repair_scale_low",
             }:
                 minimum = 1
-            maximum = 1000000
+            maximum = (
+                100
+                if path
+                in {
+                    "decay.familiarity_baseline",
+                    "decay.affinity_baseline",
+                    "decay.trust_baseline",
+                }
+                else 1000000
+            )
             if path == "inject.memory_count":
                 maximum = 10
             if path in {"economy.repair_factor", "economy.same_day_decay"}:

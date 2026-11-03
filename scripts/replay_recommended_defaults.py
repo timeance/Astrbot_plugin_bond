@@ -1,4 +1,4 @@
-"""对照发布默认值：固定时钟、合成事件、真实服务与 SQLite，不调用 Provider。"""
+"""历史亲近度规则对照；完整当前参数回放使用 replay_framework.py，不调用 Provider。"""
 
 from __future__ import annotations
 
@@ -52,6 +52,7 @@ def parameters():
     }
     previous = dict(
         recommended,
+        half_life_base=60,
         half_life_growth=1.3,
         economy={"negative_weight": 1.5, "repair_threshold": 2.0},
     )

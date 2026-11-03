@@ -193,7 +193,7 @@ class SQLiteBackend(StorageBackend):
             row = (
                 self._c()
                 .execute(
-                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at "
+                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at "
                     "FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 )
@@ -216,6 +216,7 @@ class SQLiteBackend(StorageBackend):
             familiarity=float(row[9]),
             trust=float(row[10]),
             trust_updated_at=float(row[11]),
+            familiarity_updated_at=float(row[12]),
         )
 
     def _compute_favor_write(
@@ -479,6 +480,7 @@ class SQLiteBackend(StorageBackend):
         values=None,
         expected_revision=None,
         effective_trust=None,
+        effective_familiarity=None,
         transform=None,
         day_start=None,
         day_end=None,
@@ -492,20 +494,26 @@ class SQLiteBackend(StorageBackend):
                 conn.execute("BEGIN IMMEDIATE")
                 self._guard_relation_write(group_id, user_id, expected_revision)
                 row = conn.execute(
-                    "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at FROM favor WHERE group_id=? AND user_id=?",
+                    "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 ).fetchone()
-                stored, ts, h, f, t, t_ts = row or (
+                stored, ts, h, f, t, t_ts, f_ts = row or (
                     default_favor,
                     0,
                     self._initial_half_life,
                     0,
                     0,
                     0,
+                    0,
                 )
                 a = effective(stored, ts, h) if effective else float(stored)
+                current_f = (
+                    effective_familiarity(f, f_ts)
+                    if effective_familiarity
+                    else float(f)
+                )
                 current_t = effective_trust(t, t_ts) if effective_trust else float(t)
-                before = dict(familiarity=float(f), affinity=a, trust=current_t)
+                before = dict(familiarity=current_f, affinity=a, trust=current_t)
                 if values is None and not -100 <= a <= 100:
                     raise ValueError(
                         "历史亲近度超出三维范围，须由管理员确认调整后再启用事件评估"
@@ -546,7 +554,11 @@ class SQLiteBackend(StorageBackend):
                                 math.floor(abs(amount) * 10 + 1e-8) / 10, amount
                             )
                         value = max(lower, min(100, before[key] + amount))
-                        after[key] = round(value, 8) if key == "familiarity" else value
+                        after[key] = (
+                            round(value, 8)
+                            if key == "familiarity" and amount
+                            else value
+                        )
                     real[key] = round(after[key] - before[key], 8)
                 if values is not None or any(real.values()):
                     new_h = h
@@ -559,24 +571,26 @@ class SQLiteBackend(StorageBackend):
                             h_max=h_max,
                             positive=real["affinity"] > 0,
                         )
-                    # F 使用现有 REAL 列保留小数；T 无变化时保留独立原锚，避免频繁 F/A 互动冻结衰减。
+                    # 仅结算发生事件变化的维度；无变化保留原值与独立锚。
+                    change_f = values is not None or bool(real["familiarity"])
                     trust_write = (
                         after["trust"] if values is not None or real["trust"] else t
                     )
                     trust_ts = now if values is not None or real["trust"] else t_ts
                     conn.execute(
-                        "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                        "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
-                        "half_life=excluded.half_life,familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at",
+                        "half_life=excluded.half_life,familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at,familiarity_updated_at=excluded.familiarity_updated_at",
                         (
                             group_id,
                             user_id,
                             after["affinity"],
                             now,
                             new_h,
-                            after["familiarity"],
+                            after["familiarity"] if change_f else f,
                             trust_write,
                             trust_ts,
+                            now if change_f else f_ts,
                         ),
                     )
                 if values is None:
@@ -926,7 +940,7 @@ class SQLiteBackend(StorageBackend):
             rows = (
                 self._c()
                 .execute(
-                    "SELECT user_id, favor, updated_at, half_life, familiarity, trust FROM favor "
+                    "SELECT user_id, favor, updated_at, half_life, familiarity, trust, trust_updated_at, familiarity_updated_at FROM favor "
                     "WHERE group_id=? ORDER BY favor DESC, updated_at ASC LIMIT ?",
                     (group_id, limit),
                 )
@@ -941,6 +955,8 @@ class SQLiteBackend(StorageBackend):
                 half_life=float(r[3] or 10.0),
                 familiarity=float(r[4]),
                 trust=float(r[5]),
+                trust_updated_at=float(r[6]),
+                familiarity_updated_at=float(r[7]),
             )
             for r in rows
         ]
@@ -956,7 +972,7 @@ class SQLiteBackend(StorageBackend):
                 rows = (
                     self._c()
                     .execute(
-                        "SELECT user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust FROM favor "
+                        "SELECT user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at FROM favor "
                         "WHERE group_id=? ORDER BY updated_at DESC LIMIT ?",
                         (group_id, limit),
                     )
@@ -977,6 +993,8 @@ class SQLiteBackend(StorageBackend):
                         r[9] or "[]",
                         float(r[10]),
                         float(r[11]),
+                        float(r[12]),
+                        float(r[13]),
                     )
                     for r in rows
                 ]
@@ -984,7 +1002,7 @@ class SQLiteBackend(StorageBackend):
                 rows = (
                     self._c()
                     .execute(
-                        "SELECT group_id, user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust FROM favor "
+                        "SELECT group_id, user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at FROM favor "
                         "ORDER BY updated_at DESC LIMIT ?",
                         (limit,),
                     )
@@ -1005,6 +1023,8 @@ class SQLiteBackend(StorageBackend):
                         r[10] or "[]",
                         float(r[11]),
                         float(r[12]),
+                        float(r[13]),
+                        float(r[14]),
                     )
                     for r in rows
                 ]
@@ -1109,7 +1129,7 @@ class SQLiteBackend(StorageBackend):
                 .execute(
                     "SELECT f.user_id, f.favor, f.updated_at, f.relationship, "
                     "f.nickname, f.impression, f.tags, f.impression_at, "
-                    "f.half_life, f.points, f.familiarity, f.trust FROM favor AS f "
+                    "f.half_life, f.points, f.familiarity, f.trust, f.trust_updated_at, f.familiarity_updated_at FROM favor AS f "
                     "INNER JOIN observed_members AS o ON o.user_id=f.user_id "
                     "WHERE f.group_id=? AND o.group_id=? "
                     "ORDER BY f.favor DESC, f.user_id ASC LIMIT ?",
@@ -1132,6 +1152,8 @@ class SQLiteBackend(StorageBackend):
                 row[9] or "[]",
                 float(row[10]),
                 float(row[11]),
+                float(row[12]),
+                float(row[13]),
             )
             for row in rows
         ]
@@ -1386,6 +1408,7 @@ class SQLiteBackend(StorageBackend):
         default_favor: float = 0.0,
         actor: str = "",
         effective_trust=None,
+        effective_familiarity=None,
     ) -> dict:
         """反向实际增量并标记原流水；不退还已消耗互动额度或模型预算。"""
         now = time.time()
@@ -1405,11 +1428,16 @@ class SQLiteBackend(StorageBackend):
                     raise ValueError("该变动已撤销")
                 group_id, user_id, delta = row[0], row[1], float(row[2])
                 self._guard_relation_write(group_id, user_id)
-                stored, ts, h, f, t, t_ts = conn.execute(
-                    "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at FROM favor WHERE group_id=? AND user_id=?",
+                stored, ts, h, f, t, t_ts, f_ts = conn.execute(
+                    "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
-                ).fetchone() or (default_favor, 0, self._initial_half_life, 0, 0, 0)
+                ).fetchone() or (default_favor, 0, self._initial_half_life, 0, 0, 0, 0)
                 cur = effective(stored, ts, h) if effective else float(stored)
+                current_f = (
+                    effective_familiarity(f, f_ts)
+                    if effective_familiarity
+                    else float(f)
+                )
                 current_t = effective_trust(t, t_ts) if effective_trust else float(t)
                 vector = json.loads(row[4])
                 low, high = affinity_bounds_for_undo(
@@ -1418,34 +1446,39 @@ class SQLiteBackend(StorageBackend):
                 target = round(max(low, min(high, cur - delta)), 8)
                 real = round(target - cur, 8)
                 next_f = round(
-                    max(0, min(100, f - float(vector.get("familiarity", 0)))), 8
+                    max(0, min(100, current_f - float(vector.get("familiarity", 0)))), 8
                 )
                 next_t = round(
                     max(-100, min(100, current_t - float(vector.get("trust", 0)))), 8
                 )
+                # 无 F 向量时不能把衰减值的舍入尾差变成撤销事件。
+                if not vector.get("familiarity"):
+                    next_f = current_f
                 extra = (
                     dict(
-                        familiarity=round(next_f - f, 8),
+                        familiarity=round(next_f - current_f, 8),
                         affinity=real,
                         trust=round(next_t - current_t, 8),
                     )
                     if vector
                     else {}
                 )
+                change_f = bool(extra.get("familiarity"))
                 change_t = bool(extra.get("trust"))
                 conn.execute(
-                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
                     "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
-                    "familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at",
+                    "familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at,familiarity_updated_at=excluded.familiarity_updated_at",
                     (
                         group_id,
                         user_id,
                         target,
                         now,
                         h,
-                        next_f,
+                        next_f if change_f else f,
                         next_t if change_t else t,
                         now if change_t else t_ts,
+                        now if change_f else f_ts,
                     ),
                 )
                 if real or any(extra.values()) or actor:
@@ -1713,8 +1746,9 @@ class SQLiteBackend(StorageBackend):
         duration = max(0, min(ended, row[1]) - row[0])
         self._c().execute(
             "UPDATE favor SET updated_at=CASE WHEN updated_at>0 THEN updated_at+? ELSE updated_at END, "
-            "trust_updated_at=CASE WHEN trust_updated_at>0 THEN trust_updated_at+? ELSE trust_updated_at END WHERE group_id=? AND user_id=?",
-            (duration, duration, group_id, user_id),
+            "trust_updated_at=CASE WHEN trust_updated_at>0 THEN trust_updated_at+? ELSE trust_updated_at END, "
+            "familiarity_updated_at=CASE WHEN familiarity_updated_at>0 THEN familiarity_updated_at+? ELSE familiarity_updated_at END WHERE group_id=? AND user_id=?",
+            (duration, duration, duration, group_id, user_id),
         )
         self._c().execute(
             "UPDATE relation_override SET active=0 WHERE group_id=? AND user_id=?",

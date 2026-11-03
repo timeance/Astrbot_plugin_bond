@@ -136,4 +136,4 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 
 久别旧友现状可运行 `python scripts/replay_reconnection.py --output artifacts/reconnection-run`；使用新的空输出目录，对照写实/Galgame在90天沉默与三次友好互动后的三维值。研究结论见 [久别旧识评估](research/RECONNECTION_ASSESSMENT.md)，不启用额外回暖机制。
 
-0.3.7窗口与增长长期回放：`python scripts/replay_framework.py --output artifacts/framework-replay`。输出固定时钟的7/30/180天逻辑结果，使用预置模型响应和真实服务/SQLite；不访问网络。连续运行两次并比较results.json，应完全一致。迁移及回退见 [框架合同](ASSESSMENT_FRAMEWORK.md)。
+0.3.8窗口、增长与三维衰减长期回放：`python scripts/replay_framework.py --output artifacts/framework-replay`。输出固定时钟的7/30/180天逻辑结果，使用预置模型响应和真实服务/SQLite；不访问网络。连续运行两次并比较results.json，应完全一致。迁移及回退见 [框架合同](ASSESSMENT_FRAMEWORK.md)。

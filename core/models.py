@@ -35,6 +35,7 @@ class FavorRecord:
     familiarity: float = 0.0
     trust: float = 0.0
     trust_updated_at: float = 0.0
+    familiarity_updated_at: float = 0.0
 
     @property
     def affinity(self) -> float:

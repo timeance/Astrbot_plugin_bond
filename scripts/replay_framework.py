@@ -42,12 +42,14 @@ async def run_case(mode, frequency, days=180):
         relation_caps=caps,
         economy=EconomyConfig(),
         decay_enabled=True,
-        half_life_base=60,
+        half_life_base=30,
         half_life_growth=1,
         half_life_max=120,
         decay_floor_enabled=True,
+        familiarity_decay_enabled=True,
+        familiarity_half_life=60,
         trust_decay_enabled=True,
-        trust_half_life=180,
+        trust_half_life=90,
     )
     response = {}
     calls = 0
