@@ -7,7 +7,6 @@ import asyncio
 import datetime as dt
 import hashlib
 import json
-import logging
 import sys
 import time
 import types
@@ -16,7 +15,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from astrbot_plugin_bond.core.assessment import Interaction, SYSTEM_PROMPT
 from astrbot_plugin_bond.core.levels import LevelTable
@@ -107,7 +106,7 @@ def offline_listener():
         "astrbot.api.message_components",
     ):
         modules[name] = types.ModuleType(name)
-    modules["astrbot.api"].logger = logging.getLogger("bond-replay")
+    modules["astrbot.api"].logger = Mock(name="astrbot.api.logger")
     modules["astrbot.api.event"].AstrMessageEvent = Event
     modules["astrbot.api.provider"].ProviderRequest = SimpleNamespace
     modules["astrbot.api.star"].Context = SimpleNamespace
@@ -145,7 +144,7 @@ def offline_listener():
             type_ignores=[],
         )
         namespace = dict(
-            logger=logging.getLogger("bond-replay"),
+            logger=modules["astrbot.api"].logger,
             on_group_message=listeners.on_group_message,
         )
         exec(

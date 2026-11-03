@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <strong>v0.3.2</strong> · AstrBot ≥4.28 / &lt;5 · OneBot aiocqhttp · AGPL-3.0
+  <strong>v0.3.3</strong> · AstrBot ≥4.28 / &lt;5 · OneBot aiocqhttp · AGPL-3.0
 </p>
 
 ---

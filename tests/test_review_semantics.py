@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from astrbot_plugin_bond.core.levels import LevelTable
+from astrbot_plugin_bond.core.taskregistry import TaskRegistry
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.services.impression_service import ImpressionService
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
@@ -54,7 +55,9 @@ def test_impression_interval_consumes_the_full_scheduled_batch(backend):
                 prompts.append(prompt)
                 return SimpleNamespace(completion_text="印象:批次完整\n标签:无")
 
-        service = ImpressionService(backend, summarizer=Judge(), interval=25)
+        service = ImpressionService(
+            backend, registry=TaskRegistry(), summarizer=Judge(), interval=25
+        )
         for index in range(25):
             await backend.add_log(
                 "g",
@@ -69,7 +72,7 @@ def test_impression_interval_consumes_the_full_scheduled_batch(backend):
             )
 
         await service.maybe_refresh("g", "u")
-        await asyncio.gather(*tuple(service._tasks))
+        await asyncio.gather(*tuple(service._registry._tasks))
 
         assert len(prompts) == 1
         assert "样本0" in prompts[0] and "样本24" in prompts[0]
@@ -223,7 +226,11 @@ def test_revoked_scheduled_evidence_never_calls_summary(backend, points_mode):
                 raise AssertionError("已撤销调度证据不得发送给模型")
 
         service = ImpressionService(
-            backend, interval=1, summarizer=Summary(), points_mode=points_mode
+            backend,
+            registry=TaskRegistry(),
+            interval=1,
+            summarizer=Summary(),
+            points_mode=points_mode,
         )
         await backend.add_log(
             "g", "u", 1, 0, 1, "测试", "judge", 1, message="被撤销的证据"
@@ -231,7 +238,7 @@ def test_revoked_scheduled_evidence_never_calls_summary(backend, points_mode):
         log = (await backend.query_logs("g", "u"))[0]
         await service.maybe_refresh("g", "u")
         await FavorService(backend, LevelTable.from_config(None)).undo_log(log["id"])
-        await asyncio.gather(*tuple(service._tasks))
+        await asyncio.gather(*tuple(service._registry._tasks))
         assert calls == []
         assert (await backend.get("g", "u")).impression == ""
         assert (
@@ -240,5 +247,40 @@ def test_revoked_scheduled_evidence_never_calls_summary(backend, points_mode):
             .fetchone()[0]
             == 0
         )
+
+    asyncio.run(run())
+
+
+def test_scheduled_impression_cancels_without_committing(backend):
+    async def run():
+        registry = TaskRegistry()
+        entered, cancelled = asyncio.Event(), asyncio.Event()
+
+        class Summary:
+            async def resolve_display_name(self, umo):
+                return "测试"
+
+            async def resolve_summary_provider(self):
+                return self
+
+            async def text_chat(self, *, prompt):
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+        service = ImpressionService(
+            backend, registry=registry, summarizer=Summary(), interval=1
+        )
+        await backend.add_log("g", "u", 1, 0, 1, "测试", "judge", 1, message="合成证据")
+        await service.maybe_refresh("g", "u")
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        assert registry.size == 1
+        await registry.cancel_and_wait_all()
+        assert cancelled.is_set() and registry.size == 0
+        assert len(await backend.impression_logs("g", "u", 1)) == 1
+        record = await backend.get("g", "u")
+        assert record is None or not record.impression
 
     asyncio.run(run())

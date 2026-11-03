@@ -1,12 +1,12 @@
 # Bond 插件商店提交准备
 
-核查日期：2026-11-03。插件版本：0.3.0。本文提供提交资料与验收清单；尚未向商店提交。
+核查日期：2026-11-03。插件版本：0.3.3。本文提供重新提交的资料与验收清单；上一轮因日志规范未获上架，本次修复仍待商店复审。
 
 ## 提交入口
 
 在 [AstrBot Cloud 发布页](https://cloud.astrbot.app/publish) 登录后提交 GitHub 仓库地址，平台会读取 `metadata.yaml`。当前官方发布指南已改用 Cloud；旧索引仓库标记为过时，不再按旧 Issue 模板提交。[发布指南](https://docs.astrbot.app/dev/star/plugin-publish.html) · [旧索引说明](https://github.com/AstrBotDevs/AstrBot_Plugins_Collection/blob/main/README.md)
 
-Cloud 登录后的账号归属、重名检查及额外表单字段仍需维护者确认。准备完成不等于已经上架。
+Cloud 登录后的账号归属、重名检查及额外表单字段仍需维护者确认。修复通过项目检查后仍需重新提交，以商店复审结果为准。
 
 ## 可复制的提交资料
 
@@ -17,7 +17,7 @@ name: astrbot_plugin_bond
 display_name: Bond 关系系统
 short_desc: 按 Bot 隔离的三维关系与成员印象
 desc: 保存熟悉度、亲近度、信任度与成员印象，支持分级评估、人格适配及管理面板。
-version: "0.3.0"
+version: "0.3.3"
 author: yiwuerxin, Timeance
 repo: https://github.com/timeance/Astrbot_plugin_bond
 tags:

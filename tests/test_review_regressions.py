@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from astrbot_plugin_bond.core.levels import LevelTable  # noqa: E402
+from astrbot_plugin_bond.core.taskregistry import TaskRegistry
 from astrbot_plugin_bond.services.favor_service import FavorService  # noqa: E402
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend  # noqa: E402
 
@@ -169,14 +170,18 @@ def test_impression_counts_new_evaluations_and_survives_restart(backend):
 
     async def run():
         judge = Judge()
-        svc = ImpressionService(backend, summarizer=judge, interval=8)
+        svc = ImpressionService(
+            backend, registry=TaskRegistry(), summarizer=judge, interval=8
+        )
         for i in range(16):
             await backend.add_log("g", "u", 1, 0, 1, "理由", "judge", i, message="样本")
             await svc.maybe_refresh("g", "u")
-            if svc._tasks:
-                await asyncio.gather(*svc._tasks)
+            if svc._registry._tasks:
+                await asyncio.gather(*svc._registry._tasks)
             if i == 7:
-                svc = ImpressionService(backend, summarizer=judge, interval=8)
+                svc = ImpressionService(
+                    backend, registry=TaskRegistry(), summarizer=judge, interval=8
+                )
         assert judge.calls == 2
         assert await backend.impression_logs("g", "u", 20) == []
 
@@ -215,7 +220,10 @@ def test_reversed_impression_evidence_never_reaches_model(backend, points_mode):
         await service(backend).undo_log(row["id"])
         await backend.add_log("g", "u", 1, 0, 1, "理由", "judge", 2, message="有效内容")
         ok, _ = await ImpressionService(
-            backend, summarizer=Judge(), points_mode=points_mode
+            backend,
+            registry=TaskRegistry(),
+            summarizer=Judge(),
+            points_mode=points_mode,
         ).refresh_now("g", "u")
         assert ok
         assert stats_tags([dict(source="judge", delta=-1, reversed=1)] * 10) == []
@@ -324,10 +332,14 @@ def test_tags_preserve_configured_initial_score(backend):
 
     async def run():
         assert (await svc.get("g", "u")).favor == 10
-        await ImpressionService(backend).set_tags("g", "u", ["友善"])
+        await ImpressionService(backend, registry=TaskRegistry()).set_tags(
+            "g", "u", ["友善"]
+        )
         assert (await svc.get("g", "u")).favor == 10
         await svc.set_favor("g", "u", 30)
-        await ImpressionService(backend).set_tags("g", "u", ["熟人"])
+        await ImpressionService(backend, registry=TaskRegistry()).set_tags(
+            "g", "u", ["熟人"]
+        )
         assert (await svc.get("g", "u")).favor == 30
 
     asyncio.run(run())

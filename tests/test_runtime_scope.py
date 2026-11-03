@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from astrbot_plugin_bond.core.levels import LevelTable
+from astrbot_plugin_bond.core.taskregistry import TaskRegistry
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.services.impression_service import ImpressionService
 from astrbot_plugin_bond.services.runtime_service import RuntimeService
@@ -22,7 +23,9 @@ class Config(dict):
 def factory(storage, mode):
     return SimpleNamespace(
         favor=FavorService(storage, LevelTable.from_config({}), scope_mode=mode),
-        impressions=ImpressionService(storage, scope_mode=mode),
+        impressions=ImpressionService(
+            storage, registry=TaskRegistry(), scope_mode=mode
+        ),
     )
 
 

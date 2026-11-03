@@ -7,8 +7,6 @@ on_llm_request：向 system_prompt 注入好感度档案。
 
 from __future__ import annotations
 
-import asyncio
-
 from dataclasses import dataclass
 
 from astrbot.api import logger
@@ -35,8 +33,8 @@ class Deps:
     favor: FavorService
     judge: JudgeService
     inject: InjectService
+    registry: TaskRegistry  # 与插件卸载共享同一注册表
     impressions: ImpressionService | None = None
-    registry: TaskRegistry | None = None  # X10：后台任务注册表（main 注入）
     inject_enabled: bool = True
     memory_count: int = 3
     memory_days: int = 7
@@ -182,10 +180,7 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                 "[八千代] 后台评估任务异常（忽略，不影响对话）", exc_info=True
             )
 
-    if deps.registry is not None:
-        deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
-    else:
-        asyncio.create_task(_bg())  # 无注册表兜底（仅测试）
+    deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
 
 
 async def on_llm_request(

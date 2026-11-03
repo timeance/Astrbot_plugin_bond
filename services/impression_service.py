@@ -14,6 +14,7 @@ import asyncio
 from ..core.impression import build_summary_prompt, parse_summary, stats_tags
 from ..storage.base import StorageBackend
 from ..core.scope import group_key
+from ..core.taskregistry import TaskRegistry
 
 
 class ImpressionService:
@@ -26,7 +27,7 @@ class ImpressionService:
         interval: int = 8,
         summarizer=None,
         timeout_sec: float = 60.0,
-        registry=None,
+        registry: TaskRegistry,
         points_mode: bool = False,
         scope_mode: str = "per_group",
     ) -> None:
@@ -40,10 +41,9 @@ class ImpressionService:
         # X3：汇总调用超时（与评审同源配置）——挂起的 provider 会把后台
         # 任务永久滞留在注册表里
         self._timeout_sec = max(0.0, float(timeout_sec))
-        # X10：后台任务经 TaskRegistry 发起（无注册表时本地集合兜底）
+        # 与评估任务共享插件注册表，卸载时统一取消并等待。
         self._registry = registry
         self._pending = set()
-        self._tasks = set()
 
     def group_key(self, group_id):
         return (
@@ -102,13 +102,7 @@ class ImpressionService:
                 finally:
                     self._pending.discard(key)
 
-            coro = run()
-            if self._registry is not None:
-                self._registry.spawn(coro, name=f"impression:{group_id}/{user_id}")
-            else:
-                task = asyncio.create_task(coro)
-                self._tasks.add(task)
-                task.add_done_callback(self._tasks.discard)
+            self._registry.spawn(run(), name=f"impression:{group_id}/{user_id}")
         except Exception as e:
             self._pending.discard(key)
             # 印象是增值功能，任何失败都不影响主链路——但触发调度失败

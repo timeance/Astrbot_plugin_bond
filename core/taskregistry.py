@@ -16,17 +16,10 @@ import asyncio
 
 
 def _logger():
-    """astrbot logger 的惰性解析——core 层保持零框架依赖(2026-09-11
-    审查 P1-3:原模块级 import astrbot.api 使 core/__init__ 的纯度声明
-    失真、测试被迫注入桩),框架缺席时回落标准 logging。"""
-    try:
-        from astrbot.api import logger
+    """按需使用宿主日志；离线测试由测试环境注入 astrbot.api 桩。"""
+    from astrbot.api import logger
 
-        return logger
-    except ImportError:
-        import logging
-
-        return logging.getLogger("xinxian.taskregistry")
+    return logger
 
 
 class TaskRegistry:
@@ -63,7 +56,7 @@ class TaskRegistry:
             # 异常不静默：任务自己吞异常是惯例（fail-silent），但意外穿透的
             # 异常至少要留痕（不向上抛——done_callback 里抛无人接）
             _logger().debug(
-                f"心弦: 后台任务 {name} 异常退出", exc_info=task.exception()
+                f"[八千代] 后台任务 {name} 异常退出", exc_info=task.exception()
             )
 
     async def cancel_and_wait_all(self, timeout: float = 5.0) -> None:
@@ -77,5 +70,5 @@ class TaskRegistry:
         _done, pending = await asyncio.wait(tasks, timeout=timeout)
         if pending:
             _logger().warning(
-                f"心弦: {len(pending)} 个后台任务 {timeout}s 内未结束，放弃等待"
+                f"[八千代] {len(pending)} 个后台任务 {timeout}s 内未结束，放弃等待"
             )
