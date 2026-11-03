@@ -1,13 +1,9 @@
-"""心弦好感度 - 防通胀经济学层（仅评审路径）。
+"""亲近度增长控制，仅作用于评估路径。
 
-依据（研究综述）：
-- 曝光效应是减速曲线甚至倒 U：重复寒暄边际增益趋零 → 同日重复衰减；
-- 社会渗透理论：浅层互动不能兑换深层进度 → 高阶段正分乘数递减；
-- 负性偏向（坏事比好事重 2~5 倍，Gottman 5:1）→ 负面权重放大；
-- 评审宽大偏置 → 噪声地板消灭碎分。
-
-规则引擎（daily_first）与跨插件 API 不经过本层（保持直给语义）。
-所有出口 round1 收敛（core.decimal 浮点纪律）。
+同日递减、档位乘数和噪声下限是工程节奏参数，不是心理学定律。
+默认不放大负向变化、不启用事后恢复抑制，限制模型误判的额外影响。
+自定义恢复抑制仅压低后续亲近度增长，不修复信任。
+规则引擎与跨插件 API 不经过本层；出口统一 round1。
 """
 
 from __future__ import annotations
@@ -29,16 +25,15 @@ DEFAULT_LEVEL_MULT: dict[str, float] = {
 }
 
 # 手感预设（economy.preset）：参数组合打包，显式配置覆盖 preset 值。
-# galgame＝易升难降（努力有回报，怎么聊都涨）；realistic＝难升易降
-# （好感金贵，得罪一次疼很久）。repair_scale_* 不进预设（等级调制
-# 是独立机制，随 preset 联动会混淆两个概念）。
+# 两个可选预设保留原值；具体参数优先，选择预设不会覆盖已保存的参数。
+# repair_scale_* 为独立配置，不随预设改变。
 PRESETS: dict[str, dict] = {
     "default": {
         "noise_floor": 0.5,
-        "negative_weight": 1.5,
+        "negative_weight": 1.0,
         "same_day_decay": 0.25,
         "level_mult": dict(DEFAULT_LEVEL_MULT),
-        "repair_threshold": 2.0,
+        "repair_threshold": 0.0,
         "repair_hours": 48.0,
         "repair_factor": 0.5,
     },
@@ -85,28 +80,27 @@ class EconomyConfig:
 
     Attributes:
         noise_floor: 噪声地板，|delta| 小于该值直接归零（消灭评审碎分）。0=关闭。
-        negative_weight: 负面权重放大倍数（负性偏向）。1=不放大。
-        same_day_decay: 同日重复衰减斜率：当日已有 N 次正向评审时，
+        negative_weight: 负向亲近度变化倍数。1=不放大。
+        same_day_decay: 同日增长递减斜率：当日已有 N 次正向评审时，
             第 N+1 次正分乘 max(0.25, 1 - slope*N)。0=关闭。
-        level_mult: 等级名 → 正分乘数（社会渗透：高阶段寒暄不再推进）。
-        repair_threshold: 信任修复期触发阈值——评审分值 ≤ -threshold 的重大
-            得罪后进入修复期（信任研究：摧毁快、修复慢）。0=关闭。
+        level_mult: 等级名 → 正分乘数（仅影响正向亲近度变化）。
+        repair_threshold: 恢复抑制触发阈值，亲近度变化 ≤ -threshold 后
+            暂时降低后续正向亲近度增长。默认 0 关闭。
         repair_hours: 修复期时长（小时）：窗口内正向分值被压制。
         repair_factor: 修复期内正分乘数（0.5=半效涨回）。1=不压制。
         repair_scale_high: 等级调制上限——深关系（亲密及以上）冒犯时，
-            修复期时长与压制强度按此缩放（Dirks 2011：高信任中的冒犯
-            更难修复）。1=不缩放（回到旧版统一 48h 行为）。
+            抑制时长与强度按此缩放。1=不缩放。
         repair_scale_low: 浅关系（友好及以下）冒犯的缩放系数，默认 1
             （保持旧版行为）。
     """
 
     noise_floor: float = 0.5
-    negative_weight: float = 1.5
+    negative_weight: float = 1.0
     same_day_decay: float = 0.25
     level_mult: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_LEVEL_MULT)
     )
-    repair_threshold: float = 2.0
+    repair_threshold: float = 0.0
     repair_hours: float = 48.0
     repair_factor: float = 0.5
     repair_scale_high: float = 1.5
@@ -159,7 +153,7 @@ class EconomyResult:
     floored: bool = False  # 被噪声地板归零
     multiplied: bool = False  # 吃了阶段乘数或负面权重
     decayed: bool = False  # 吃了同日重复衰减
-    repairing: bool = False  # 处于信任修复期（正分被压制）
+    repairing: bool = False  # 处于亲近度恢复抑制期（正分被压制）
 
 
 def apply(
@@ -175,7 +169,7 @@ def apply(
     顺序：噪声地板 → 负面权重/阶段乘数 → 同日重复衰减 → 修复期压制 → round1。
     delta=0 直接返回（中性评审不产生任何流水）。
     positive_today: 当日已生效的正向评审次数（第 N+1 次吃 N 次衰减）。
-    repair: 是否处于信任修复期（重大得罪后的时间窗内），仅压制正分。
+    repair: 是否处于亲近度恢复抑制期（重大得罪后的时间窗内），仅压制正分。
     """
     if cfg is None:
         return EconomyResult(delta=round1(delta))
@@ -200,14 +194,14 @@ def apply(
             d = round1(d * mult)
             res.multiplied = True
 
-    # 3. 同日重复衰减：仅正分（防连刷；曝光效应倒 U）
+    # 3. 同日重复衰减：仅正分（适用于所有正向事件，不推断恶意）
     if d > 0 and cfg.same_day_decay > 0 and positive_today > 0:
         factor = max(0.25, 1 - cfg.same_day_decay * positive_today)
         if factor < 1:
             d = round1(d * factor)
             res.decayed = True
 
-    # 4. 信任修复期：重大得罪后的时间窗内，正分只算半效（摧毁快、修复慢）
+    # 4. 亲近度恢复抑制期：重大得罪后的时间窗内，正分只算半效（仅当显式启用）
     factor = cfg.repair_factor if repair_factor is None else repair_factor
     if d > 0 and repair and factor != 1:
         d = round1(d * factor)
@@ -226,8 +220,8 @@ def repair_params_for_level(
 ) -> tuple[float, float]:
     """按冒犯时的等级返回 (修复期小时数, 修复期正分乘数)。
 
-    信任修复研究（Dirks et al. 2011）：冒犯前的信任水平决定修复难度——
-    高信任关系中的冒犯用廉价言语更难修复。深关系（亲密/挚友/挚爱）
+    这是按旧亲近度档位调制的可选工程规则，不是信任证据或修复。
+    深关系（亲密/挚友/挚爱）
     冒犯 → hours × scale_high 且 factor 进一步压深（1-(1-factor)×scale_high）；
     浅关系 → hours × scale_low（默认 1 = 旧版统一行为）。
     cfg 为 None 时返回 (0, 1)（未启用经济层，无修复期）。

@@ -135,6 +135,13 @@ createApp({
     const updateListSetting = (path, raw) => { detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean); };
     const loadSettings = () => settingsRequest();
     const saveSettings = () => settingsRequest(true);
+    const fillRecommendedRules = () => {
+      if (detailLoading.value || !detailSettings.value) return;
+      for (const field of detailSettings.value.fields) {
+        if (field.path.startsWith("decay.") || field.path.startsWith("economy.")) detailValues.value[field.path] = field.default;
+      }
+      detailNotice.value = "已填入推荐的增长与衰减设置。检查后点击保存并重载插件；刷新可撤回未保存的修改。";
+    };
 
     const DEFAULT_MODEL_CONFIG = {
       enabled: false,
@@ -1062,7 +1069,7 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
-      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, updateListSetting,
+      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, fillRecommendedRules, updateListSetting,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
     };
   },
@@ -1371,12 +1378,14 @@ createApp({
 
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
-        <p><strong>如果不知道怎么调，请保持默认。</strong></p>
+        <p><strong>初次使用可保持默认。升级或重装后仍显示旧值，可填入推荐关系设置。</strong></p>
+        <p class="xx-help">填入操作只替换增长与衰减选项，保存前可检查或刷新撤回。半衰期等衰减设置重载后按当前参数重新计算已有关系，显示值可能变化。</p>
         <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
         <p class="xx-help">自动评估、回复中的关系信息和模型选择，请在 AstrBot 的 Bond 插件配置中修改。</p>
         <p v-if="detailNotice" role="status">{{ detailNotice }}</p>
         <div class="xx-actions">
           <button class="xx-btn" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
+          <button class="xx-btn" @click="fillRecommendedRules()" :disabled="detailLoading || !detailSettings">填入推荐关系设置</button>
           <button class="xx-btn" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
         <details v-for="group in detailGroups" :key="group.group" :open="group.group === 'basic'" class="xx-form-card">

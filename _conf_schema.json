@@ -435,17 +435,17 @@
       "half_life_base": {
         "type": "float",
         "default": 30,
-        "description": "新关系的初始半衰期（天）：未巩固时，与基线的差距约30天缩小一半。"
+        "description": "基础半衰期（天，至少5天）。巩固倍数为1时，已有和新成员都直接使用当前值；启用巩固时作为下限。保存并重载后生效，不需清库。"
       },
       "half_life_growth": {
         "type": "float",
-        "default": 1.3,
-        "description": "正向亲近度实际增长后，半衰期乘以该值，上限由最长半衰期限制。1表示不巩固。"
+        "default": 1.0,
+        "description": "默认1：固定使用当前基础半衰期，不因连续示好延长。大于1时，正向亲近度实际增长后乘以该值；已有巩固值受当前基础值与上限约束。"
       },
       "half_life_max": {
         "type": "float",
         "default": 120,
-        "description": "正向互动巩固后的半衰期上限（天）。这是节奏参数，不表示信任自动修复。"
+        "description": "启用巩固时的半衰期上限（天，不应低于基础值）。重载后也限制已有成员；巩固倍数为1时使用基础半衰期。"
       }
     },
     "invisible": true
@@ -481,18 +481,18 @@
       },
       "negative_weight": {
         "type": "float",
-        "default": 1.5,
+        "default": 1.0,
         "description": "负向亲近度增量的倍数；1表示不放大。该参数不是心理学定律，误判也会被放大。"
       },
       "same_day_decay": {
         "type": "float",
         "default": 0.25,
-        "description": "同日重复衰减：当日第 N+1 次正向评审乘 max(0.25, 1-斜率×N)——重复刷好感边际递减。0=关闭"
+        "description": "当日增长递减：当日第 N+1 次正向评估乘 max(0.25, 1-斜率×N)。作用于全部正向亲近度变化，不表示识别了语义重复；0关闭。"
       },
       "repair_threshold": {
         "type": "float",
-        "default": 2.0,
-        "description": "亲近度恢复抑制阈值：评审亲近度增量 ≤ -该值 后暂时压低正向亲近度增长。0=关闭；不修复 trust"
+        "default": 0.0,
+        "description": "亲近度恢复抑制阈值：单次亲近度下降达到该幅度后，暂时压低后续正向增长。默认0关闭，避免一次误判产生长期压制；不是信任修复。"
       },
       "repair_hours": {
         "type": "float",
@@ -502,12 +502,12 @@
       "repair_factor": {
         "type": "float",
         "default": 0.5,
-        "description": "修复期内正分乘数（0.5=只算半效）。1=不压制"
+        "description": "启用恢复抑制后，窗口内正向亲近度变化的乘数（0.5=半效）；1不压制。"
       },
       "repair_scale_high": {
         "type": "float",
         "default": 1.5,
-        "description": "深关系冒犯加重系数（亲密/挚友/挚爱时）：修复期时长×该值、压制再加深——越亲近的人得罪了越难哄好。1=不区分等级（旧行为）"
+        "description": "启用恢复抑制后，亲密及以上旧亲近度档位的窗口时长与压制强度系数；不是心理学定律。"
       },
       "repair_scale_low": {
         "type": "float",
@@ -516,7 +516,7 @@
       },
       "level_mult": {
         "type": "object",
-        "description": "阶段正分乘数（社会渗透理论：关系越深，日常互动越难再推进，需更高质量的互动）。负分不受影响",
+        "description": "按旧亲近度档位递减的正向变化乘数；负向不受影响。这是防止持续线性增长的工程规则，不能判断互动质量。",
         "items": {
           "yanwu": {
             "type": "float",

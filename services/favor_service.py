@@ -11,7 +11,7 @@ import time
 import math
 from datetime import date, datetime
 
-from ..core.decay import HALF_LIFE_MIN, effective_favor
+from ..core.decay import HALF_LIFE_MIN, effective_favor, resolve_half_life
 from ..core.decimal import round1
 from ..core.identity import is_master as _is_master
 from ..core.levels import LevelTable
@@ -263,17 +263,19 @@ class FavorService:
     ) -> float:
         """读取时的有效好感度（启用衰减时按指数遗忘曲线向基线收敛）。
 
-        half_life 取自该成员记录（正互动巩固过的老朋友衰减更慢）；
-        启用地板时按"最多跌两级"托底。
+        固定模式直接取当前基础半衰期；巩固模式把历史值限制在当前范围内。
+        配置重载后从原时间锚重新计算，不为配置变化批量改库或生成事件。
         """
         if self._decay is None:
             return round1(stored)
-        base, _growth, _h_max, baseline = self._decay
+        base, growth, h_max, baseline = self._decay
         return effective_favor(
             stored,
             updated_at,
             time.time(),
-            half_life=(half_life if half_life and half_life > 0 else base),
+            half_life=resolve_half_life(
+                half_life, base=base, growth=growth, h_max=h_max
+            ),
             baseline=baseline,
             floor=self._decay_floor(stored, baseline),
         )
@@ -832,11 +834,10 @@ class FavorService:
             return 0
 
     async def _repair_factor(self, group_id: str, user_id: str) -> float | None:
-        """是否处于信任修复期（等级调制版）。
+        """可选的亲近度恢复抑制；默认关闭时不查询流水。
 
-        重大得罪（≤ -repair_threshold、未撤销）按**冒犯时的等级**决定修复
-        难度（Dirks 2011：高信任中的冒犯更难修）：深关系冒犯的窗口 ×
-        repair_scale_high、压制更深；浅关系维持基线。任何失败返回 False。
+        已启用时扫描最近50条未撤销评估的负向变化，按旧亲近度档位调制。
+        这不是自动信任修复；没有匹配记录或读取失败时返回 None。
         """
         group_id = self.group_key(group_id)
         eco = self._economy
@@ -988,8 +989,10 @@ class FavorService:
         if log.get("source") == "admin_profile":
             raise ValueError("资料审计不是可撤销的数值变动")
         group_id, user_id = log["group_id"], log["user_id"]
-        cur = (await self.get(group_id, user_id)).favor
+        if (await self.temporary_state(group_id, user_id))["active"]:
+            raise ValueError("临时关系生效或任务版本已过期，请结束临时关系后重试")
         state = await self.get(group_id, user_id)
+        cur = state.favor
         vector = log.get("relation_delta") or {}
         affinity_min, affinity_max = affinity_bounds_for_undo(
             vector, legacy_min=self.min_favor, legacy_max=self.max_favor

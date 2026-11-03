@@ -384,3 +384,29 @@ test('returning to the shared log table reloads changed evaluation dimension eve
  assert.equal(ui.logs.value.length,0);pendingGets[0].resolve({success:true,logs:[]});
  await new Promise(resolve=>setImmediate(resolve));assert.equal(ui.loading.value,false);
 });
+
+
+test('recommended rules are staged without saving or changing identity, models and privacy',async()=>{
+ const {ui,pending}=harness();
+ ui.fillRecommendedRules();assert.equal(pending.length,0);
+ const values={'decay.half_life_base':10,'decay.half_life_growth':1.3,'economy.negative_weight':1.5,'economy.repair_threshold':2,timezone:'UTC',master_ids:'8001',group_whitelist:['7001'],'diagnostics.enabled':false,'assessment.small_provider_id':'chosen','inject.enabled':false};
+ ui.detailSettings.value={revision:'before',values:{...values},fields:[
+  {path:'decay.half_life_base',default:30},{path:'decay.half_life_growth',default:1},
+  {path:'economy.negative_weight',default:1},{path:'economy.repair_threshold',default:0},
+  {path:'timezone',default:'Asia/Shanghai'},{path:'master_ids',default:''},
+  {path:'group_whitelist',default:[]},{path:'diagnostics.enabled',default:true},
+  {path:'assessment.small_provider_id',default:''},{path:'inject.enabled',default:true}
+ ]};
+ ui.detailValues.value={...values};
+ ui.detailLoading.value=true;ui.fillRecommendedRules();assert.equal(ui.detailValues.value['decay.half_life_base'],10);
+ ui.detailLoading.value=false;ui.fillRecommendedRules();
+ const expected={'decay.half_life_base':30,'decay.half_life_growth':1,'economy.negative_weight':1,'economy.repair_threshold':0};
+ assert.equal(JSON.stringify(ui.detailValues.value),JSON.stringify({...values,...expected}));
+ assert.equal(ui.detailSettings.value.values['decay.half_life_base'],10);
+ assert.equal(pending.length,0);
+ const saving=ui.saveSettings();
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify(expected));
+ assert.equal(pending[0].params.revision,'before');
+ pending[0].resolve({success:true,revision:'after',values:{...values,...expected},fields:[]});await saving;
+ assert.match(ui.detailNotice.value,/重载/);
+});

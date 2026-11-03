@@ -74,7 +74,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 三维关系与成员印象",
-    "0.3.3",
+    "0.3.4",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -178,7 +178,7 @@ class BondPlugin(Star):
             master_ids=master_ids,
             decay_enabled=bool(decay_cfg.get("enabled", True)),
             half_life_base=float(decay_cfg.get("half_life_base", 30)),
-            half_life_growth=float(decay_cfg.get("half_life_growth", 1.3)),
+            half_life_growth=float(decay_cfg.get("half_life_growth", 1.0)),
             half_life_max=float(decay_cfg.get("half_life_max", 120)),
             decay_baseline=float(decay_cfg.get("baseline", 0.0)),
             decay_floor_enabled=bool(decay_cfg.get("floor_enabled", True)),

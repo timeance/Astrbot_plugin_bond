@@ -1,0 +1,1429 @@
+{
+  "method": "preclassified synthetic events, fixed clock, real FavorService/SQLite; not model or human accuracy",
+  "provider_calls": 0,
+  "arms": {
+    "previous_0_3_3": {
+      "parameters": {
+        "decay_enabled": true,
+        "half_life_base": 30,
+        "half_life_growth": 1.3,
+        "half_life_max": 120,
+        "decay_floor_enabled": true,
+        "economy": {
+          "negative_weight": 1.5,
+          "repair_threshold": 2.0
+        }
+      },
+      "scenarios": {
+        "positive_burst": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "half_life": 39.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.6,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.6,
+                "affinity": 1.4,
+                "trust": 0.0
+              },
+              "half_life": 50.7,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 360,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.4,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.9,
+                "affinity": 1.8,
+                "trust": 0.0
+              },
+              "half_life": 65.9,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 540,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.2,
+                "affinity": 2.0,
+                "trust": 0.0
+              },
+              "half_life": 85.7,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 720,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.5,
+                "affinity": 2.2,
+                "trust": 0.0
+              },
+              "half_life": 111.4,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 900,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.8,
+                "affinity": 2.4,
+                "trust": 0.0
+              },
+              "half_life": 120.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1080,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.2,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 2.6,
+                "trust": 0.0
+              },
+              "half_life": 120.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1260,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 2.8,
+                "trust": 0.0
+              },
+              "half_life": 120.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1440,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 3.0,
+                "trust": 0.0
+              },
+              "half_life": 120.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1620,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 3.0,
+                "trust": 0.0
+              },
+              "half_life": 120.0,
+              "title": "眼熟之人"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 2.0,
+              "affinity": 2.9,
+              "trust": 0.0
+            },
+            "30": {
+              "familiarity": 2.0,
+              "affinity": 2.5,
+              "trust": 0.0
+            }
+          }
+        },
+        "neutral_3_days": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.2,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 360,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.3,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 540,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.4,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 720,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.5,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 900,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.6,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 1080,
+              "event": "criticism",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.7,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 0,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.8,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 180,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.9,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 360,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.0,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 540,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 720,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.2,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 900,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.3,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 1080,
+              "event": "criticism",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.4,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 0,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.5,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 180,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.6,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 360,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.7,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 540,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.8,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 720,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.9,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 900,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 1080,
+              "event": "criticism",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 2.1,
+              "affinity": 0.0,
+              "trust": 0.0
+            },
+            "30": {
+              "familiarity": 2.1,
+              "affinity": 0.0,
+              "trust": 0.0
+            }
+          }
+        },
+        "negative_mistake": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "insult",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": -1.5,
+                "trust": -1.5
+              },
+              "state": {
+                "familiarity": 0.0,
+                "affinity": -1.5,
+                "trust": -1.5
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.3,
+                "affinity": -0.7,
+                "trust": -1.5
+              },
+              "half_life": 39.0,
+              "title": "陌生"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 0.3,
+              "affinity": -0.7,
+              "trust": -1.5
+            },
+            "30": {
+              "familiarity": 0.3,
+              "affinity": -0.4,
+              "trust": -1.5
+            }
+          }
+        },
+        "violation_apology_repeat": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "insult",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": -2.0,
+                "trust": -2.0
+              },
+              "state": {
+                "familiarity": 0.0,
+                "affinity": -2.0,
+                "trust": -2.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "apology",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.3,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.1,
+                "affinity": -1.7,
+                "trust": -2.0
+              },
+              "half_life": 39.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 0,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.4,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.4,
+                "affinity": -1.3,
+                "trust": -2.0
+              },
+              "half_life": 50.7,
+              "title": "陌生"
+            },
+            {
+              "day": 2,
+              "second": 0,
+              "event": "insult",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": -2.0,
+                "trust": -2.0
+              },
+              "state": {
+                "familiarity": 0.4,
+                "affinity": -3.3,
+                "trust": -4.0
+              },
+              "half_life": 50.7,
+              "title": "陌生"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 0.4,
+              "affinity": -3.3,
+              "trust": -4.0
+            },
+            "30": {
+              "familiarity": 0.4,
+              "affinity": -2.3,
+              "trust": -4.0
+            }
+          }
+        }
+      }
+    },
+    "recommended": {
+      "parameters": {
+        "decay_enabled": true,
+        "half_life_base": 30,
+        "half_life_growth": 1.0,
+        "half_life_max": 120,
+        "decay_floor_enabled": true,
+        "economy": {
+          "negative_weight": 1.0,
+          "repair_threshold": 0.0
+        }
+      },
+      "scenarios": {
+        "positive_burst": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.6,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.6,
+                "affinity": 1.4,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 360,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.4,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.9,
+                "affinity": 1.8,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 540,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.2,
+                "affinity": 2.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 720,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.5,
+                "affinity": 2.2,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 900,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.8,
+                "affinity": 2.4,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1080,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.2,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 2.6,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1260,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 2.8,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1440,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": 0.2,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 3.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 0,
+              "second": 1620,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 3.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 2.0,
+              "affinity": 2.8,
+              "trust": 0.0
+            },
+            "30": {
+              "familiarity": 2.0,
+              "affinity": 1.5,
+              "trust": 0.0
+            }
+          }
+        },
+        "neutral_3_days": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.2,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 360,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.3,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 540,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.4,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 720,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.5,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 900,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.6,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 1080,
+              "event": "criticism",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.7,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 0,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.8,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 180,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.9,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 360,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.0,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 540,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 720,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.2,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 900,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.3,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 1,
+              "second": 1080,
+              "event": "criticism",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.4,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 0,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.5,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 180,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.6,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 360,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.7,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 540,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.8,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 720,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 1.9,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 900,
+              "event": "normal_question",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.0,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            },
+            {
+              "day": 2,
+              "second": 1080,
+              "event": "criticism",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 2.1,
+                "affinity": 0.0,
+                "trust": 0.0
+              },
+              "half_life": 30.0,
+              "title": "眼熟之人"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 2.1,
+              "affinity": 0.0,
+              "trust": 0.0
+            },
+            "30": {
+              "familiarity": 2.1,
+              "affinity": 0.0,
+              "trust": 0.0
+            }
+          }
+        },
+        "negative_mistake": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "insult",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": -1.0,
+                "trust": -1.5
+              },
+              "state": {
+                "familiarity": 0.0,
+                "affinity": -1.0,
+                "trust": -1.5
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.3,
+                "affinity": -0.2,
+                "trust": -1.5
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 0.3,
+              "affinity": -0.2,
+              "trust": -1.5
+            },
+            "30": {
+              "familiarity": 0.3,
+              "affinity": -0.1,
+              "trust": -1.5
+            }
+          }
+        },
+        "violation_apology_repeat": {
+          "rows": [
+            {
+              "day": 0,
+              "second": 0,
+              "event": "insult",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": -2.0,
+                "trust": -2.0
+              },
+              "state": {
+                "familiarity": 0.0,
+                "affinity": -2.0,
+                "trust": -2.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 0,
+              "second": 180,
+              "event": "apology",
+              "delta": {
+                "familiarity": 0.1,
+                "affinity": 0.7,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.1,
+                "affinity": -1.3,
+                "trust": -2.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 1,
+              "second": 0,
+              "event": "friendly",
+              "delta": {
+                "familiarity": 0.3,
+                "affinity": 0.8,
+                "trust": 0.0
+              },
+              "state": {
+                "familiarity": 0.4,
+                "affinity": -0.5,
+                "trust": -2.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            },
+            {
+              "day": 2,
+              "second": 0,
+              "event": "insult",
+              "delta": {
+                "familiarity": 0.0,
+                "affinity": -2.0,
+                "trust": -2.0
+              },
+              "state": {
+                "familiarity": 0.4,
+                "affinity": -2.5,
+                "trust": -4.0
+              },
+              "half_life": 30.0,
+              "title": "陌生"
+            }
+          ],
+          "silence": {
+            "3": {
+              "familiarity": 0.4,
+              "affinity": -2.4,
+              "trust": -4.0
+            },
+            "30": {
+              "familiarity": 0.4,
+              "affinity": -1.3,
+              "trust": -4.0
+            }
+          }
+        }
+      }
+    }
+  },
+  "source_sha256": {
+    "_conf_schema.json": "6e069c89c168866054a235c8bc1ad00f1437aba5af93dd601dcc2ba3d9e8d93b",
+    "core/decay.py": "34d0ab292598460c7a0dd1f0eb531a30ec66fd7680ea12e5a98e43deec64151a",
+    "core/level_economy.py": "5400f6a2f47e94ad7ed6d6cd6fa0cae1a7a8753037c230dea61d08f79286cc23",
+    "services/favor_service.py": "5a80b80201318e8e119f44a5508d1862fc36930ec596d8f44dd11b6f6cf572cf",
+    "storage/sqlite_backend.py": "10b6942764a00d19ca1f3de88305752b6811c959ac3e53f3d95012f5a60d776d"
+  }
+}

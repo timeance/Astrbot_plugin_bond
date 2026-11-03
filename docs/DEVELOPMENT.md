@@ -103,6 +103,8 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 
 回放使用真实入口、评估服务与 SQLite，模型返回预置响应。baseline 固定旧默认规则，各实验臂的入口来自当前检出；跨版本比较须保留源码摘要和各自结果。`results.json` 保存逐事件结果与逻辑指标，`timings.json` 单列非确定性耗时。方法与局限见 [关系建模短论文](research/EMOTION_MODEL_PAPER.md)，基线见 [合成回放记录](research/BASELINE.md)。
 
+发布默认值对照可运行 `python scripts/replay_recommended_defaults.py --output artifacts/defaults-run`，使用合成事件、固定时钟与真实服务/SQLite；再次运行须换新目录。它检验参数后果，不检验模型语义准确率。
+
 诊断导出可用 `python scripts/summarize_diagnostics.py <导出.json> --output <本地摘要.json>` 汇总。只统计实际保留的记录，不据此推断未知 Token、语义准确率或主回复延迟；真实导出文件不提交。
 
 ## 自动检查
