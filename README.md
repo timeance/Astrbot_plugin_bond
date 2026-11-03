@@ -211,7 +211,8 @@ LivingMemory 集成已移除，不再探测、读取或写入其记忆。本地�
 | 管理功能与接口 | [管理面板](docs/PR5_MANAGEMENT.md) |
 | 安装后的验证边界 | [验收记录](docs/ACCEPTANCE.md) |
 | 情感与关系建模 | [图文短论文](docs/research/EMOTION_MODEL_PAPER.md) · [研究来源](docs/research/RESEARCH_SOURCES.md) |
-| 开发、测试与贡献 | [开发指南](docs/DEVELOPMENT.md) |
+| 开发与测试 | [开发指南](docs/DEVELOPMENT.md) |
+| 参与贡献与反馈 | [贡献指南](CONTRIBUTING.md) · [安全问题报告](SECURITY.md) |
 | 插件商店提交准备 | [提交资料与自查](docs/STORE_SUBMISSION.md) |
 
 欢迎在 [Issues](https://github.com/timeance/Astrbot_plugin_bond/issues) 提交脱敏复现，或通过 PR 改进代码与文档。

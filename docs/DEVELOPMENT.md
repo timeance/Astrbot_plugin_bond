@@ -1,89 +1,133 @@
 # 开发与交付
 
-## 本地检查
+贡献入口见 [CONTRIBUTING](../CONTRIBUTING.md)。本文说明环境、代码位置、检查范围和发布步骤；功能与配置以 [README](../README.md) 为准。
 
-使用 Python 3.12，Windows 请设置 `PYTHONUTF8=1`。仓库目录命名为 `astrbot_plugin_bond`。离线测试只使用框架日志桩，不需要安装 AstrBot 或调用模型。
+## 准备环境
+
+使用 Git、Python 3.12 和 Node.js 22。仓库目录必须为全小写的 `astrbot_plugin_bond`，测试会按这个包名导入代码。Node 仅用于现有页面测试，无需安装 npm 依赖或构建前端。
+
+```text
+git clone https://github.com/timeance/Astrbot_plugin_bond.git astrbot_plugin_bond
+cd astrbot_plugin_bond
+```
+
+Windows PowerShell：
+
+```powershell
+$env:PYTHONUTF8 = "1"
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
+
+Linux / macOS：
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+source .venv/bin/activate
+```
+
+下文的 `python` 均指该虚拟环境的解释器。Windows 可直接将它替换为 `.\.venv\Scripts\python.exe`，无需修改 PowerShell 执行策略。测试产物放在本次专用目录，例如被 Git 忽略的 `artifacts/`；不要使用宿主实际数据目录。
+
+| 依赖文件 | 用途 |
+| --- | --- |
+| `requirements.txt` | 插件运行依赖：Pillow 生成排行图片，Quart 提供页面 API。AstrBot 由宿主提供。 |
+| `requirements-test.txt` | 离线测试使用的 pytest、PyYAML 和 Windows 时区数据。CI 与本地共用版本。 |
+| `requirements-dev.txt` | 引用测试依赖，再加入固定版本的 Black、Ruff。普通开发安装这一份即可。 |
+
+离线环境不安装 AstrBot，不连接平台或模型。真实框架检查使用另一个环境，避免测试桩掩盖导入错误。Python 3.10 只验证核心层兼容性，不代表宿主支持该版本。
+
+## 从哪里修改
+
+调用方向为 `main.py → api/ → services/ → core/ + storage/`。`main.py` 负责装配与钩子转发，业务变化进入服务层。
+
+| 修改内容 | 代码入口 | 优先查看的测试 |
+| --- | --- | --- |
+| 关系规则与称谓 | `core/`、`services/favor_service.py` | `test_relation_policy.py`、`test_relation_lexicon.py`、`test_relation_storage.py` |
+| 消息归因与分级评估 | `api/listeners.py`、`services/assessment_service.py` | `test_attribution_metadata.py`、`test_assessment.py` |
+| 人格与关系注入 | `services/inject_service.py`、`resources/prompts/` | `test_persona_injection.py`、`test_prompt_service.py` |
+| 管理页面和工具 | `api/page_api.py`、`api/llm_tools.py`、`pages/dashboard/` | `test_admin_profile.py`、`test_llm_query_context.py`、`dashboard.test.cjs` |
+| Bot、作用域与持久化 | `storage/`、`services/runtime_service.py` | `test_storage_router.py`、`test_runtime_scope.py` |
+| 打包和公开内容检查 | `scripts/build_package.py`、`scripts/check_repository.py` | `test_delivery.py`、`test_repository_checks.py` |
+
+表中测试均位于 `tests/`。新增行为先找相邻测试，覆盖成功与失败路径；纯文档改动核对内容、链接和示例即可。
+
+关系修改统一经过 `FavorService`，分值、额度、流水与冷却原子提交。Bot、群和成员身份来自可信平台事件；不从消息正文猜测。保持 Bot 与作用域隔离，私聊不进入自动关系评估、印象和注入。后台任务由 `TaskRegistry` 管理，评估失败不能阻断聊天。
+
+注入只追加本次请求的关系资料，保留宿主人格和接话策略；页面写操作在服务端校验权限。自动评估、注入和诊断默认关闭。LivingMemory 集成已移除，不因参考其工程做法恢复相关探测、配置或依赖。
+
+存储变更须同步 `storage/migrations.py` 中的 `MIGRATIONS`、`SCHEMA_VERSION` 与 `storage/pragma_version.py` 的迁移分支，验证升级、失败和回滚边界。亲近度沿用 `favor` 列，熟悉度和信任度独立存储，不维护三维总分。印象、标签、点集与已汇总流水进度原子提交，失败不能推进进度。`PromptService` 使用独立 JSON。升级和回滚前备份整个插件数据目录，不直接操作线上数据库调试。
+
+## 日常检查
+
+在仓库根目录运行：
+
+```text
 python -m pytest tests/ -q
-python -m black --check .
 node --test tests/dashboard.test.cjs
 python scripts/check_project.py
-python scripts/build_package.py --output /tmp/bond-check.zip
+python scripts/check_repository.py
+python -m black --check .
+python -m ruff format --check .
 ```
 
-打包检查读取 Git 中的 HEAD；先提交修改，再检查待交付的归档。归档保留 LICENSE、NOTICE、用户文档和运行文件，排除测试、工作流及本地运行数据。
+行为、迁移或工程检查有改动时，先运行相关测试，再运行全量检查。两种格式检查使用锁定版本；需要修正时对本次修改的文件运行 `python -m black <文件>` 与 `python -m ruff format <文件>`，最后重新检查。这里的 Ruff 用于格式检查，不代表已启用全部 lint 规则。
 
-真实框架检查须使用另一个 Python 环境，避免离线测试桩掩盖导入问题：
+公开内容检查读取 Git 跟踪文件的工作区内容；新文件须先 `git add <本次文件>` 才会被扫描。它检查运行数据文件、常见凭据模式、部署信息和部分疑似号码，只输出文件、行号与类别。通过扫描不等于已完成隐私审查，提交前仍须查看完整差异；发现真实凭据时先撤销或轮换，再清理公开记录。
 
-```bash
-python -m pip install AstrBot==4.28.0
-python scripts/smoke_astrbot.py --session-dir <本次测试目录> --runtime-dir <本次测试目录>/runtime
+打包从已提交的 `HEAD` 生成。先检查差异并提交本次修改，再运行：
+
+```text
+python scripts/build_package.py --output artifacts/bond-check.zip
 ```
 
-每次使用新的空运行目录。该检查验证真实框架装配、两个 Bot 的四个数据库、模式持久化、在飞评估身份冻结、页面 API 注册、服务端认证拒绝、备份恢复与卸载。不会连接平台或远程模型；认证上下文由测试模拟，不证明完整宿主 HTTP 登录及 Angel Heart 联动已通过。
+脚本拒绝已跟踪文件中的未提交改动；未跟踪文件不会进入归档。它检查运行文件、Logo、依赖声明、许可和提示词资源，排除开发及运行数据，并限制 ZIP 不超过 16,000,000 字节。成功后生成同名 `.sha256` 校验和。测试、脚本、工作流和开发依赖不进入安装包；参与开发请克隆仓库。
+
+## 真实框架与合成回放
+
+另建 `.venv-framework`，安装 `AstrBot==4.28.0`，使用这个环境的解释器分别执行以下命令。每次使用新的空输出目录，示例目录已用过时换一个名称。
+
+```text
+python scripts/smoke_astrbot.py --session-dir artifacts/framework-run --runtime-dir artifacts/framework-run/runtime
+python scripts/smoke_message_metadata.py --session-dir artifacts/metadata-run
+python scripts/smoke_diagnostics.py --runtime-dir artifacts/diagnostics-run
+```
+
+这些脚本分别验证真实框架装配与卸载、OneBot 合成消息转换，以及诊断认证拒绝、脱敏和空间隔离。它们不会连接真实 QQ 或 Provider；认证上下文由测试模拟，不能代替完整宿主登录、浏览器和 Angel Heart 同装验收。
+
+关系合成回放在离线环境执行：
+
+```text
+python scripts/replay_relations.py --arms baseline model-a --output artifacts/replay-run
+```
+
+回放使用真实入口、评估服务与 SQLite，模型返回预置响应。baseline 固定旧默认规则，各实验臂的入口来自当前检出；跨版本比较须保留源码摘要和各自结果。`results.json` 保存逐事件结果与逻辑指标，`timings.json` 单列非确定性耗时。方法与局限见 [关系建模短论文](research/EMOTION_MODEL_PAPER.md)，基线见 [合成回放记录](research/BASELINE.md)。
+
+诊断导出可用 `python scripts/summarize_diagnostics.py <导出.json> --output <本地摘要.json>` 汇总。只统计实际保留的记录，不据此推断未知 Token、语义准确率或主回复延迟；真实导出文件不提交。
 
 ## 自动检查
 
 | 工作流 | 触发时机 | 检查内容 |
 | --- | --- | --- |
-| CI | PR、main 推送、手动运行 | Python 3.10/3.12 离线测试、赋值顺序、元数据与安全默认值、敏感数据、发布包、AstrBot 4.28.0 装配 |
-| Code Format Check | PR、main 推送、手动运行 | 锁定版本的 Black |
-| CodeQL | PR、main 推送、每周、手动运行 | Python 静态安全分析；公开仓库启用 |
-| release | `v*` tag、手动指定已有 tag | 验证版本和 tag、运行测试及格式检查、校验发布包、创建 Release |
+| CI | PR、main 推送、手动 | Linux Python 3.10/3.12 和 Windows Python 3.12 离线测试、Node 22 页面测试、元数据、公开内容、Python 3.12 安装包；独立作业验证 AstrBot 4.28.0 装配。 |
+| Code Format Check | PR、main 推送、手动 | `requirements-dev.txt` 锁定版本的 Black 与 Ruff 格式检查。 |
+| CodeQL | PR、main 推送、每周、手动 | Python 静态安全分析。 |
+| release | `v*` tag、手动指定已有 tag | 检查源码与 tag、运行离线和页面测试、格式与公开内容检查、打包，再单独发布。 |
 
-核心层在 Python 3.10 上的测试通过，不代表 AstrBot 宿主支持 Python 3.10。真实框架要求 Python 3.12+。各工作流设置最小权限和执行时限，PR 检查不读取仓库密钥，不使用 `pull_request_target`。
+工作流固定 Action 提交、设置超时和最小权限。PR 检查不使用仓库密钥或 `pull_request_target`；checkout 不保留 Git 凭据。Dependabot 每月提出 Action 和 Python 依赖更新，由维护者结合 CI 审阅；依赖更新不自动合并。真实框架版本单独固定，升级兼容基线时需同时更新 smoke 说明和验证记录。
 
-## 提交与 PR
+维护者可在仓库设置中将这些检查设为 main 合并的必需条件；提交工作流文件本身不会开启分支保护。
 
-沿用单向分层，关系修改通过统一服务入口。新行为补充成功与失败路径测试。用户文档写用途、操作与限制；架构细节放入开发文档。
+## 提交与发布
 
-使用中文 Conventional Commits。前置阶段尚未合并时，可从其分支建立堆叠 PR，写明依赖和合并顺序。PR 说明问题、改动和测试范围，不提交真实用户数据，不自动合并。每个阶段以可验证结果为交付边界。
+从最新 `main` 建分支，使用中文 Conventional Commits。前置 PR 尚未合并时写明依赖；一次提交只包含本次相关文件。版本以 `metadata.yaml` 和 `main.py` 为准，行为变更同步版本与 CHANGELOG；纯文档、测试和工程流程改动不单独升运行版本。
 
-## 发布
+发布由维护者明确决定，按以下顺序进行：
 
-运行版本以 metadata.yaml 和 main.py 为准。普通行为修复递增补丁版本并同步 CHANGELOG；研究与测试改动不递增运行版本。维护者审核并合并后决定是否创建 annotated tag 和 Release；提交 PR 或验证 ZIP 不等于正式发布。
+1. 审阅并合并 PR，确认目标 main 提交的全部检查通过，包括独立的真实框架作业。确认需要的真实平台验收；缺口记录在 [验收说明](ACCEPTANCE.md)，商店提交另见 [提交准备](STORE_SUBMISSION.md)。
+2. 获取最新远端，确认工作区干净、HEAD 是已审核的 main 提交。核对两处版本、CHANGELOG 和发行说明，先执行打包干跑。
+3. 为该提交创建版本一致的 annotated tag（例如 `v0.3.0`），标签说明写本次变化、升级操作及已知限制；确认后推送该标签。不要覆盖已有发布标签。
+4. release 工作流的只读构建作业检查 tag 指向 HEAD 且属于 `origin/main`，完成检查并上传 ZIP、SHA-256 和标签说明。只有后续发布作业具有 `contents: write`，它核对校验和及远端标签对象未变，再创建 Release。
+5. 查看 Release 的附件和 Actions 结果。普通 PR、分支推送和本地 ZIP 验证都不会创建 Release，也不会提交插件商店。
 
-发布仅接受 main 历史中的提交，tag 版本须与两个元数据入口一致。工作流先完成检查，再生成归档、校验文件及 SHA-256 校验和，最后创建 GitHub Release。普通 PR 和分支推送只做验证，不发版。
-
-首次启用工作流后，应以远程 Actions 结果为准。本地检查通过不等于 GitHub 托管运行已成功；CodeQL 也不能替代人工审查和运行时安全测试。
-
-## 印象汇总进度
-
-Schema 11 将成功汇总的流水 ID 保存在本地，并与印象、标签和点集原子提交。失败不推进进度；提交前再次检查评审是否被撤销。版本 10 保留 PR-1 已使用的群成员索引结构，避免同一版本号出现两种数据库结构。升级与回滚前均须备份整个数据目录。
-
-## 当前关系与可选集成
-
-Schema 12 增加三维关系和事件去重，Schema 13 保存评估事件、调用状态与预算。`affinity` 继续使用单一 `favor` 列，熟悉度和信任度各有独立列；不维护第二份亲近度或三维总分。管理员资料修改也通过 `FavorService`，资料与审计流水原子提交，资料流水不能当作数值撤销。
-
-`PromptService` 管理独立 JSON。LivingMemory 集成已移除；相关决策和代码调查见 [接口调查](LIVINGMEMORY.md)。
-
-## 合成关系回放
-
-离线环境运行，输出目录须为本次新建的空目录：
-
-```bash
-python scripts/replay_relations.py --arms baseline model-a --output <本次测试目录>/replay
-```
-
-脚本运行真实入口方法、评估服务与 SQLite 链路，模型返回预置响应。baseline 固定旧默认规则，但所有实验臂的入口均来自当前检出；跨代码版本须比较各自保存的结果及源码摘要。results.json 包含逐事件结果与逻辑指标，timings.json 单列非确定性耗时。数据库仅在输出目录，不提交。
-
-真实 AstrBot 环境另运行消息转换检查：
-
-```bash
-python scripts/smoke_message_metadata.py --session-dir <本次测试目录>/metadata
-```
-
-使用 AstrBot 4.28.0 的真实 OneBot 转换代码和合成 action 响应，禁止网络及子进程。此检查验证 message_str、At/Reply 和本地过滤，不代表真实 QQ、Provider、浏览器或真人语义验收。基线指标见 [合成回放基线](research/BASELINE.md)，方法与局限见 [关系建模短论文](research/EMOTION_MODEL_PAPER.md)。
-
-
-## 可选诊断检查
-
-真实框架隔离环境运行：python scripts/smoke_diagnostics.py --runtime-dir <新的空目录>。
-检查2 Bot/2作用域、开关重载、认证拒绝、脱敏导出、清除隔离及停用后历史管理；不连接 Provider、QQ 或浏览器。
-
-管理员导出后可在离线环境运行：
-python scripts/summarize_diagnostics.py <导出.json> --output <本地摘要.json>。
-只汇总已保留的记录，未知 Token、语义准确率和主回复延迟保持未知。
-不要将真实导出文件提交到仓库。
+构建失败时修复原因并重新检查。若发布结果不确定，先查看远端 tag、Release 与附件，再决定是否重跑；已存在的 Release 会使创建命令失败，不会覆盖附件。工作流结构检查和本地干跑不能证明真正发布成功，首次正式发布仍须核对远端结果。

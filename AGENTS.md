@@ -24,7 +24,8 @@
 - 使用 Python 3.12 开发；命令及验证边界见 `docs/DEVELOPMENT.md`。
 - 离线测试不导入要求完整框架的入口模块；真实框架 smoke 分环境、分进程运行。
 - 修改 `main.py` 后执行 `python scripts/check_project.py`。
-- 修改行为时验证成功与失败路径；运行全量测试和锁定版本的 Black。
+- 修改行为时验证成功与失败路径；运行全量测试和锁定版本的 Black、Ruff 格式检查。
+- 提交前运行公开内容检查；打包前提交源码，归档只读取 HEAD。
 - 数据迁移同步修改 MIGRATIONS、SCHEMA_VERSION 和 pragma_version 分支。
 - 代码标识符英文，使用说明和注释用中文；注释解释契约，不记录开发过程。
 - 使用中文 Conventional Commits；存在尚未合并的前置阶段时，可基于其分支创建堆叠 PR，并在 PR 中明确依赖。不得自动合并。

@@ -9,36 +9,48 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: "1"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: 单元测试（Python ${{ matrix.python-version }}）
-    runs-on: ubuntu-latest
+    name: 单元测试（${{ matrix.os }} / Python ${{ matrix.python-version }}）
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ['3.10', '3.12']
+        include:
+          - os: windows-latest
+            python-version: '3.12'
     steps:
-      # 检出到子目录 astrbot_plugin_bond/：test_core.py 把 tests/../..
-      # 加进 sys.path 后以包名导入，工作区根必须正好是插件目录的父目录
+      # 测试通过包名导入，检出目录须保持全小写。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: astrbot_plugin_bond
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
-      - name: 安装依赖
-        run: python -m pip install pytest==9.2.0 PyYAML==6.0.3
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: 安装测试依赖
+        run: python -m pip install -r astrbot_plugin_bond/requirements-test.txt
       - name: 运行测试
         run: python -m pytest astrbot_plugin_bond/tests/ -q
       - name: 页面异步状态回归
         run: node --test astrbot_plugin_bond/tests/dashboard.test.cjs
       - name: 元数据、安全默认值与初始化顺序
         run: python astrbot_plugin_bond/scripts/check_project.py
+      - name: 仓库公开内容检查
+        run: python astrbot_plugin_bond/scripts/check_repository.py
       - name: 发布包干跑与内容检查
         if: matrix.python-version == '3.12'
         run: python astrbot_plugin_bond/scripts/build_package.py --output "${{ runner.temp }}/bond-check.zip"
@@ -51,6 +63,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: astrbot_plugin_bond
+          persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -61,62 +74,11 @@ jobs:
           python astrbot_plugin_bond/scripts/smoke_astrbot.py
           --session-dir "${{ runner.temp }}/bond-smoke"
           --runtime-dir "${{ runner.temp }}/bond-smoke/runtime"
-
       - name: 真实 OneBot 合成消息元数据
         run: >-
           python astrbot_plugin_bond/scripts/smoke_message_metadata.py
           --session-dir "${{ runner.temp }}/bond-metadata"
-
       - name: 诊断脱敏、认证与空间隔离
         run: >-
           python astrbot_plugin_bond/scripts/smoke_diagnostics.py
           --runtime-dir "${{ runner.temp }}/bond-diagnostics"
-
-  purity:
-    name: 敏感数据与纯净交付检查
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: 私有凭据与运行时数据不得被跟踪
-        run: |
-          if git ls-files | grep -E 'tokens\.txt|CLAUDE\.local\.md|AGENTS\.local\.md|\.(db|sqlite|sqlite3)(-wal|-shm)?$|\.mimosa|__pycache__|\.pytest_cache|Zone\.Identifier|\.log$'; then
-            echo "⛔ 私有凭据/运行时数据被 git 跟踪，禁止合并"
-            exit 1
-          fi
-          echo "✅ 无私有凭据/运行时数据被跟踪"
-      - name: 令牌模式扫描
-        run: |
-          if git grep -nE 'ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]+|https://[^/@[:space:]]+:[^/@[:space:]]+@github' -- .; then
-            echo "⛔ 疑似令牌/带凭据 URL 泄露，禁止合并"
-            exit 1
-          fi
-          echo "✅ 无令牌模式命中"
-      - name: 部署细节不得出现在提交文件（占位符规范）
-        run: |
-          # 排除模式定义所在的 ci.yml 自身；豁免 api/rank_image.py 的字体
-          # 候选探测路径（容器内其他插件字体目录，功能性绝对路径，非部署泄露）。
-          # 豁免方式是先把字体路径子串从 api/rank_image.py 的行内剥掉、再复检部署
-          # 模式——整行丢弃会让"字体路径 + 真实部署细节"同行的泄漏一起被放过；
-          # 剥离限定该文件，其他文件的 fonts 形态串不能借此藏部署细节（Sourcery 审查）
-          if git grep -nE '/home/[a-z]|/www/|/AstrBot/|127\.0\.0\.1|:6185|docker (exec|logs|restart) astrbot' -- . \
-              | grep -vE '^\.github/workflows/ci\.yml:[0-9]+:' \
-              | sed -E "/^api\/rank_image\.py:[0-9]+:/ s#[^'\":,[:space:]]*fonts/[^'\":,[:space:]]*##g" \
-              | grep -E '/home/[a-z]|/www/|/AstrBot/|127\.0\.0\.1|:6185|docker (exec|logs|restart) astrbot'; then
-            echo "⛔ 命中本机部署细节，示例一律改用 <astrbot容器>/<端口> 等占位符（规范见 AGENTS.md 公开内容）"
-            exit 1
-          fi
-          echo "✅ 无部署细节泄露"
-      - name: 疑似真实 QQ/群号扫描
-        # 真实 QQ/群号均为 1 开头的 10 位数字；占位符白名单：123456789。
-        # tests/ 豁免——夹具里的 1xxxxxxxxx 是合成时间戳与占位 QQ（评审红线
-        # 要求测试用 123456789/阿狸 等中性占位，PR 审阅时人工把关）。
-        # .github 只豁免本 ci.yml（模式定义自含 123456789）——整目录豁免会让
-        # 其他 workflow/配置文件里的真实号码逃过扫描（Sourcery 审查）
-        run: |
-          if git grep -nE '\b1[0-9]{9}\b' -- . ':(exclude)tests' ':(exclude).github/workflows/ci.yml' \
-              | grep -v 123456789; then
-            echo "⛔ 疑似真实 QQ/群号（1 开头 10 位且非占位符 123456789），禁止合并"
-            exit 1
-          fi
-          echo "✅ 无疑似真实 QQ/群号"

@@ -11,6 +11,9 @@ from pathlib import Path, PurePosixPath
 
 from check_project import ROOT, check_project
 
+# 官方发布指南的 16MB 上限，按十进制字节保守检查。
+MAX_PACKAGE_BYTES = 16_000_000
+
 
 def git(*args: str) -> str:
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True).strip()
@@ -32,7 +35,14 @@ def validate_tag(tag: str, version: str) -> None:
     )
 
 
+def require_committed_source() -> None:
+    if git("status", "--porcelain", "--untracked-files=no"):
+        raise ValueError("打包读取 HEAD，请先提交或还原已跟踪文件的改动")
+
+
 def validate_archive(archive: Path) -> None:
+    if archive.stat().st_size > MAX_PACKAGE_BYTES:
+        raise ValueError("发布包超过 16MB 上限")
     with zipfile.ZipFile(archive) as package:
         if package.testzip() is not None:
             raise ValueError("ZIP 校验失败")
@@ -41,6 +51,8 @@ def validate_archive(archive: Path) -> None:
             "LICENSE",
             "NOTICE",
             "README.md",
+            "requirements.txt",
+            "logo.png",
             "metadata.yaml",
             "main.py",
             "_conf_schema.json",
@@ -65,6 +77,10 @@ def validate_archive(archive: Path) -> None:
                     "data",
                     "__pycache__",
                     ".pytest_cache",
+                    ".ruff_cache",
+                    ".venv",
+                    ".venv-framework",
+                    "artifacts",
                 }
                 for part in path.parts
             ) or re.search(r"\.(db|sqlite|sqlite3)(-wal|-shm)?$|\.pyc$|\.log$", name):
@@ -76,6 +92,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tag")
     args = parser.parse_args()
+    require_committed_source()
     version = check_project()
     if args.tag:
         validate_tag(args.tag, version)

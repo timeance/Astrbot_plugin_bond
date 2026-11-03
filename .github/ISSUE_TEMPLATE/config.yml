@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用说明
+    url: https://github.com/timeance/Astrbot_plugin_bond/blob/main/README.md
+    about: 查看安装、配置、功能范围与使用限制。
+  - name: 开发与验证指南
+    url: https://github.com/timeance/Astrbot_plugin_bond/blob/main/docs/DEVELOPMENT.md
+    about: 查看开发环境、检查命令和交付流程。
