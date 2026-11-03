@@ -66,6 +66,15 @@ def package(tmp_path, *, missing=None, extra=None):
         "resources/prompts/judge_prompt.txt",
         "resources/prompts/inject_template.txt",
         "resources/prompts/bond_behavior.txt",
+        "resources/ranking/yachiyo-wave.png",
+        "resources/ranking/yachiyo-peace.png",
+        "resources/ranking/yachiyo-heart.png",
+        "resources/ranking/yachiyo-hug.png",
+        "resources/ranking/yachiyo-pout.png",
+        "resources/ranking/yachiyo-laugh.png",
+        "resources/ranking/yachiyo-normal-smile.png",
+        "resources/ranking/yachiyo-normal-wave.png",
+        "resources/ranking/yachiyo-normal-hug.png",
     ]
     with zipfile.ZipFile(path, "w") as archive:
         for name in files:
@@ -110,6 +119,15 @@ def test_package_requires_behavior_prompt_resource(tmp_path):
         "logo.png",
         "resources/fonts/BondSansSC-Regular.ttf",
         "resources/fonts/OFL.txt",
+        "resources/ranking/yachiyo-wave.png",
+        "resources/ranking/yachiyo-peace.png",
+        "resources/ranking/yachiyo-heart.png",
+        "resources/ranking/yachiyo-hug.png",
+        "resources/ranking/yachiyo-pout.png",
+        "resources/ranking/yachiyo-laugh.png",
+        "resources/ranking/yachiyo-normal-smile.png",
+        "resources/ranking/yachiyo-normal-wave.png",
+        "resources/ranking/yachiyo-normal-hug.png",
     ],
 )
 def test_package_requires_installation_assets(tmp_path, missing):

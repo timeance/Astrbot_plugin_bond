@@ -20,7 +20,7 @@ def _context(Context, config):
         event_queue=asyncio.Queue(),
         config=config,
         db=None,
-        provider_manager=None,
+        provider_manager=SimpleNamespace(provider_insts=[]),
         platform_manager=None,
         conversation_manager=None,
         message_history_manager=None,
@@ -646,10 +646,11 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert "小千" not in ranking
         status, settings = await call(
             page.handle_settings,
-            f"/astrbot_plugin_bond/settings?bot_id={BOT_IDS[0]}&scope_mode=per_group",
+            "/astrbot_plugin_bond/settings",
             username="dashboard-admin",
         )
         assert status == 200 and settings["values"]["inject.memory_days"] == 9
+        assert settings["providers"] == []
         status, saved = await call(
             page.handle_settings,
             "/astrbot_plugin_bond/settings",
@@ -681,7 +682,12 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             page.handle_models,
             "/astrbot_plugin_bond/models",
             "POST",
-            dict(target, config=configured, max_concurrent_assessments=3),
+            dict(
+                target,
+                config=configured,
+                max_concurrent_assessments=3,
+                revision=body["revision"],
+            ),
             "dashboard-admin",
         )
         assert status == 200 and body["restart_required"]

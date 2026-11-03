@@ -7,12 +7,31 @@ import math
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-# 仅暴露当前仍使用的详细设置。基础开关、模型和数据空间有各自入口。
+
+class SettingsRevisionError(ValueError):
+    """提交的配置版本已失效或缺失。"""
+
+
+# 基础配置与详细参数共用宿主配置；评估高级参数由评估页编辑。
 SECTIONS = {
-    "basic": ("基础设置", ["default_scope_mode", "master_ids", "group_whitelist"]),
+    "basic": (
+        "基础设置",
+        [
+            "assessment.enabled",
+            "assessment.assessment_mode",
+            "assessment.small_provider_id",
+            "assessment.large_provider_id",
+            "inject.enabled",
+            "default_scope_mode",
+            "group_whitelist",
+            "ignored_bot_ids",
+            "master_ids",
+            "relation_mode",
+        ],
+    ),
     "rules": (
         "关系变化",
-        ["relation_mode", "timezone", "decay", "economy"],
+        ["timezone", "decay", "economy"],
     ),
     "memory": (
         "印象与近期事件",
@@ -22,6 +41,30 @@ SECTIONS = {
     "diagnostics": ("关系诊断", ["diagnostics"]),
 }
 LABELS = {
+    "assessment.enabled": (
+        "自动评估互动",
+        "根据指向 Bot 的互动更新关系，会调用日常评估模型。保存并重载插件后生效。",
+    ),
+    "assessment.assessment_mode": (
+        "评估模式",
+        "single 使用日常模型；tiered 在需要时调用复核模型。复核模型可留空。",
+    ),
+    "assessment.small_provider_id": (
+        "日常评估模型",
+        "启用自动评估时必填，选择 AstrBot 中已配置的文本生成模型。",
+    ),
+    "assessment.large_provider_id": (
+        "复核模型（可选）",
+        "用于分级评估中容易误判的互动，留空时不调用复核模型。",
+    ),
+    "inject.enabled": (
+        "回复体现关系",
+        "向回复上下文补充关系与成员印象，保留当前人格和接话策略。",
+    ),
+    "ignored_bot_ids": (
+        "忽略的机器人账号",
+        "这些账号的消息不参与关系记录与评估。填写平台账号 ID，每项一个。",
+    ),
     "relation_mode": (
         "关系节奏模板",
         "写实沿用当前节奏；Galgame略加快正向熟悉度和亲近度，并提高每日上限。信任、负向变化与防刷规则不变；重载后生效，不重置数据。",
@@ -157,7 +200,9 @@ def fields():
     result = []
 
     def visit(path, node, group, title):
-        if path in {"inject.enabled", "decay.baseline", "economy.preset"}:
+        if path in {"decay.baseline", "economy.preset"}:
+            return
+        if group != "basic" and path in SECTIONS["basic"][1]:
             return
         if node["type"] == "object":
             for key, child in node["items"].items():
@@ -181,6 +226,7 @@ def fields():
                 type=node["type"],
                 default=node.get("default"),
                 options=node.get("options", []),
+                special=node.get("_special"),
             )
         )
 
@@ -204,7 +250,11 @@ def snapshot(config):
             value = value.get(part, {}) if isinstance(value, dict) else {}
         values[field["path"]] = field["default"] if value == {} else value
     revision = hashlib.sha256(
-        json.dumps(values, sort_keys=True, ensure_ascii=False).encode()
+        json.dumps(
+            {"values": values, "assessment": config.get("assessment") or {}},
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode()
     ).hexdigest()
     return dict(fields=definitions, values=values, revision=revision)
 

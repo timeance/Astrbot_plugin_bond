@@ -4,6 +4,9 @@ import asyncio
 import io
 import json
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -253,3 +256,147 @@ def test_oversized_avatar_is_rejected_before_pixel_decode(monkeypatch):
     monkeypatch.setattr(Image.Image, "convert", convert)
     rank_image._avatar(canvas, draw, 10, 10, "合成", payload.getvalue(), font, "white")
     convert.assert_not_called()
+
+
+@pytest.fixture
+def character_assets(tmp_path, monkeypatch):
+    directory = tmp_path / "characters"
+    directory.mkdir()
+    paths = tuple(directory / path.name for path in rank_image._CHARACTER_PATHS)
+    colors = [(210, 30, 50), (20, 190, 80), (30, 70, 220), (210, 160, 20)]
+    colors += [(180, 40, 190), (20, 180, 190)]
+    colors = [colors[i % len(colors)] for i in range(len(paths))]
+    for path, color in zip(paths, colors):
+        with Image.new("RGBA", (480, 240), (*color, 255)) as source:
+            source.save(path, "PNG")
+    monkeypatch.setattr(rank_image, "_CHARACTER_PATHS", paths)
+    monkeypatch.setattr(rank_image, "_LAST_CHARACTER", None)
+    monkeypatch.setattr(rank_image.random, "shuffle", lambda items: None)
+    monkeypatch.setattr(rank_image, "_output_dir", lambda: tmp_path)
+    return paths, colors
+
+
+def test_character_resources_are_nine_transparent_rgba_pngs():
+    assert len(rank_image._CHARACTER_PATHS) == 9
+    assert len(set(rank_image._CHARACTER_PATHS)) == 9
+    for path in rank_image._CHARACTER_PATHS:
+        with Image.open(path) as character:
+            character.load()
+            assert character.format == "PNG"
+            assert character.mode == "RGBA"
+            assert character.width == character.height
+            with character.getchannel("A") as alpha:
+                assert alpha.getextrema() == (0, 255)
+
+
+def test_consecutive_renders_choose_different_characters_and_contain_slot(
+    character_assets, monkeypatch
+):
+    _, colors = character_assets
+    original_load = rank_image._load_character
+    loaded = []
+
+    def track_load():
+        character = original_load()
+        if character is not None:
+            loaded.append(character)
+        return character
+
+    monkeypatch.setattr(rank_image, "_load_character", track_load)
+    first = Path(rank_image.render_ranking([]))
+    second = Path(rank_image.render_ranking([]))
+    assert len(loaded) == 2
+    for character in loaded:
+        with pytest.raises(ValueError, match="closed"):
+            character.getpixel((0, 0))
+    # 无角色版本可定位绘制边界，验证整个宽图等比缩放、居中且没有裁切。
+    monkeypatch.setattr(rank_image, "_CHARACTER_PATHS", ())
+    baseline = Path(rank_image.render_ranking([]))
+    for path, color in zip((first, second), colors):
+        with Image.open(path) as card, Image.open(baseline) as background:
+            assert card.getpixel((786, 168)) == color
+            assert card.getpixel((642, 96)) == color
+            assert card.getpixel((929, 239)) == color
+            for point in ((641, 168), (930, 168), (786, 95), (786, 240)):
+                assert card.getpixel(point) == background.getpixel(point)
+
+
+def test_concurrent_character_selection_serializes_loading(
+    character_assets, monkeypatch
+):
+    original_convert = Image.Image.convert
+    tracker_lock = threading.Lock()
+    active = 0
+    maximum_active = 0
+    chosen = []
+
+    def track_convert(source, *args, **kwargs):
+        nonlocal active, maximum_active
+        with tracker_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+            chosen.append(Path(source.filename))
+        try:
+            time.sleep(0.005)  # 让未受保护的并发解码产生重叠。
+            return original_convert(source, *args, **kwargs)
+        finally:
+            with tracker_lock:
+                active -= 1
+
+    def load(_):
+        character = rank_image._load_character()
+        assert character is not None
+        with character:
+            assert character.mode == "RGBA"
+
+    monkeypatch.setattr(Image.Image, "convert", track_convert)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(load, range(16)))
+    assert len(chosen) == 16
+    assert maximum_active == 1
+    assert all(previous != current for previous, current in zip(chosen, chosen[1:]))
+
+
+@pytest.mark.parametrize("failure", ["missing", "corrupt"])
+def test_unavailable_character_tries_other_assets(character_assets, failure):
+    paths, colors = character_assets
+    if failure == "missing":
+        paths[0].unlink()
+    else:
+        paths[0].write_bytes(paths[0].read_bytes()[:100])
+    path = rank_image.render_ranking([])
+    with Image.open(path) as card:
+        assert card.getpixel((786, 168)) == colors[1]
+
+
+def test_only_remaining_character_can_be_reused(character_assets):
+    paths, colors = character_assets
+    for path in paths[1:]:
+        path.unlink()
+    for _ in range(2):
+        with Image.open(rank_image.render_ranking([])) as card:
+            assert card.getpixel((786, 168)) == colors[0]
+
+
+@pytest.mark.parametrize("failure", ["missing", "corrupt"])
+def test_all_characters_unavailable_still_renders_without_logo(
+    character_assets, monkeypatch, failure
+):
+    paths, _ = character_assets
+    for path in paths:
+        if failure == "missing":
+            path.unlink()
+        else:
+            path.write_bytes(b"not a PNG")
+    original_open = Image.open
+
+    def forbid_old_logo(path, *args, **kwargs):
+        assert Path(path).name != "logo.png"
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Image, "open", forbid_old_logo)
+    rows = [dict(rank=1, member="合成昵称", relation_title="亲近却戒备")]
+    path = rank_image.render_ranking(rows, 1)
+    with Image.open(path) as card:
+        card.load()
+        assert card.size == (960, 566)
