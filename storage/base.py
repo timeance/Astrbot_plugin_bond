@@ -408,6 +408,12 @@ class StorageBackend(ABC):
     async def large_call_counts(self, user_id):
         raise NotImplementedError
 
+    async def assessment_day_counts(self, day):
+        raise NotImplementedError
+
+    async def changed_members_count(self, start, end):
+        raise NotImplementedError
+
     async def assessment_stats(self):
         raise NotImplementedError
 

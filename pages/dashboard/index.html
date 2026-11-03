@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-bond-theme="dark">
+<html lang="zh-CN" data-bond-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bond 关系好感系统</title>
   <script>
     try {
-      if (window.localStorage.getItem("bond-theme") === "light") document.documentElement.dataset.bondTheme = "light";
-    } catch { /* 存储不可用时使用默认深色。 */ }
+      const saved = window.localStorage.getItem("bond-theme");
+      if (saved === "light" || saved === "dark") document.documentElement.dataset.bondTheme = saved;
+    } catch { /* 存储不可用时使用默认浅色。 */ }
   </script>
   <link rel="stylesheet" href="./app.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.js"></script>

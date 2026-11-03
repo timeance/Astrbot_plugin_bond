@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from astrbot.api import logger
 from dataclasses import asdict
+import time
 from uuid import uuid4
 
 from ..core.scope import GLOBAL_GROUP, account_id, scope_mode as validate_scope_mode
@@ -216,6 +217,12 @@ class PageApi:
         )
         reg(f"/{PLUGIN_NAME}/users", self.handle_users, ["GET"], "Bond 当前关系总览")
         reg(
+            f"/{PLUGIN_NAME}/today_summary",
+            self.handle_today_summary,
+            ["GET"],
+            "Bond 今日概览",
+        )
+        reg(
             f"/{PLUGIN_NAME}/undo",
             self.handle_undo,
             ["POST"],
@@ -327,6 +334,28 @@ class PageApi:
             _bot_id, _mode, deps = await self._deps(await self._params())
             groups = await deps.favor.distinct_groups()
             return self._response({"success": True, "groups": groups})
+
+        return await self._invoke(run)
+
+    async def handle_today_summary(self):
+        async def run():
+            bot_id, mode, deps = await self._deps(await self._params())
+            now = time.time()
+            calls = await deps.assessment.today_usage(now=now)
+            relations = await deps.favor.today_changes(now=now)
+            summary = dict(
+                initial=dict(
+                    used=calls["initial"]["used"], limit=calls["initial"]["cap"]
+                ),
+                review=dict(used=calls["review"]["used"], limit=calls["review"]["cap"]),
+                changed_members=relations["changed_members"],
+                call_day=calls["day"],
+                relation_day=relations["day"],
+                relation_timezone=relations["timezone"],
+                call_reset_at=calls["reset_at"],
+                relation_reset_at=relations["reset_at"],
+            )
+            return self._response({"success": True, "summary": summary})
 
         return await self._invoke(run)
 
