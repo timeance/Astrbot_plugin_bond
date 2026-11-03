@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import random
 import tempfile
 import threading
 import time
@@ -14,6 +15,22 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 _ROOT = Path(__file__).resolve().parents[1]
 _FONT = _ROOT / "resources/fonts/BondSansSC-Regular.ttf"
 _RENDER_SLOTS = threading.BoundedSemaphore(2)
+_CHARACTER_PATHS = tuple(
+    _ROOT / "resources/ranking" / f"yachiyo-{pose}.png"
+    for pose in (
+        "wave",
+        "peace",
+        "heart",
+        "hug",
+        "pout",
+        "laugh",
+        "normal-smile",
+        "normal-wave",
+        "normal-hug",
+    )
+)
+_CHARACTER_LOCK = threading.Lock()
+_LAST_CHARACTER: Path | None = None
 _LAST_CLEANUP = 0.0
 _WIDTH = 960
 _INK = "#f3f0ff"
@@ -116,6 +133,26 @@ def _output_dir():
     return directory
 
 
+def _load_character():
+    global _LAST_CHARACTER
+    # 选择与解码共用锁，使并发渲染不会同时选中上一款。
+    with _CHARACTER_LOCK:
+        candidates = [path for path in _CHARACTER_PATHS if path != _LAST_CHARACTER]
+        random.shuffle(candidates)
+        # 其他款均不可用时，仍可使用唯一可用的上一款。
+        if _LAST_CHARACTER in _CHARACTER_PATHS:
+            candidates.append(_LAST_CHARACTER)
+        for path in candidates:
+            try:
+                with Image.open(path) as source:
+                    character = source.convert("RGBA")
+            except (OSError, ValueError, Image.DecompressionBombError):
+                continue
+            _LAST_CHARACTER = path
+            return character
+    return None
+
+
 def render_ranking(
     rows: list[dict],
     self_rank: int | None = None,
@@ -170,10 +207,17 @@ def _render(rows, self_rank, font_path, avatars):
     draw.text((42, 94), "月读空间", font=title_font, fill=_INK)
     draw.text((44, 169), "相处的轨迹，都在这里。", font=body_font, fill="#c2c7e6")
     draw.text((44, 218), "熟悉 · 亲近 · 信任", font=small_font, fill=_MUTED)
-    with Image.open(_ROOT / "logo.png") as source:
-        logo = source.convert("RGBA")
-        logo.thumbnail((288, 288), Image.Resampling.LANCZOS)
-        image.paste(logo, (642, 24), logo)
+    character = _load_character()
+    if character is not None:
+        try:
+            character.thumbnail((288, 288), Image.Resampling.LANCZOS)
+            position = (
+                642 + (288 - character.width) // 2,
+                24 + (288 - character.height) // 2,
+            )
+            image.paste(character, position, character)
+        finally:
+            character.close()
     draw.line((42, 333, 918, 333), fill="#575d83", width=1)
     draw.text((44, 345), "本群关系排行", font=heading_font, fill=_INK)
     draw.text((915, 359), "按亲近度排序", font=small_font, fill=_MUTED, anchor="rm")

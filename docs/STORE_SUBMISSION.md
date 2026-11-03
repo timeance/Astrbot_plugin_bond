@@ -1,6 +1,6 @@
 # Bond 插件商店提交准备
 
-核查日期：2026-11-03。插件版本：0.3.5。本文提供重新提交的资料与验收清单；上一轮因日志规范未获上架，本次修复仍待商店复审。
+核查日期：2026-11-03。插件版本：0.3.6。本文提供重新提交的资料与验收清单；上一轮因日志规范未获上架，本次修复仍待商店复审。
 
 ## 提交入口
 
@@ -14,10 +14,10 @@ Cloud 登录后的账号归属、重名检查及额外表单字段仍需维护�
 
 ```yaml
 name: astrbot_plugin_bond
-display_name: Bond 关系系统
+display_name: Bond 关系好感系统
 short_desc: 按 Bot 隔离的三维关系与成员印象
 desc: 保存熟悉度、亲近度、信任度与成员印象，支持分级评估、人格适配及管理面板。
-version: "0.3.5"
+version: "0.3.6"
 author: yiwuerxin, Timeance
 repo: https://github.com/timeance/Astrbot_plugin_bond
 tags:
@@ -47,7 +47,7 @@ astrbot_version: ">=4.28,<5"
 | 代码格式 | 使用 Ruff 0.15.22 和 Black 26.5.1 检查，107 个 Python 文件通过。 |
 | 可重复检查 | [开发指南](DEVELOPMENT.md) 提供元数据、测试、合成装配和打包命令；[验收记录](ACCEPTANCE.md) 区分已通过检查与真实运行缺口。 |
 
-公开压缩包须小于或等于 **16MB**。0.3.5 增加写实/Galgame模板、固定中性衰减基线及带头像的权限排行；schema仍为15，无数据迁移。推荐配置和验证范围见 [两套节奏与图片排行](research/RELATION_MODES_AND_RANKING.md) 及 [默认值与观察记录](research/RECOMMENDED_DEFAULTS.md)。提交前核对最终公开分支的 CI 和压缩包，不用旧结果代替新版本检查。
+公开压缩包须小于或等于 **16MB**。0.3.6 增加独立深浅主题、基础配置快速开始和九款随机排行插图，仍使用同一份宿主配置；保存后重载生效。0.3.5 增加写实/Galgame模板、固定中性衰减基线及带头像的权限排行；schema仍为15，无数据迁移。推荐配置和验证范围见 [两套节奏与图片排行](research/RELATION_MODES_AND_RANKING.md) 及 [默认值与观察记录](research/RECOMMENDED_DEFAULTS.md)。提交前核对最终公开分支的 CI 和压缩包，不用旧结果代替新版本检查。
 
 ## 提交前待确认
 

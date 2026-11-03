@@ -6,6 +6,7 @@ import asyncio
 import json
 
 from ..core.scope import account_id, scope_mode
+from ..core.settings import SettingsRevisionError
 
 
 class RuntimeService:
@@ -102,27 +103,32 @@ class RuntimeService:
         limit = raw.pop("max_concurrent_assessments", 2)
         return asdict(AssessmentConfig(**raw)), limit
 
-    async def save_assessment_settings(self, values, limit):
+    async def save_assessment_settings(self, values, limit, revision):
+        from copy import deepcopy
         from .assessment_service import AssessmentConfig, AssessmentCapacity
         from dataclasses import asdict
 
-        if not isinstance(values, dict):
-            raise ValueError("评估设置须为对象")
-        current = dict(self._config.get("assessment") or {})
-        current.pop("max_concurrent_assessments", None)
-        validated = asdict(AssessmentConfig(**{**current, **values}))
-        AssessmentCapacity(limit)
         async with self._lock:
-            previous = self._config.get("assessment")
+            if revision != self.detailed_settings()["revision"]:
+                raise SettingsRevisionError("设置已变更，请刷新后重试")
+            if not isinstance(values, dict):
+                raise ValueError("评估设置须为对象")
+            current = dict(self._config.get("assessment") or {})
+            current.pop("max_concurrent_assessments", None)
+            validated = asdict(AssessmentConfig(**{**current, **values}))
+            AssessmentCapacity(limit)
+            previous = deepcopy(dict(self._config))
             self._config["assessment"] = dict(
                 validated, max_concurrent_assessments=limit
             )
             try:
                 self._config.save_config()
             except BaseException:
-                self._config["assessment"] = previous
+                self._config.clear()
+                self._config.update(previous)
                 raise
-        # 已捕获的在途任务继续使用旧配置。插件重载后统一生效。
+            # 已捕获的在途任务继续使用旧配置。插件重载后统一生效。
+            return self.detailed_settings()["revision"]
 
     def detailed_settings(self):
         from ..core.settings import snapshot
@@ -132,24 +138,32 @@ class RuntimeService:
     async def save_detailed_settings(self, values, revision):
         from copy import deepcopy
         from ..core.settings import validate_patch
+        from .assessment_service import AssessmentConfig, AssessmentCapacity
 
-        validate_patch(values)
         async with self._lock:
             if revision != self.detailed_settings()["revision"]:
-                raise ValueError("设置已变更，请刷新后重试")
+                raise SettingsRevisionError("设置已变更，请刷新后重试")
+            validate_patch(values)
             previous = deepcopy(dict(self._config))
+            candidate = deepcopy(previous)
+            for path, value in values.items():
+                target = candidate
+                parts = path.split(".")
+                for part in parts[:-1]:
+                    target = target.setdefault(part, {})
+                target[parts[-1]] = deepcopy(value)
+            assessment = dict(candidate.get("assessment") or {})
+            limit = assessment.pop("max_concurrent_assessments", 2)
+            AssessmentConfig(**assessment)
+            AssessmentCapacity(limit)
             try:
-                for path, value in values.items():
-                    target = self._config
-                    parts = path.split(".")
-                    for part in parts[:-1]:
-                        target = target.setdefault(part, {})
-                    target[parts[-1]] = value
+                self._config.update(candidate)
                 self._config.save_config()
             except BaseException:
                 self._config.clear()
                 self._config.update(previous)
                 raise
+            return self.detailed_settings()
 
     def known_bot_ids(self) -> list[str]:
         ids = set(self.storage.known_bot_ids()) | self._observed_bot_ids
