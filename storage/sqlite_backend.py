@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import sqlite3
 import tempfile
@@ -24,6 +25,7 @@ from ..core.relation_policy import affinity_bounds_for_undo
 from ..core.scope import GLOBAL_GROUP
 from .base import StorageBackend, clamp_daily
 from .migrations import SCHEMA_VERSION, migrate
+from .daily_usage import read_usage, add_usage
 
 
 class SQLiteBackend(StorageBackend):
@@ -191,7 +193,7 @@ class SQLiteBackend(StorageBackend):
             row = (
                 self._c()
                 .execute(
-                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust "
+                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at "
                     "FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 )
@@ -213,6 +215,7 @@ class SQLiteBackend(StorageBackend):
             points=row[8] or "[]",
             familiarity=float(row[9]),
             trust=float(row[10]),
+            trust_updated_at=float(row[11]),
         )
 
     def _compute_favor_write(
@@ -342,6 +345,8 @@ class SQLiteBackend(StorageBackend):
         daily_cap_up: float | None = None,
         daily_cap_down: float | None = None,
         effective=None,
+        day_start=None,
+        day_end=None,
     ) -> tuple[FavorRecord, float, float, bool]:
         """主写路径单事务：每日限幅 + 数值变动 + 当日额度 + 流水 (+ 冷却)。
 
@@ -361,16 +366,14 @@ class SQLiteBackend(StorageBackend):
                 self._guard_relation_write(group_id, user_id)
                 allowed, capped = delta, False
                 if daily_cap_up is not None and daily_cap_down is not None and day:
-                    grow = conn.execute(
-                        "SELECT gain FROM daily_gain "
-                        "WHERE group_id=? AND user_id=? AND day=?",
-                        (group_id, user_id, day),
-                    ).fetchone()
+                    usage, _ = read_usage(
+                        conn, group_id, user_id, day, day_start, day_end
+                    )
                     allowed, capped = clamp_daily(
-                        delta,
-                        round1(grow[0]) if grow else 0.0,
-                        daily_cap_up,
-                        daily_cap_down,
+                        delta, usage["affinity"], daily_cap_up, daily_cap_down
+                    )
+                    allowed = math.copysign(
+                        math.floor(abs(allowed) * 10 + 1e-8) / 10, allowed
                     )
                     if allowed == 0:
                         # 当日额度耗尽：不动任何表（与历史行为一致——
@@ -417,10 +420,13 @@ class SQLiteBackend(StorageBackend):
                 )
                 if real_delta:
                     if day:
-                        conn.execute(
-                            "INSERT INTO daily_gain(group_id, user_id, day, gain) VALUES(?,?,?,?) "
-                            "ON CONFLICT(group_id, user_id, day) DO UPDATE SET gain=gain+excluded.gain",
-                            (group_id, user_id, day, real_delta),
+                        add_usage(
+                            conn,
+                            group_id,
+                            user_id,
+                            day,
+                            {"affinity": real_delta},
+                            judge=source == "judge",
                         )
                     conn.execute(
                         "INSERT INTO favor_log(group_id, user_id, delta, favor_before, favor_after, reason, source, ts, message) "
@@ -472,23 +478,34 @@ class SQLiteBackend(StorageBackend):
         default_favor=0.0,
         values=None,
         expected_revision=None,
+        effective_trust=None,
+        transform=None,
+        day_start=None,
+        day_end=None,
+        origin_group_id="",
     ):
-        """复用标量衰减计算及每日限幅；三维状态共用一个事务和流水。"""
+        """在同一事务计算阶段倍率、独立额度、精度余量、分值和流水。"""
         now = time.time()
         with self._lock:
             conn = self._c()
             try:
-                conn.execute("BEGIN")
+                conn.execute("BEGIN IMMEDIATE")
                 self._guard_relation_write(group_id, user_id, expected_revision)
                 row = conn.execute(
-                    "SELECT favor,updated_at,half_life,familiarity,trust FROM favor WHERE group_id=? AND user_id=?",
+                    "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 ).fetchone()
-                stored, ts, h, f, t = (
-                    row if row else (default_favor, 0, self._initial_half_life, 0, 0)
+                stored, ts, h, f, t, t_ts = row or (
+                    default_favor,
+                    0,
+                    self._initial_half_life,
+                    0,
+                    0,
+                    0,
                 )
-                a = effective(stored, ts, h) if effective else round1(stored)
-                before = dict(familiarity=float(f), affinity=a, trust=float(t))
+                a = effective(stored, ts, h) if effective else float(stored)
+                current_t = effective_trust(t, t_ts) if effective_trust else float(t)
+                before = dict(familiarity=float(f), affinity=a, trust=current_t)
                 if values is None and not -100 <= a <= 100:
                     raise ValueError(
                         "历史亲近度超出三维范围，须由管理员确认调整后再启用事件评估"
@@ -511,62 +528,60 @@ class SQLiteBackend(StorageBackend):
                         delta=dict.fromkeys(before, 0.0),
                         skipped="duplicate" if duplicate else "cooldown",
                     )
-                gain = conn.execute(
-                    "SELECT familiarity_gain,gain,trust_gain FROM daily_gain WHERE group_id=? AND user_id=? AND day=?",
-                    (group_id, user_id, day),
-                ).fetchone() or (0, 0, 0)
-                after = {}
-                for key, used in zip(before, gain):
-                    low = 0 if key == "familiarity" else -100
-                    if values is not None:
-                        after[key] = values[key]
-                    else:
-                        delta, _ = clamp_daily(deltas[key], round1(used), *caps[key])
-                        after[key] = round1(max(low, min(100, before[key] + delta)))
-                real = {k: round1(after[k] - before[k]) for k in before}
-                if values is None:
-                    _, _, new_h = self._compute_favor_write(
-                        conn,
-                        group_id,
-                        user_id,
-                        real["affinity"],
-                        100,
-                        -100,
-                        decay,
-                        default_favor,
-                        now,
-                        effective,
-                    )
-                else:
-                    new_h = h
-                # 单独改变熟悉度/信任度时也保存衰减后的亲近度，保持同一锚点。
-                conn.execute(
-                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust) VALUES(?,?,?,?,?,?,?) "
-                    "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
-                    "half_life=excluded.half_life,familiarity=excluded.familiarity,trust=excluded.trust",
-                    (
-                        group_id,
-                        user_id,
-                        after["affinity"],
-                        now,
-                        new_h,
-                        after["familiarity"],
-                        after["trust"],
-                    ),
+                used, positive_count = read_usage(
+                    conn, group_id, user_id, day, day_start, day_end
                 )
-                if values is None:
+                if transform is not None and values is None:
+                    deltas = transform(dict(before), positive_count)
+                after, real = {}, {}
+                for key in before:
+                    lower = 0 if key == "familiarity" else -100
+                    if values is not None:
+                        after[key] = float(values[key])
+                    else:
+                        amount, _ = clamp_daily(deltas[key], used[key], *caps[key])
+                        if key != "familiarity":
+                            # 最后才舍入；额度尾差只能向零收敛，不可四舍五入超领。
+                            amount = math.copysign(
+                                math.floor(abs(amount) * 10 + 1e-8) / 10, amount
+                            )
+                        value = max(lower, min(100, before[key] + amount))
+                        after[key] = round(value, 8) if key == "familiarity" else value
+                    real[key] = round(after[key] - before[key], 8)
+                if values is not None or any(real.values()):
+                    new_h = h
+                    if decay is not None and values is None:
+                        base, growth, h_max, _ = decay
+                        new_h = consolidate_half_life(
+                            h,
+                            base=base,
+                            growth=growth,
+                            h_max=h_max,
+                            positive=real["affinity"] > 0,
+                        )
+                    # F 使用现有 REAL 列保留小数；T 无变化时保留独立原锚，避免频繁 F/A 互动冻结衰减。
+                    trust_write = (
+                        after["trust"] if values is not None or real["trust"] else t
+                    )
+                    trust_ts = now if values is not None or real["trust"] else t_ts
                     conn.execute(
-                        "INSERT INTO daily_gain(group_id,user_id,day,gain,familiarity_gain,trust_gain) VALUES(?,?,?,?,?,?) "
-                        "ON CONFLICT(group_id,user_id,day) DO UPDATE SET gain=gain+excluded.gain,"
-                        "familiarity_gain=familiarity_gain+excluded.familiarity_gain,trust_gain=trust_gain+excluded.trust_gain",
+                        "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
+                        "half_life=excluded.half_life,familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at",
                         (
                             group_id,
                             user_id,
-                            day,
-                            real["affinity"],
-                            real["familiarity"],
-                            real["trust"],
+                            after["affinity"],
+                            now,
+                            new_h,
+                            after["familiarity"],
+                            trust_write,
+                            trust_ts,
                         ),
+                    )
+                if values is None:
+                    add_usage(
+                        conn, group_id, user_id, day, real, judge=source == "judge"
                     )
                     conn.execute(
                         "INSERT INTO cooldown(group_id,user_id,key,last_ts) VALUES(?,?,'relation',?) "
@@ -574,8 +589,8 @@ class SQLiteBackend(StorageBackend):
                         (group_id, user_id, now),
                     )
                 conn.execute(
-                    "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,message,relation_delta,event_id) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,message,relation_delta,event_id,origin_group_id) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         group_id,
                         user_id,
@@ -588,11 +603,12 @@ class SQLiteBackend(StorageBackend):
                         message[:200],
                         json.dumps(real),
                         event_id,
+                        origin_group_id,
                     ),
                 )
                 conn.commit()
                 return dict(before=before, after=after, delta=real, skipped=None)
-            except Exception:
+            except BaseException:
                 conn.rollback()
                 raise
 
@@ -1021,16 +1037,14 @@ class SQLiteBackend(StorageBackend):
         # 读时收敛：消除累积小增量导致的浮点漂移，使每日限幅比较干净
         return round1(row[0]) if row else 0.0
 
-    async def add_daily_gain(
-        self, group_id: str, user_id: str, day: str, delta: float
-    ) -> None:
-        with self._lock:
-            self._c().execute(
-                "INSERT INTO daily_gain(group_id, user_id, day, gain) VALUES(?,?,?,?) "
-                "ON CONFLICT(group_id, user_id, day) DO UPDATE SET gain=gain+excluded.gain",
-                (group_id, user_id, day, delta),
-            )
-            self._c().commit()
+    async def daily_usage(self, group_id, user_id, day, day_start=None, day_end=None):
+        with self._lock, self._c():
+            usage, _ = read_usage(self._c(), group_id, user_id, day, day_start, day_end)
+            return usage
+
+    async def add_daily_gain(self, group_id, user_id, day, delta):
+        with self._lock, self._c():
+            add_usage(self._c(), group_id, user_id, day, {"affinity": delta})
 
     async def last_event_at(
         self, group_id: str, user_id: str, key: str
@@ -1371,15 +1385,16 @@ class SQLiteBackend(StorageBackend):
         effective=None,
         default_favor: float = 0.0,
         actor: str = "",
+        effective_trust=None,
     ) -> dict:
-        """单事务撤销（契约见 base.py）：校验→反向→流水→标记，一个 commit。"""
+        """反向实际增量并标记原流水；不退还已消耗互动额度或模型预算。"""
         now = time.time()
         with self._lock:
             conn = self._c()
             try:
-                conn.execute("BEGIN")
+                conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute(
-                    "SELECT group_id, user_id, delta, reversed, relation_delta, source FROM favor_log WHERE id=?",
+                    "SELECT group_id,user_id,delta,reversed,relation_delta,source,origin_group_id FROM favor_log WHERE id=?",
                     (int(log_id),),
                 ).fetchone()
                 if row is None:
@@ -1390,63 +1405,57 @@ class SQLiteBackend(StorageBackend):
                     raise ValueError("该变动已撤销")
                 group_id, user_id, delta = row[0], row[1], float(row[2])
                 self._guard_relation_write(group_id, user_id)
-                frow = conn.execute(
-                    "SELECT favor, updated_at, half_life FROM favor "
-                    "WHERE group_id=? AND user_id=?",
+                stored, ts, h, f, t, t_ts = conn.execute(
+                    "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
-                ).fetchone()
-                if frow:
-                    stored, ts, h = float(frow[0]), frow[1], float(frow[2] or 10.0)
-                else:
-                    stored, ts, h = (
-                        float(default_favor or 0.0),
-                        0.0,
-                        self._initial_half_life,
-                    )
-                cur = effective(stored, ts, h) if effective else round1(stored)
+                ).fetchone() or (default_favor, 0, self._initial_half_life, 0, 0, 0)
+                cur = effective(stored, ts, h) if effective else float(stored)
+                current_t = effective_trust(t, t_ts) if effective_trust else float(t)
                 vector = json.loads(row[4])
-                # 三维关系流水的亲近度值域固定为 -100..100；旧标量流水
-                # 继续遵循 FavorService 配置的扩展范围。
-                affinity_min, affinity_max = affinity_bounds_for_undo(
+                low, high = affinity_bounds_for_undo(
                     vector, legacy_min=min_favor, legacy_max=max_favor
                 )
-                target = round1(
-                    max(affinity_min, min(affinity_max, round1(cur - delta)))
+                target = round(max(low, min(high, cur - delta)), 8)
+                real = round(target - cur, 8)
+                next_f = round(
+                    max(0, min(100, f - float(vector.get("familiarity", 0)))), 8
                 )
-                real = round1(target - cur)
-                conn.execute(
-                    "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
-                    "ON CONFLICT(group_id, user_id) DO UPDATE SET "
-                    "favor=excluded.favor, updated_at=excluded.updated_at",
-                    (group_id, user_id, target, now, h),
+                next_t = round(
+                    max(-100, min(100, current_t - float(vector.get("trust", 0)))), 8
                 )
-                extra = {}
-                if vector:
-                    state = conn.execute(
-                        "SELECT familiarity,trust FROM favor WHERE group_id=? AND user_id=?",
-                        (group_id, user_id),
-                    ).fetchone()
-                    for key, current, lower in zip(
-                        ("familiarity", "trust"), state, (0, -100)
-                    ):
-                        target_value = round1(
-                            max(lower, min(100, current - float(vector.get(key, 0))))
-                        )
-                        extra[key] = round1(target_value - current)
-                    conn.execute(
-                        "UPDATE favor SET familiarity=familiarity+?,trust=trust+? WHERE group_id=? AND user_id=?",
-                        (extra["familiarity"], extra["trust"], group_id, user_id),
+                extra = (
+                    dict(
+                        familiarity=round(next_f - f, 8),
+                        affinity=real,
+                        trust=round(next_t - current_t, 8),
                     )
-                    extra["affinity"] = real
-                if real != 0 or any(extra.values()) or actor:
+                    if vector
+                    else {}
+                )
+                change_t = bool(extra.get("trust"))
+                conn.execute(
+                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
+                    "familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at",
+                    (
+                        group_id,
+                        user_id,
+                        target,
+                        now,
+                        h,
+                        next_f,
+                        next_t if change_t else t,
+                        now if change_t else t_ts,
+                    ),
+                )
+                if real or any(extra.values()) or actor:
                     conn.execute(
-                        "INSERT INTO favor_log(group_id, user_id, delta, favor_before, "
-                        "favor_after, reason, source, ts, relation_delta) VALUES(?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,relation_delta,origin_group_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
                         (
                             group_id,
                             user_id,
                             real,
-                            round1(cur),
+                            cur,
                             target,
                             (
                                 f"Web 管理员 {actor} 撤销#{int(log_id)}"
@@ -1456,22 +1465,23 @@ class SQLiteBackend(StorageBackend):
                             "undo",
                             now,
                             json.dumps(extra),
+                            row[6],
                         ),
                     )
                 conn.execute(
                     "UPDATE favor_log SET reversed=1 WHERE id=?", (int(log_id),)
                 )
                 conn.commit()
-            except Exception:
+            except BaseException:
                 conn.rollback()
                 raise
-        return {
-            "group_id": group_id,
-            "user_id": user_id,
-            "before": round1(cur),
-            "after": target,
-            "delta": real,
-        }
+        return dict(
+            group_id=group_id,
+            user_id=user_id,
+            before=round1(cur),
+            after=round1(target),
+            delta=real,
+        )
 
     async def close(self) -> None:
         with self._lock:
@@ -1524,43 +1534,81 @@ class SQLiteBackend(StorageBackend):
             )
             self._c().commit()
 
+    async def assessment_call_exists(self, event_id, tier):
+        from .assessment_ledger import call_exists
+
+        return call_exists(self._c(), self._lock, event_id, tier)
+
+    async def assessment_call_counts(self, user_id, tier, *, window_sec=300):
+        from .assessment_ledger import call_counts
+
+        return call_counts(self._c(), self._lock, user_id, tier, window_sec=window_sec)
+
+    async def reserve_assessment_call(
+        self,
+        event_id,
+        group_id,
+        user_id,
+        tier,
+        provider_id,
+        user_cap,
+        bot_cap,
+        *,
+        window_sec=300,
+        window_max_calls=5,
+    ):
+        from .assessment_ledger import reserve_call
+
+        return reserve_call(
+            self._c(),
+            self._lock,
+            event_id,
+            group_id,
+            user_id,
+            tier,
+            provider_id,
+            user_cap,
+            bot_cap,
+            window_sec=window_sec,
+            window_max_calls=window_max_calls,
+        )
+
     async def begin_assessment_call(
         self, event_id, group_id, user_id, tier, provider_id, user_cap, bot_cap
     ):
-        from datetime import datetime, timezone
-
-        day = datetime.now(timezone.utc).date().isoformat()
-        with self._lock:
-            conn = self._c()
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                if tier == "large":
-                    total, member = conn.execute(
-                        "SELECT COUNT(*),COALESCE(SUM(user_id=?),0) FROM assessment_call WHERE day=? AND tier='large'",
-                        (user_id, day),
-                    ).fetchone()
-                    if total >= bot_cap or member >= user_cap:
-                        conn.rollback()
-                        return None
-                cursor = conn.execute(
-                    "INSERT INTO assessment_call(event_id,group_id,user_id,day,tier,provider_id,status) VALUES(?,?,?,?,?,?,?)",
-                    (event_id, group_id, user_id, day, tier, provider_id, "pending"),
-                )
-                conn.commit()
-                return cursor.lastrowid
-            except BaseException:
-                conn.rollback()
-                raise
+        return await self.reserve_assessment_call(
+            event_id, group_id, user_id, tier, provider_id, user_cap, bot_cap
+        )
 
     async def finish_assessment_call(self, call_id, status, tokens):
-        if tokens is not None and (type(tokens) is not int or tokens < 0):
-            tokens = None
+        from .assessment_ledger import finish_call
+
+        finish_call(self._c(), self._lock, call_id, status, tokens)
+
+    async def assessment_context_events(
+        self, group_id, user_id, *, origin_group_id, limit=8, days=7
+    ):
+        """分页之前按原始群筛选；旧 global 流水没有来源，不能进入上下文。"""
         with self._lock:
-            self._c().execute(
-                "UPDATE assessment_call SET status=?,tokens=? WHERE id=?",
-                (status, tokens, call_id),
+            rows = (
+                self._c()
+                .execute(
+                    "SELECT event_id,ts,reason,message FROM favor_log WHERE group_id=? AND user_id=? AND "
+                    "(origin_group_id=? OR (origin_group_id='' AND group_id=?)) AND source='judge' AND reversed=0 AND ts>=? "
+                    "AND (delta!=0 OR COALESCE(json_extract(relation_delta,'$.familiarity'),0)!=0 OR COALESCE(json_extract(relation_delta,'$.trust'),0)!=0) "
+                    "ORDER BY ts DESC,id DESC LIMIT ?",
+                    (
+                        group_id,
+                        user_id,
+                        origin_group_id,
+                        origin_group_id,
+                        time.time() - days * 86400,
+                        min(20, max(0, int(limit))),
+                    ),
+                )
+                .fetchall()
             )
-            self._c().commit()
+        return [dict(zip(("event_id", "ts", "reason", "message"), row)) for row in rows]
 
     async def assessment_stats(self):
         """无用量的调用保持 NULL，不能汇总成免费或零 Token。"""
@@ -1608,18 +1656,7 @@ class SQLiteBackend(StorageBackend):
             self._c().commit()
 
     async def large_call_counts(self, user_id):
-        from datetime import datetime, timezone
-
-        day = datetime.now(timezone.utc).date().isoformat()
-        with self._lock:
-            return (
-                self._c()
-                .execute(
-                    "SELECT COUNT(*),COALESCE(SUM(user_id=?),0) FROM assessment_call WHERE day=? AND tier='large'",
-                    (user_id, day),
-                )
-                .fetchone()
-            )
+        return (await self.assessment_call_counts(user_id, "large"))[:2]
 
     async def update_member_names(self, group_id, user_id, nickname=None, card=None):
         with self._lock, self._c():
@@ -1675,8 +1712,9 @@ class SQLiteBackend(StorageBackend):
             return
         duration = max(0, min(ended, row[1]) - row[0])
         self._c().execute(
-            "UPDATE favor SET updated_at=CASE WHEN updated_at>0 THEN updated_at+? ELSE updated_at END WHERE group_id=? AND user_id=?",
-            (duration, group_id, user_id),
+            "UPDATE favor SET updated_at=CASE WHEN updated_at>0 THEN updated_at+? ELSE updated_at END, "
+            "trust_updated_at=CASE WHEN trust_updated_at>0 THEN trust_updated_at+? ELSE trust_updated_at END WHERE group_id=? AND user_id=?",
+            (duration, duration, group_id, user_id),
         )
         self._c().execute(
             "UPDATE relation_override SET active=0 WHERE group_id=? AND user_id=?",

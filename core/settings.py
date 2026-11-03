@@ -7,12 +7,22 @@ import math
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from .level_economy import EconomyConfig
+from .naming import LEVEL_NAME_BY_KEY
+
 # 仅暴露当前仍使用的详细设置。基础开关、模型和数据空间有各自入口。
 SECTIONS = {
     "basic": ("基础设置", ["default_scope_mode", "master_ids", "group_whitelist"]),
     "rules": (
         "关系变化",
-        ["relation_mode", "timezone", "decay", "economy"],
+        [
+            "relation_mode",
+            "timezone",
+            "relation_daily_caps",
+            "familiarity_growth",
+            "decay",
+            "economy",
+        ],
     ),
     "memory": (
         "印象与近期事件",
@@ -23,8 +33,8 @@ SECTIONS = {
 }
 LABELS = {
     "relation_mode": (
-        "关系节奏模板",
-        "写实沿用当前节奏；Galgame略加快正向熟悉度和亲近度，并提高每日上限。信任、负向变化与防刷规则不变；重载后生效，不重置数据。",
+        "关系模式",
+        "基础使用下方参数；Galgame将所有正向增量及正向每日额度乘2。扣分、模型、调用预算和衰减不变；切换不重算历史，重载后生效。",
     ),
     "ranking_access": (
         "排行查询权限",
@@ -52,7 +62,7 @@ LABELS = {
     ),
     "timezone": (
         "每日限额时区",
-        "决定关系每日限额的换日时间，例如 Asia/Shanghai。复核次数按 UTC 换日。",
+        "决定关系每日限额的换日时间，例如 Asia/Shanghai。初评和复核调用预算按 UTC 00:00 刷新。",
     ),
     "memory_count": (
         "近期事件条数",
@@ -92,12 +102,20 @@ LABELS = {
     ),
     "rows_per_col": ("排行每列行数", "超过这个数量后换到下一列。"),
     "decay.enabled": (
-        "启用时间衰减",
-        "新安装默认开启；仅亲近度向基线靠近，熟悉度和信任度不变。临时关系期间暂停。",
+        "启用亲近度衰减",
+        "默认开启，亲近度向0靠近；熟悉度不衰减，信任度由独立开关控制。临时关系期间暂停。",
     ),
     "floor_enabled": (
         "限制衰减后的关系等级",
         "按旧亲近度数值档位托底，不等于三维称谓最多变化两级。",
+    ),
+    "decay.trust_enabled": (
+        "启用信任度衰减",
+        "默认开启，正负信任均向0收敛，不会越过0。与亲近度独立，临时关系期间暂停。",
+    ),
+    "decay.trust_half_life": (
+        "信任度半衰期（天）",
+        "默认180天；绝对值约减半而非到期归零。保存并重载后生效。",
     ),
     "half_life_base": (
         "基础半衰期（天）",
@@ -113,7 +131,7 @@ LABELS = {
     ),
     "economy.enabled": (
         "启用关系增长规则",
-        "对亲近度变化应用重复衰减、负面权重和修复期规则。",
+        "对亲近度应用阶段曲线、同日正向递减及可选恢复抑制，不作用于熟悉度、信任度；不替模型判断语义重复。",
     ),
     "preset": (
         "缺省增长预设",
@@ -126,7 +144,7 @@ LABELS = {
     "negative_weight": ("负向变化倍数", "亲近度下降幅度乘以这个数；1 表示不放大。"),
     "same_day_decay": (
         "当日重复增长衰减",
-        "同一天正向互动越多，后续增长越少；0 表示关闭。",
+        "仅正向亲近度按计分次数递减；默认第1/2/3/4次起为100%/75%/50%/25%，0关闭。不表示识别了语义重复，不影响熟悉度、信任度或扣分。",
     ),
     "repair_threshold": (
         "恢复抑制触发幅度",
@@ -146,6 +164,29 @@ LABELS = {
     ),
     "repair_scale_low": ("一般关系修复系数", "友好及以下关系的修复期时长乘以这个数。"),
 }
+
+for _dimension, _label in (
+    ("familiarity", "熟悉度"),
+    ("affinity", "亲近度"),
+    ("trust", "信任度"),
+):
+    for _direction, _name in (("up", "正向"), ("down", "负向")):
+        LABELS[f"relation_daily_caps.{_dimension}_{_direction}"] = (
+            f"{_label}基础每日{_name}额度",
+            "填写非负数；正负分别累计，不能互相抵消。Galgame仅正向额度乘2；时间衰减不占互动额度。信任正向额度不代表普通聊天增信。",
+        )
+for _key, _range in (
+    ("under10", "0～不足10"),
+    ("under30", "10～不足30"),
+    ("under55", "30～不足55"),
+    ("under80", "55～不足80"),
+    ("under95", "80～不足95"),
+    ("at95", "95～100"),
+):
+    LABELS[f"familiarity_growth.{_key}"] = (
+        f"熟悉度 {_range} 基础倍率",
+        "按熟悉度自身选段，作用于事件基础熟悉度增量，再乘模式倍率；小数余量由写入通道保存。",
+    )
 
 
 def fields():
@@ -197,12 +238,28 @@ def fields():
 
 def snapshot(config):
     definitions = fields()
+    # 关闭规则时仍展示基础参数；只解析副本，不把兼容预设写回宿主配置。
+    economy = EconomyConfig.from_config(
+        {**(config.get("economy") or {}), "enabled": True}
+    )
+    economy_defaults = {
+        "economy." + key: value
+        for key, value in vars(economy).items()
+        if key != "level_mult"
+    }
+    economy_defaults.update(
+        {
+            "economy.level_mult." + key: economy.level_mult[name]
+            for key, name in LEVEL_NAME_BY_KEY.items()
+        }
+    )
     values = {}
     for field in definitions:
         value = config
         for part in field["path"].split("."):
             value = value.get(part, {}) if isinstance(value, dict) else {}
-        values[field["path"]] = field["default"] if value == {} else value
+        fallback = economy_defaults.get(field["path"], field["default"])
+        values[field["path"]] = fallback if value == {} else value
     revision = hashlib.sha256(
         json.dumps(values, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
@@ -247,11 +304,16 @@ def validate_patch(values):
                         "rows_per_col",
                         "half_life_base",
                         "half_life_max",
+                        "trust_half_life",
                     )
                 )
                 else 0
             )
-            if path in {"decay.half_life_base", "decay.half_life_max"}:
+            if path in {
+                "decay.half_life_base",
+                "decay.half_life_max",
+                "decay.trust_half_life",
+            }:
                 minimum = 5
             if path in {
                 "decay.half_life_growth",

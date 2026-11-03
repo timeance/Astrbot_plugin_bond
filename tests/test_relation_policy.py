@@ -146,3 +146,74 @@ def test_politeness_has_no_default_trust_evidence_and_custom_rule_wins(event):
     assert RelationPolicy(rules={event: {"affinity": 0.4}}).deltas(event)["trust"] == 0
     assert RelationPolicy(rules={event: {"trust": 0.7}}).deltas(event)["trust"] == 0.7
     assert RelationPolicy(rules={event: {"trust": 9}}).deltas(event)["trust"] == 2
+
+
+@pytest.mark.parametrize("rounded", [True, False])
+def test_mode_scales_after_base_event_cap_and_never_scales_penalty(rounded):
+    policy = RelationPolicy(
+        rules={"friendly": {"familiarity": 4, "affinity": 3, "trust": 8}},
+        event_caps={"friendly": {"familiarity": 0.5, "affinity": 1, "trust": 0.7}},
+        positive_multiplier=2,
+    )
+    assert policy.deltas("friendly", rounded=rounded) == dict(
+        familiarity=1, affinity=2, trust=1.4
+    )
+    assert policy.deltas("insult", rounded=rounded) == dict(
+        familiarity=0, affinity=-1, trust=-1.5
+    )
+    assert policy.deltas("manipulation", rounded=rounded) == dict(
+        familiarity=0, affinity=-0.5, trust=-2
+    )
+
+
+def test_raw_mapping_avoids_rounding_before_mode_or_curve():
+    policy = RelationPolicy(
+        rules={"normal_question": {"familiarity": 0.03}}, positive_multiplier=2
+    )
+    assert policy.base_deltas("normal_question")["familiarity"] == 0.03
+    assert policy.deltas("normal_question", rounded=False)["familiarity"] == 0.06
+    assert policy.deltas("normal_question")["familiarity"] == 0.1
+    assert policy.scale_positive(
+        dict(familiarity=0.015, affinity=0.075, trust=0.025), rounded=False
+    ) == dict(familiarity=0.03, affinity=0.15, trust=0.05)
+
+
+def test_final_cap_follows_curve_and_mode_but_preserves_negative_cap():
+    policy = RelationPolicy(positive_multiplier=2)
+    result = policy.limit_deltas(
+        "friendly",
+        dict(familiarity=10, affinity=10, trust=-10),
+        familiarity_multiplier=1.5,
+        rounded=False,
+    )
+    assert result == dict(familiarity=3, affinity=4, trust=-2)
+    # 已放大的请求再次经过出口只限幅，不重复乘二。
+    assert (
+        policy.limit_deltas(
+            "friendly", result, familiarity_multiplier=1.5, rounded=False
+        )
+        == result
+    )
+    tiny = policy.limit_deltas(
+        "friendly",
+        dict(familiarity=0.03, affinity=0, trust=0),
+        familiarity_multiplier=0.15,
+        rounded=False,
+    )
+    assert tiny["familiarity"] == 0.03
+
+
+@pytest.mark.parametrize("value", [-1, True, float("nan"), float("inf")])
+def test_invalid_mode_multiplier_is_rejected(value):
+    with pytest.raises(ValueError):
+        RelationPolicy(positive_multiplier=value)
+
+
+@pytest.mark.parametrize("value", [-1, True, float("nan")])
+def test_invalid_familiarity_cap_multiplier_is_rejected(value):
+    with pytest.raises(ValueError):
+        RelationPolicy().limit_deltas(
+            "friendly",
+            dict(familiarity=0, affinity=0, trust=0),
+            familiarity_multiplier=value,
+        )

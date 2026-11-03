@@ -13,7 +13,7 @@ from pathlib import Path
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.provider import ProviderRequest
+from astrbot.api.provider import ProviderRequest, LLMResponse
 from astrbot.api.star import Context, Star, StarTools, register
 
 try:
@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
 from .api import commands as cmd
 from .api import llm_tools as tools
 from .api.facade import BondFacade
-from .api.listeners import Deps, on_group_message, on_llm_request
+from .api.listeners import Deps, on_group_message, on_llm_request, on_llm_response
 from .core.config_migrations import migrate_saved_defaults
 from .core.identity import parse_master_ids
 from .core.judge_parse import DEFAULT_ATTITUDE_DELTAS
@@ -32,7 +32,7 @@ from .core.level_economy import EconomyConfig
 from .core.levels import LevelTable
 from .core.naming import TIER_NAME_BY_KEY
 from .core.relationship import RelationshipTable
-from .core.relation_profiles import build_relation_profile
+from .core.relation_profiles import DEFAULT_DAILY_CAPS, build_relation_profile
 from .core.taskregistry import TaskRegistry
 from .services.avatar_service import RankingAvatars
 from .services.diagnostics_service import DiagnosticRecorder
@@ -76,7 +76,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 三维关系与成员印象",
-    "0.3.5",
+    "0.3.7",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -172,8 +172,16 @@ class BondPlugin(Star):
         self._relationships = relationships
         # 防通胀经济学层（拼音配置键→中文等级名的映射在 from_config 内处理）
         eco = EconomyConfig.from_config(economy_cfg)
+        base_caps = config.get("relation_daily_caps") or {}
         relation_policy, relation_caps = build_relation_profile(
-            config.get("relation_mode", "realistic")
+            config.get("relation_mode", "galgame"),
+            caps={
+                key: (
+                    base_caps.get(key + "_up", default[0]),
+                    base_caps.get(key + "_down", default[1]),
+                )
+                for key, default in DEFAULT_DAILY_CAPS.items()
+            },
         )
         favor = FavorService(
             storage,
@@ -185,10 +193,13 @@ class BondPlugin(Star):
             daily_cap_down=float(config.get("daily_cap_down", 8)),
             master_ids=master_ids,
             decay_enabled=bool(decay_cfg.get("enabled", True)),
-            half_life_base=float(decay_cfg.get("half_life_base", 30)),
+            half_life_base=float(decay_cfg.get("half_life_base", 60)),
             half_life_growth=float(decay_cfg.get("half_life_growth", 1.0)),
             half_life_max=float(decay_cfg.get("half_life_max", 120)),
             decay_baseline=0.0,
+            trust_decay_enabled=bool(decay_cfg.get("trust_enabled", True)),
+            trust_half_life=float(decay_cfg.get("trust_half_life", 180)),
+            familiarity_growth=config.get("familiarity_growth"),
             decay_floor_enabled=bool(decay_cfg.get("floor_enabled", True)),
             relationships=relationships,
             economy=eco,
@@ -367,6 +378,16 @@ class BondPlugin(Star):
             logger.warning("[Bond] 数据路由不可用，本次跳过关系注入")
             return
         await on_llm_request(deps, event, req)
+
+    @filter.on_llm_response()
+    async def _on_llm_resp(self, event: AstrMessageEvent, response: LLMResponse):
+        binding = getattr(event, "_bond_assessment_binding", None)
+        if not isinstance(binding, tuple) or len(binding) != 2:
+            return
+        try:
+            await on_llm_response(binding[0], event, response)
+        except Exception:
+            logger.warning("[Bond] 回复上下文不可用，本次跳过，不影响聊天")
 
     # ---------------- 指令 ----------------
 

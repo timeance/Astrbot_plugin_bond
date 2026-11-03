@@ -33,27 +33,30 @@ from astrbot_plugin_bond.tests.test_assessment import (
         "你好啊",
     ],
 )
-def test_whole_greeting_cannot_gain_even_when_provider_always_says_friendly(
-    tmp_path, text
-):
+@pytest.mark.parametrize("should_update", [False, True])
+def test_greeting_semantics_belong_to_the_provider(tmp_path, text, should_update):
     async def run():
-        provider = Provider(result=verdict(text=text, kind="friendly", confidence=0.99))
+        provider = Provider(
+            result=verdict(
+                text=text, kind="friendly", confidence=0.99, should_update=should_update
+            )
+        )
         store, favor, service, _ = await setup(tmp_path, small=provider)
         try:
-            for day in [0, 1, 50, 100, 200]:
-                with patch("time.time", return_value=1767225600.0 + day * 86400):
-                    assert (
-                        await service.assess(
-                            interaction(text=text, message=f"greeting-{day}"),
-                            directed=True,
-                        )
-                        == "filtered"
+            for day in (0, 1, 50, 100, 200):
+                with patch("time.time", return_value=1767225600 + day * 86400):
+                    result = await service.assess(
+                        interaction(text=text, message=f"greeting-{day}"), directed=True
                     )
-            assert provider.calls == 0
-            assert (await favor.get_relation("789", "456")).as_dict() == dict(
-                familiarity=0, affinity=0, trust=0
+                    assert result == ("accepted" if should_update else "abstained")
+            assert provider.calls == 5
+            state = await favor.get_relation("789", "456")
+            assert (state.familiarity > 0) is should_update
+            assert (state.affinity > 0) is should_update
+            assert state.trust == 0
+            assert len(await favor.query_logs("789", "456")) == (
+                5 if should_update else 0
             )
-            assert await favor.query_logs("789", "456") == []
         finally:
             await store.close()
 
@@ -90,19 +93,19 @@ def test_newcomer_becomes_familiar_without_affinity_or_trust_inflation(tmp_path)
                     await favor.apply_relation_event(
                         "g", "u", "normal_question", event_id=f"q-{n}"
                     )
-                    if n == 8:
+                    if n == 5:
                         assert await favor.relation_title("g", "u") == "陌生"
-                    if n == 9:
+                    if n == 6:
                         assert await favor.relation_title("g", "u") == "眼熟之人"
             assert await favor.relation_title("g", "u") == "泛泛之交"
             assert (await favor.get_relation("g", "u")).as_dict() == dict(
-                familiarity=5, affinity=0, trust=0
+                familiarity=7.5, affinity=0, trust=0
             )
             logs = await favor.query_logs("g", "u", limit=100)
             assert len(logs) == 50
             assert all(
                 row["relation_delta"]
-                == {"familiarity": 0.1, "affinity": 0.0, "trust": 0.0}
+                == {"familiarity": 0.15, "affinity": 0.0, "trust": 0.0}
                 for row in logs
             )
         finally:
@@ -115,7 +118,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
     async def run():
         values = snapshot({})["values"]
         assert values["decay.enabled"] is True
-        assert values["decay.half_life_base"] == 30
+        assert values["decay.half_life_base"] == 60
         assert values["decay.half_life_growth"] == 1.0
         assert values["decay.half_life_max"] == 120
         old = snapshot(
@@ -144,7 +147,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
                     "g", "u", familiarity=40, affinity=20, trust=-20, event_id="seed"
                 )
                 before = await favor.query_logs("g", "u")
-            with patch("time.time", return_value=start + 30 * 86400):
+            with patch("time.time", return_value=start + 60 * 86400):
                 assert (await favor.get_relation("g", "u")).as_dict() == dict(
                     familiarity=40, affinity=10, trust=-20
                 )

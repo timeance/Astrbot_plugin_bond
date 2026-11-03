@@ -201,7 +201,17 @@ async def run_arm(runtime, arm, fixture):
 
     async def audited_call(world, bot, tier, prompt):
         payload = json.loads(prompt.rsplit("\n输入：", 1)[1])
-        assert set(payload) == {"target_bot", "sender", "text"}
+        assert set(payload) == {
+            "target_bot",
+            "sender",
+            "text",
+            "trusted_metadata",
+            "recent_turns",
+            "scored_events",
+        }
+        assert not payload["recent_turns"] and not payload["scored_events"]
+        assert payload["trusted_metadata"]["bot_id"] == bot
+        assert payload["trusted_metadata"]["sender_id"] == payload["sender"]
         assert prompt == SYSTEM_PROMPT + "\n输入：" + json.dumps(
             payload, ensure_ascii=False
         )
@@ -457,8 +467,10 @@ async def experiment(runtime):
             full[name][arm] = await run_arm(runtime / name / arm, arm, fixture_path)
     baseline = full["original"]["control"]
     assert baseline["metrics"]["events"] == 1201
+    # 同一旧 fixture 的 friendly 寒暄现在交由模型决定，旧长冷却也已移除。
+    # 保留原标签/预置响应，以新快照记录框架变化，不把控制臂数字称为语义准确率。
     assert baseline["metrics"]["persistent_false_update_rate"] == replay_support.ratio(
-        6, 381
+        357, 381
     )
     assert baseline["metrics"]["trust_false_update_rate"] == replay_support.ratio(
         2, 1195

@@ -22,6 +22,7 @@ def effective_favor(
     half_life: float,
     baseline: float,
     floor: float | None = None,
+    rounded: bool = True,
 ) -> float:
     """指数遗忘：存量距离按 0.5^(闲置天数/h) 衰减，向 baseline 收敛不越界。
 
@@ -36,7 +37,7 @@ def effective_favor(
     """
     h = max(HALF_LIFE_MIN, float(half_life)) if half_life else HALF_LIFE_MIN
     if updated_at <= 0 or now <= updated_at:
-        return round1(stored)
+        return round1(stored) if rounded else float(stored)
     idle_days = (now - updated_at) / 86400.0
     factor = 0.5 ** (idle_days / h)
     eff = baseline + (stored - baseline) * factor
@@ -48,7 +49,7 @@ def effective_favor(
     # 等级地板：托底不上涨（stored 已在地板下则维持衰减结果）
     if floor is not None and stored > floor > baseline:
         eff = max(float(floor), eff)
-    return round1(eff)
+    return round1(eff) if rounded else eff
 
 
 def resolve_half_life(h: float, *, base: float, growth: float, h_max: float) -> float:

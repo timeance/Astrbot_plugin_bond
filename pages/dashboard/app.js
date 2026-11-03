@@ -135,15 +135,41 @@ createApp({
     const updateListSetting = (path, raw) => { detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean); };
     const loadSettings = () => settingsRequest();
     const saveSettings = () => settingsRequest(true);
-    const fillRecommendedRules = (mode = "realistic") => {
-      if (!["realistic", "galgame"].includes(mode)) return;
-      if (detailLoading.value || !detailSettings.value) return;
+    const restoreSectionDefaults = (group) => {
+      if (detailLoading.value || !detailSettings.value || group === "basic") return;
       for (const field of detailSettings.value.fields) {
-        if (field.path.startsWith("decay.") || field.path.startsWith("economy.")) detailValues.value[field.path] = field.default;
+        if (field.group === group && !field.path.endsWith("provider_id")) {
+          detailValues.value[field.path] = Array.isArray(field.default) ? [...field.default] : field.default;
+        }
       }
-      if (detailSettings.value.fields.some(field => field.path === "relation_mode")) detailValues.value.relation_mode = mode;
-      detailNotice.value = `已填入${mode === "galgame" ? "Galgame" : "写实"}推荐设置。检查后点击保存并重载插件；刷新可撤回未保存的修改。`;
+      detailNotice.value = "已填入当前设置区的默认值。检查后保存并重载；刷新可撤回未保存修改。模型选择与基础身份设置保持原值。";
     };
+    const modeMultiplier = values => values.relation_mode === "galgame" ? 2 : 1;
+    const effectiveSetting = field => {
+      const path = field.path;
+      if (!(path.startsWith("relation_daily_caps.") || path.startsWith("familiarity_growth.") || path.startsWith("economy.level_mult."))) return null;
+      if (path.startsWith("economy.level_mult.") && detailValues.value["economy.enabled"] === false) return "亲近度增长规则已关闭，此阶段倍率不生效。";
+      const raw = detailValues.value[path];
+      const base = Number(raw);
+      if (raw === "" || raw == null || !Number.isFinite(base)) return "请输入有效数值";
+      const actual = path.endsWith("_down") ? base : base * modeMultiplier(detailValues.value);
+      return `基础值 ${base}，当前模式实际 ${Number(actual.toFixed(6))}${path.includes("growth.") || path.includes("level_mult.") ? " 倍" : ""}（表单预览，保存并重载后生效）`;
+    };
+    const activeRuleSummary = computed(() => {
+      const values = detailSettings.value?.active_values;
+      if (!values) return null;
+      const multiplier = modeMultiplier(values);
+      return {
+        mode: values.relation_mode === "galgame" ? "Galgame ×2" : "基础 ×1",
+        caps: ["familiarity", "affinity", "trust"].map(key => ({key,
+          label: {familiarity:"熟悉度", affinity:"亲近度", trust:"信任度"}[key],
+          up: values[`relation_daily_caps.${key}_up`] * multiplier,
+          down: values[`relation_daily_caps.${key}_down`],
+        })),
+        affinity: values["decay.enabled"] ? `${values["decay.half_life_base"]} 天基础半衰期` : "关闭",
+        trust: values["decay.trust_enabled"] ? `${values["decay.trust_half_life"]} 天半衰期` : "关闭",
+      };
+    });
 
     const DEFAULT_MODEL_CONFIG = {
       enabled: false,
@@ -152,9 +178,36 @@ createApp({
       assessment_mode: "tiered",
       small_timeout_sec: 20,
       large_timeout_sec: 30,
-      cooldown_sec: 120,
-      per_user_daily_large_cap: 2,
-      per_bot_daily_large_cap: 20,
+      window_sec: 300,
+      window_max_calls: 5,
+      per_user_daily_small_cap: 30,
+      per_user_daily_large_cap: 8,
+      per_bot_daily_small_cap: 300,
+      per_bot_daily_large_cap: 100,
+      context_turns: 6,
+      context_chars: 4000,
+      context_days: 7,
+      context_events: 8,
+    };
+    const evaluationFields = [
+      {key:"small_timeout_sec", label:"初评超时（秒）", min:0.1, step:0.1},
+      {key:"large_timeout_sec", label:"复核超时（秒）", min:0.1, step:0.1},
+      {key:"window_sec", label:"个人滚动初评窗口（秒）", min:1, step:1},
+      {key:"window_max_calls", label:"窗口内最多初评次数", min:0, step:1},
+      {key:"per_user_daily_small_cap", label:"每成员每日初评次数", min:0, step:1},
+      {key:"per_user_daily_large_cap", label:"每成员每日复核次数", min:0, step:1},
+      {key:"per_bot_daily_small_cap", label:"每 Bot 每日初评次数", min:0, step:1},
+      {key:"per_bot_daily_large_cap", label:"每 Bot 每日复核次数", min:0, step:1},
+      {key:"context_turns", label:"近期相关上下文条数", min:0, max:20, step:1},
+      {key:"context_chars", label:"上下文字符上限", min:0, max:20000, step:1},
+      {key:"context_days", label:"已计分摘要回顾天数", min:0, max:90, step:1},
+      {key:"context_events", label:"已计分摘要条数", min:0, max:20, step:1},
+    ];
+    const restoreEvaluationDefaults = () => {
+      if (evaluationLoading.value || modelSaving.value) return;
+      for (const field of evaluationFields) modelConfig.value[field.key] = DEFAULT_MODEL_CONFIG[field.key];
+      maxConcurrentAssessments.value = 2;
+      setModelNotice("已填入评估参数默认值；模型选择、评估模式和开关保持原值。保存并重载后生效。");
     };
 
     const selectedBotInfo = computed(() =>
@@ -686,36 +739,19 @@ createApp({
 
     const modelPayload = () => {
       const raw = normalizeModelConfig(modelConfig.value);
-      const payload = {
-        ...raw,
-        enabled: Boolean(raw.enabled),
-        small_provider_id: String(raw.small_provider_id || ""),
-        large_provider_id: String(raw.large_provider_id || ""),
-        assessment_mode: raw.assessment_mode === "single" ? "single" : "tiered",
-        small_timeout_sec: Number(raw.small_timeout_sec),
-        large_timeout_sec: Number(raw.large_timeout_sec),
-        cooldown_sec: Number(raw.cooldown_sec),
-        per_user_daily_large_cap: Number(raw.per_user_daily_large_cap),
-        per_bot_daily_large_cap: Number(raw.per_bot_daily_large_cap),
-      };
-      const values = [
-        payload.small_timeout_sec,
-        payload.large_timeout_sec,
-        payload.cooldown_sec,
-        payload.per_user_daily_large_cap,
-        payload.per_bot_daily_large_cap,
-      ];
-      if (!values.slice(0, 3).every((value) => Number.isFinite(value) && value > 0) ||
-          !values.slice(3).every((value) => Number.isInteger(value) && value >= 0)) {
-        throw new Error("评估时间和次数必须是有效的非负数，其中超时与冷却必须大于 0");
+      const payload = {assessment_mode: raw.assessment_mode === "single" ? "single" : "tiered"};
+      for (const field of evaluationFields) {
+        const value = Number(raw[field.key]);
+        if (raw[field.key] === "" || raw[field.key] == null || !Number.isFinite(value) || value < field.min || (field.max != null && value > field.max) ||
+            (field.step === 1 && !Number.isInteger(value))) {
+          throw new Error(`${field.label}须为有效${field.step === 1 ? "整数" : "数值"}，范围 ${field.min}～${field.max ?? "不限"}`);
+        }
+        payload[field.key] = value;
       }
       const maxConcurrent = Number(maxConcurrentAssessments.value);
       if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 32) {
         throw new Error("并发评估上限必须是 1 到 32 的整数");
       }
-      delete payload.enabled;
-      delete payload.small_provider_id;
-      delete payload.large_provider_id;
       return { config: payload, max_concurrent_assessments: maxConcurrent };
     };
 
@@ -1071,7 +1107,8 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels,
-      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, fillRecommendedRules, updateListSetting,
+      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, restoreSectionDefaults, effectiveSetting, activeRuleSummary, updateListSetting,
+      evaluationFields, restoreEvaluationDefaults,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
     };
   },
@@ -1324,20 +1361,15 @@ createApp({
           <section class="xx-form-card">
             <h4>评估详细设置</h4>
             <p class="xx-help">自动评估开关和模型选择在 AstrBot 的 Bond 插件配置中修改。以下设置对所有 Bot 生效。</p>
-            <details><summary>调整冷却、超时和调用限额</summary>
-
-
-
+            <details open><summary>窗口、预算与有界上下文</summary>
             <label class="xx-form-row"><span>评估模式</span><select v-model="modelConfig.assessment_mode"><option value="single">单模型</option><option value="tiered">分级复核</option></select></label>
-            <label class="xx-form-row"><span>小模型超时（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.small_timeout_sec"></label>
-            <label class="xx-form-row"><span>复核超时（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.large_timeout_sec"></label>
-            <label class="xx-form-row"><span>同一成员评估间隔（秒）</span><input class="xx-input" type="number" min="0.1" step="0.1" v-model.number="modelConfig.cooldown_sec"></label>
-            <label class="xx-form-row"><span>每成员每日复核次数</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_user_daily_large_cap"></label>
-            <label class="xx-form-row"><span>每 Bot 每日复核次数</span><input class="xx-input" type="number" min="0" step="1" v-model.number="modelConfig.per_bot_daily_large_cap"></label>
-            <label class="xx-form-row"><span>并发评估上限（重载后生效）</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
+            <label v-for="field in evaluationFields" :key="field.key" class="xx-form-row"><span>{{ field.label }}</span><input class="xx-input" type="number" :min="field.min" :max="field.max" :step="field.step" v-model.number="modelConfig[field.key]"></label>
+            <label class="xx-form-row"><span>插件全局并发上限（重载后生效）</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
             </details>
-            <p class="xx-help">每日复核次数按 UTC 换日。达到限额后跳过复核；并发已满时跳过本次评估，不排队。</p>
+            <p class="xx-help">初评与复核预算分别记账，按 UTC 00:00 刷新；同 Bot 下个人窗口和预算跨群、跨数据空间共享，不同 Bot 独立。滚动窗口替代旧长冷却，同窗口内不同实质互动可分别计分。失败、超时也消耗已发起调用的预算；并发满时跳过，不排队。</p>
+            <p class="xx-help">关系分数额度按“详细设置 → 每日限额时区”在当地 00:00 刷新，与调用预算不同。上下文仅限同 Bot、同群、同成员的相关发言、必要 Bot 回复及近期已计分摘要；历史不重新计分。模型负责分类及判断语义重复，框架校验证据并执行数值约束，仍可能误判。</p>
             <div class="xx-modal-actions">
+              <button class="xx-btn" @click="restoreEvaluationDefaults()" :disabled="evaluationLoading || modelSaving">恢复此区默认设置</button>
               <button class="xx-btn" @click="saveModels" :disabled="evaluationLoading || modelSaving">
                 {{ modelSaving ? "保存中…" : "保存配置" }}
               </button>
@@ -1351,6 +1383,9 @@ createApp({
               <div><dt>复核模型</dt><dd class="xx-mono">{{ activeModelConfig.large_provider_id || "未设置" }}</dd></div>
               <div><dt>模式</dt><dd>{{ activeModelConfig.assessment_mode === 'single' ? "单模型" : "分级复核" }}</dd></div>
               <div><dt>超时</dt><dd>{{ activeModelConfig.small_timeout_sec || "-" }} / {{ activeModelConfig.large_timeout_sec || "-" }} 秒</dd></div>
+              <div><dt>滚动初评窗口</dt><dd>{{ activeModelConfig.window_sec }} 秒 / {{ activeModelConfig.window_max_calls }} 次</dd></div>
+              <div><dt>每日初评 / 复核（UTC）</dt><dd>个人 {{ activeModelConfig.per_user_daily_small_cap }} / {{ activeModelConfig.per_user_daily_large_cap }}；Bot {{ activeModelConfig.per_bot_daily_small_cap }} / {{ activeModelConfig.per_bot_daily_large_cap }}</dd></div>
+              <div><dt>有界上下文</dt><dd>{{ activeModelConfig.context_turns }} 条 / {{ activeModelConfig.context_chars }} 字符；摘要 {{ activeModelConfig.context_days }} 天 / {{ activeModelConfig.context_events }} 条</dd></div>
               <div><dt>运行并发上限</dt><dd>{{ activeMaxConcurrentAssessments ?? "未知" }}</dd></div>
             </dl>
           </section>
@@ -1380,28 +1415,34 @@ createApp({
 
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
-        <p><strong>写实重视长期相处；Galgame让熟悉与亲近稍快建立。可只切换关系节奏，也可填入整套推荐值。</strong></p>
-        <p class="xx-help">填入操作只替换关系节奏、增长与衰减选项，保存前可检查或刷新撤回。亲近度基线固定为0，熟悉度与信任度不随沉默衰减。半衰期等衰减设置重载后按当前参数重新计算已有关系，显示值可能变化。</p>
+        <p><strong>基础参数只配置一套；Galgame将全部正向增量与正向每日额度乘2。</strong></p>
+        <p class="xx-help">模式不覆盖基础参数，不改变扣分、模型或预算，不将已有分数翻倍。熟悉度不随时间衰减；亲近度和信任度独立向0收敛。普通有内容的问答可增加熟悉度，不自动增加亲近度；感谢、示好、道歉不直接恢复正信任。框架的数值约束不能消除模型误判。</p>
         <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
         <p class="xx-help">自动评估、回复中的关系信息和模型选择，请在 AstrBot 的 Bond 插件配置中修改。</p>
         <p v-if="detailNotice" role="status">{{ detailNotice }}</p>
         <div class="xx-actions">
           <button class="xx-btn" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
-          <button class="xx-btn" @click="fillRecommendedRules('realistic')" :disabled="detailLoading || !detailSettings">填入写实推荐</button>
-          <button class="xx-btn" @click="fillRecommendedRules('galgame')" :disabled="detailLoading || !detailSettings">填入 Galgame 推荐</button>
           <button class="xx-btn" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
+        </div>
+        <div class="xx-form-card" v-if="activeRuleSummary">
+          <h4>当前运行关系参数（重载前保持原值）</h4>
+          <p>模式：{{ activeRuleSummary.mode }}；亲近度衰减：{{ activeRuleSummary.affinity }}；信任度衰减：{{ activeRuleSummary.trust }}。</p>
+          <p v-for="cap in activeRuleSummary.caps" :key="cap.key">{{ cap.label }}每日实际额度：+{{ cap.up }} / −{{ cap.down }}。</p>
+          <p class="xx-help">下方输入为已保存或尚未保存的基础参数；“当前模式实际”是表单预览，不表示运行值已改变。</p>
         </div>
         <details v-for="group in detailGroups" :key="group.group" :open="group.group === 'basic'" class="xx-form-card">
           <summary>{{ group.title }}</summary>
+          <button v-if="group.group !== 'basic'" class="xx-btn xx-btn-mini" @click="restoreSectionDefaults(group.group)" :disabled="detailLoading">恢复此区默认设置</button>
           <div v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
             <span class="xx-field-label"><label :for="'setting-' + field.path">{{ field.label }}</label>
               <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="field.label + '：说明'" :aria-describedby="'hint-' + field.path">?</button><span class="xx-help-tooltip" role="tooltip" :id="'hint-' + field.path">{{ field.hint }}</span></span>
             </span>
             <input :id="'setting-' + field.path" v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
-            <select :id="'setting-' + field.path" v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 轻快",realistic:"写实 · 推荐",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
+            <select :id="'setting-' + field.path" v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
             <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
             <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="detailValues[field.path].join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" placeholder="留空对所有群生效；多个群号用逗号分隔">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
+            <span v-if="effectiveSetting(field) !== null" class="xx-help">{{ effectiveSetting(field) }}</span>
           </div>
         </details>
         <div class="xx-form-card">

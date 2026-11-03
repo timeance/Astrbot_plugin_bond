@@ -431,12 +431,12 @@
   },
   "decay": {
     "type": "object",
-    "description": "亲近度随时间向基线靠近；熟悉度和信任度不随沉默衰减。这是产品节奏设置，不是经过验证的人际关系定律。",
+    "description": "亲近度和信任度独立向0衰减，熟悉度不随时间衰减；临时关系期间暂停。这是产品节奏设置，不是经过验证的人际关系定律。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "新安装默认开启温和衰减。仅影响亲近度；临时关系期间暂停。已有显式开关保持原值。"
+        "description": "启用亲近度时间衰减；向0收敛，熟悉度不随时间衰减。临时关系期间暂停。"
       },
       "baseline": {
         "type": "float",
@@ -451,7 +451,7 @@
       },
       "half_life_base": {
         "type": "float",
-        "default": 30,
+        "default": 60,
         "description": "基础半衰期（天，至少5天）。巩固倍数为1时，已有和新成员都直接使用当前值；启用巩固时作为下限。保存并重载后生效，不需清库。"
       },
       "half_life_growth": {
@@ -463,6 +463,16 @@
         "type": "float",
         "default": 120,
         "description": "启用巩固时的半衰期上限（天，不应低于基础值）。重载后也限制已有成员；巩固倍数为1时使用基础半衰期。"
+      },
+      "trust_enabled": {
+        "type": "bool",
+        "default": true,
+        "description": "启用信任度时间衰减；正负两侧均向0收敛，临时关系期间暂停。"
+      },
+      "trust_half_life": {
+        "type": "float",
+        "default": 180,
+        "description": "信任度半衰期（天）；180天后绝对值约减半，不会越过0。"
       }
     },
     "invisible": true
@@ -490,12 +500,12 @@
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "总开关。关闭后评审分值直给（旧行为）"
+        "description": "亲近度阶段倍率、同日正向递减与可选恢复抑制开关；不替模型判断语义重复。"
       },
       "noise_floor": {
         "type": "float",
         "default": 0.5,
-        "description": "噪声地板：|分值| 小于该值直接归零（拦截评审碎分/宽大偏置）。0=关闭"
+        "description": "亲近度基础增量绝对值低于此值时归零；0关闭。模式加倍在基础过滤后应用。"
       },
       "negative_weight": {
         "type": "float",
@@ -758,18 +768,18 @@
       "cooldown_sec": {
         "type": "float",
         "default": 120,
-        "description": "成员评估冷却秒数",
+        "description": "旧冷却参数留档；不再阻断评估，由滚动初评窗口限制调用。",
         "invisible": true
       },
       "per_user_daily_large_cap": {
         "type": "int",
-        "default": 2,
+        "default": 8,
         "description": "当前 Bot 每用户每日复核次数上限（UTC，跨两个空间）",
         "invisible": true
       },
       "per_bot_daily_large_cap": {
         "type": "int",
-        "default": 20,
+        "default": 100,
         "description": "当前 Bot 每日复核次数上限（UTC，跨两个空间）",
         "invisible": true
       },
@@ -777,6 +787,54 @@
         "type": "int",
         "default": 2,
         "description": "所有 Bot 共用的在途评估上限，无等待队列",
+        "invisible": true
+      },
+      "window_sec": {
+        "type": "int",
+        "default": 300,
+        "description": "个人滚动初评窗口（秒）；同Bot跨群及空间共用",
+        "invisible": true
+      },
+      "window_max_calls": {
+        "type": "int",
+        "default": 5,
+        "description": "个人窗口内最多初评调用",
+        "invisible": true
+      },
+      "per_user_daily_small_cap": {
+        "type": "int",
+        "default": 30,
+        "description": "每成员每日初评预算（UTC，同Bot跨群及空间）",
+        "invisible": true
+      },
+      "per_bot_daily_small_cap": {
+        "type": "int",
+        "default": 300,
+        "description": "每Bot每日初评预算（UTC，跨群及空间）",
+        "invisible": true
+      },
+      "context_turns": {
+        "type": "int",
+        "default": 6,
+        "description": "当前Bot、群和成员的近期相关上下文条数",
+        "invisible": true
+      },
+      "context_chars": {
+        "type": "int",
+        "default": 4000,
+        "description": "评估上下文最多字符数",
+        "invisible": true
+      },
+      "context_days": {
+        "type": "int",
+        "default": 7,
+        "description": "近期已计分摘要回顾天数",
+        "invisible": true
+      },
+      "context_events": {
+        "type": "int",
+        "default": 8,
+        "description": "近期已计分摘要最多条数",
         "invisible": true
       }
     },
@@ -812,12 +870,87 @@
   },
   "relation_mode": {
     "type": "string",
-    "description": "关系节奏模板",
-    "default": "realistic",
+    "description": "关系模式",
+    "default": "galgame",
     "options": [
       "realistic",
       "galgame"
     ],
-    "hint": "realistic＝写实：沿用当前节奏。galgame＝Galgame：正向熟悉度/亲近度请求增量×1.25，每日上涨上限改为3/4.5；信任、负向变化、冷却与单次上限不变。切换不重置历史或当日已用额度，保存后重载生效。"
+    "hint": "realistic＝基础；galgame＝Galgame。Galgame将全部正向增量及正向每日额度乘2，不改变扣分、模型、调用预算或衰减。基础参数不被覆盖，切换不重算历史；保存并重载后生效。",
+    "invisible": true
+  },
+  "relation_daily_caps": {
+    "type": "object",
+    "description": "基础每日分数额度；正负分别累计，Galgame仅正向额度乘2。自动时间衰减不占互动额度。",
+    "invisible": true,
+    "items": {
+      "familiarity_up": {
+        "type": "float",
+        "default": 5,
+        "description": "熟悉度基础每日正向额度"
+      },
+      "familiarity_down": {
+        "type": "float",
+        "default": 0,
+        "description": "熟悉度基础每日负向额度（默认0）"
+      },
+      "affinity_up": {
+        "type": "float",
+        "default": 10,
+        "description": "亲近度基础每日正向额度"
+      },
+      "affinity_down": {
+        "type": "float",
+        "default": 8,
+        "description": "亲近度基础每日负向额度（填写正数）"
+      },
+      "trust_up": {
+        "type": "float",
+        "default": 2,
+        "description": "信任度基础每日正向额度；不代表普通聊天会增信"
+      },
+      "trust_down": {
+        "type": "float",
+        "default": 5,
+        "description": "信任度基础每日负向额度（填写正数）"
+      }
+    }
+  },
+  "familiarity_growth": {
+    "type": "object",
+    "description": "按当前熟悉度自身选择的正向基础倍率；再叠加模式倍率。",
+    "invisible": true,
+    "items": {
+      "under10": {
+        "type": "float",
+        "default": 1.5,
+        "description": "熟悉度0至不足10"
+      },
+      "under30": {
+        "type": "float",
+        "default": 1.2,
+        "description": "熟悉度10至不足30"
+      },
+      "under55": {
+        "type": "float",
+        "default": 0.8,
+        "description": "熟悉度30至不足55"
+      },
+      "under80": {
+        "type": "float",
+        "default": 0.5,
+        "description": "熟悉度55至不足80"
+      },
+      "under95": {
+        "type": "float",
+        "default": 0.3,
+        "description": "熟悉度80至不足95"
+      },
+      "at95": {
+        "type": "float",
+        "default": 0.15,
+        "description": "熟悉度95至100"
+      }
+    }
   }
 }

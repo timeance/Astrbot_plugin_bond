@@ -80,16 +80,16 @@ def test_fixed_half_life_changes_existing_reads_and_writes_without_migration(
                 result = await service.apply_relation_event(
                     "g", "u", "normal_question", event_id="question"
                 )
-                assert (
-                    result["before"]["affinity"] == result["after"]["affinity"] == 14.1
-                )
+                assert result["before"]["affinity"] == result["after"]["affinity"]
+                assert round(result["after"]["affinity"], 1) == 14.1
+                assert (await service.get_relation("g", "u")).affinity == 14.1
                 assert (await store.get("g", "u")).half_life == 60
                 logs = await store.query_logs("g", "u")
                 await service.undo_log(logs[0]["id"])
                 assert (await service.get_relation("g", "u")).as_dict() == dict(
                     familiarity=40, affinity=14.1, trust=-20
                 )
-                assert store._c().execute("PRAGMA user_version").fetchone()[0] == 15
+                assert store._c().execute("PRAGMA user_version").fetchone()[0] == 16
         finally:
             await store.close()
 
@@ -181,7 +181,7 @@ def test_replay_is_deterministic_and_does_not_inflate_trust(tmp_path):
     old = first["arms"]["previous_0_3_3"]["scenarios"]
     new = first["arms"]["recommended"]["scenarios"]
     assert old["positive_burst"]["rows"][5]["half_life"] == 120
-    assert {row["half_life"] for row in new["positive_burst"]["rows"]} == {30}
+    assert {row["half_life"] for row in new["positive_burst"]["rows"]} == {60}
     assert new["negative_mistake"]["rows"][0]["delta"]["affinity"] == -1
     assert old["negative_mistake"]["rows"][0]["delta"]["affinity"] == -1.5
     for name in new:
@@ -189,7 +189,7 @@ def test_replay_is_deterministic_and_does_not_inflate_trust(tmp_path):
             r["delta"]["trust"] for r in old[name]["rows"]
         ]
     assert new["neutral_3_days"]["rows"][-1]["state"] == dict(
-        familiarity=2.1, affinity=0, trust=0
+        familiarity=3.15, affinity=0, trust=0
     )
     assert new["violation_apology_repeat"]["rows"][1]["delta"]["trust"] == 0
     assert new["violation_apology_repeat"]["rows"][-1]["state"]["trust"] == -4

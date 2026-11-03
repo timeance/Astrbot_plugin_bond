@@ -9,14 +9,18 @@ from __future__ import annotations
 
 import time
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from ..core.decay import HALF_LIFE_MIN, effective_favor, resolve_half_life
 from ..core.decimal import round1
 from ..core.identity import is_master as _is_master
 from ..core.levels import LevelTable
 from ..core.level_economy import EconomyConfig, apply as apply_economy
-from ..core.level_economy import repair_params_for_level
+from ..core.level_economy import (
+    repair_params_for_level,
+    FamiliarityConfig,
+    familiarity_multiplier,
+)
 from ..core.relation_policy import affinity_bounds_for_undo
 from ..core.relationship import RelationshipTable
 from ..core.models import FavorChange, FavorRecord, LevelDef
@@ -52,13 +56,16 @@ class FavorService:
         relation_resolver=None,
         relation_caps=None,
         diagnostics=None,
+        familiarity_growth=None,
+        trust_decay_enabled=False,
+        trust_half_life=180.0,
     ) -> None:
         from ..core.relation_policy import RelationPolicy, RelationResolver
 
         self._relation_policy = relation_policy or RelationPolicy()
         self._relation_resolver = relation_resolver or RelationResolver()
         self._relation_caps = relation_caps or dict(
-            familiarity=(2, 0), affinity=(3, 6), trust=(1, 4)
+            familiarity=(5, 0), affinity=(10, 8), trust=(2, 5)
         )
         if set(self._relation_caps) != {"familiarity", "affinity", "trust"}:
             raise ValueError("三维每日限幅配置不完整")
@@ -72,6 +79,10 @@ class FavorService:
             ):
                 raise ValueError("每日限幅必须是有限非负数")
         self.diagnostics = diagnostics
+        self._familiarity_growth = FamiliarityConfig.from_config(familiarity_growth)
+        self._trust_half_life = (
+            max(HALF_LIFE_MIN, float(trust_half_life)) if trust_decay_enabled else None
+        )
         self._diagnostic_config = {}
         if diagnostics is not None and diagnostics.enabled:
             import hashlib
@@ -80,13 +91,15 @@ class FavorService:
             from ..core.relation_lexicon import LEXICON_VERSION
 
             self._diagnostic_config = dict(
-                policy_version="0.2.5",
+                policy_version="0.3.7",
                 lexicon_version=LEXICON_VERSION,
                 config_hash=hashlib.sha256(
                     json.dumps(
                         dict(
                             rules=self._relation_policy.snapshot(),
                             caps=self._relation_caps,
+                            familiarity_growth=asdict(self._familiarity_growth),
+                            trust_decay=[trust_decay_enabled, trust_half_life],
                             economy=asdict(economy) if economy is not None else None,
                             timezone=tz_name,
                             floor=decay_floor_enabled,
@@ -259,7 +272,7 @@ class FavorService:
         return floor if floor > baseline else None
 
     def _effective(
-        self, stored: float, updated_at: float, half_life: float = 10.0
+        self, stored: float, updated_at: float, half_life: float = 10.0, *, rounded=True
     ) -> float:
         """读取时的有效好感度（启用衰减时按指数遗忘曲线向基线收敛）。
 
@@ -267,7 +280,7 @@ class FavorService:
         配置重载后从原时间锚重新计算，不为配置变化批量改库或生成事件。
         """
         if self._decay is None:
-            return round1(stored)
+            return round1(stored) if rounded else float(stored)
         base, growth, h_max, baseline = self._decay
         return effective_favor(
             stored,
@@ -278,7 +291,30 @@ class FavorService:
             ),
             baseline=baseline,
             floor=self._decay_floor(stored, baseline),
+            rounded=rounded,
         )
+
+    def _effective_affinity_raw(self, stored, updated_at, half_life=10.0):
+        return self._effective(stored, updated_at, half_life, rounded=False)
+
+    def _effective_trust(self, stored, updated_at):
+        if self._trust_half_life is None:
+            return float(stored)
+        return effective_favor(
+            stored,
+            updated_at,
+            time.time(),
+            half_life=self._trust_half_life,
+            baseline=0,
+            rounded=False,
+        )
+
+    def _day_end(self):
+        # 用本地日历的下一天，兼容夏令时的 23/25 小时日。
+        next_day = self._today() + timedelta(days=1)
+        return datetime(
+            next_day.year, next_day.month, next_day.day, tzinfo=self._tz
+        ).timestamp()
 
     async def get(self, group_id: str, user_id: str) -> FavorRecord:
         """读取记录；无记录时返回默认值（不落库）。返回的是有效好感度（含时间衰减）。"""
@@ -294,6 +330,8 @@ class FavorService:
             )
         else:
             rec.favor = self._effective(rec.favor, rec.updated_at, rec.half_life)
+            rec.trust = round1(self._effective_trust(rec.trust, rec.trust_updated_at))
+            rec.familiarity = round1(rec.familiarity)
         if temporary["active"]:
             rec.favor = temporary["values"]["affinity"]
             rec.familiarity = temporary["values"]["familiarity"]
@@ -359,26 +397,43 @@ class FavorService:
             or cooldown_sec < 0
         ):
             raise ValueError("冷却时间无效")
-        deltas = self._relation_policy.deltas(event_type, intensity)
-        # 沿用上游经济规则，仅作用于亲近度；另两维独立限幅。
-        if self._economy is not None and deltas["affinity"]:
-            repair_factor = await self._repair_factor(group_id, user_id)
-            rec = await self.get(group_id, user_id)
-            eco = apply_economy(
-                deltas["affinity"],
-                self.level_of(rec.favor).name,
-                await self._positive_judge_today(group_id, user_id),
-                self._economy,
-                repair=repair_factor is not None,
-                repair_factor=repair_factor,
+        base_deltas = self._relation_policy.base_deltas(event_type, intensity)
+        repair_factor = (
+            await self._repair_factor(group_id, user_id)
+            if self._economy is not None
+            else None
+        )
+
+        def transform(before, positive_today):
+            f_mult = familiarity_multiplier(
+                before["familiarity"], self._familiarity_growth
             )
+            deltas = dict(base_deltas)
+            if deltas["familiarity"] > 0:
+                deltas["familiarity"] *= f_mult
+            if deltas["affinity"]:
+                deltas["affinity"] = apply_economy(
+                    deltas["affinity"],
+                    self.level_of(before["affinity"]).name,
+                    positive_today,
+                    self._economy,
+                    repair=repair_factor is not None,
+                    repair_factor=repair_factor,
+                    rounded=False,
+                ).delta
+            deltas = self._relation_policy.scale_positive(deltas, rounded=False)
             deltas = self._relation_policy.limit_deltas(
-                event_type, dict(deltas, affinity=eco.delta)
+                event_type, deltas, familiarity_multiplier=f_mult, rounded=False
             )
+            # F 在库中保留余量，A/T 仅在全部倍率后取一位小数。
+            for dimension in ("affinity", "trust"):
+                deltas[dimension] = round1(deltas[dimension])
+            return deltas
+
         result = await self._storage.apply_relation_change(
             self.group_key(group_id),
             user_id,
-            deltas,
+            base_deltas,
             event_id=event_id,
             day=self._today().isoformat(),
             caps=self._relation_caps,
@@ -386,9 +441,14 @@ class FavorService:
             expected_revision=expected_revision,
             reason=reason,
             message=message,
-            effective=self._effective,
+            effective=self._effective_affinity_raw,
+            effective_trust=self._effective_trust,
             decay=self._decay,
             default_favor=self.default_favor,
+            transform=transform,
+            day_start=self._day_start(),
+            day_end=self._day_end(),
+            origin_group_id=str(group_id),
         )
 
         self._diagnose_change(
@@ -430,7 +490,9 @@ class FavorService:
             source="admin",
             reason=reason,
             values=values,
-            effective=self._effective,
+            effective=self._effective_affinity_raw,
+            effective_trust=self._effective_trust,
+            origin_group_id=str(group_id),
             default_favor=self.default_favor,
         )
 
@@ -927,6 +989,8 @@ class FavorService:
             effective=(self._effective if self._decay is not None else None),
             default_favor=self.default_favor,
             day=self._today().isoformat(),
+            day_start=self._day_start(),
+            day_end=self._day_end(),
             reason=reason,
             source=source,
             message=message,
@@ -992,6 +1056,13 @@ class FavorService:
         if (await self.temporary_state(group_id, user_id))["active"]:
             raise ValueError("临时关系生效或任务版本已过期，请结束临时关系后重试")
         state = await self.get(group_id, user_id)
+        stored = await self._storage.get(self.group_key(group_id), user_id)
+        if stored is not None:
+            state.familiarity = stored.familiarity
+            state.favor = self._effective_affinity_raw(
+                stored.favor, stored.updated_at, stored.half_life
+            )
+            state.trust = self._effective_trust(stored.trust, stored.trust_updated_at)
         cur = state.favor
         vector = log.get("relation_delta") or {}
         affinity_min, affinity_max = affinity_bounds_for_undo(
@@ -1011,7 +1082,7 @@ class FavorService:
         )
         return {
             "relation_after": relation_after,
-            "current": cur,
+            "current": round1(cur),
             "after": round1(
                 max(
                     affinity_min,
@@ -1036,7 +1107,8 @@ class FavorService:
             log_id,
             max_favor=self.max_favor,
             min_favor=self.min_favor,
-            effective=(self._effective if self._decay is not None else None),
+            effective=self._effective_affinity_raw,
+            effective_trust=self._effective_trust,
             default_favor=self.default_favor,
             actor=actor,
         )
@@ -1122,7 +1194,17 @@ class FavorService:
             else 0
         )
         return dict(
-            familiarity=rec.familiarity,
+            familiarity=round1(rec.familiarity),
             affinity=self._effective(rec.favor, rec.updated_at + shift, rec.half_life),
-            trust=rec.trust,
+            trust=round1(
+                self._effective_trust(
+                    rec.trust,
+                    rec.trust_updated_at
+                    + (
+                        max(0, time.time() - state["started_at"])
+                        if state["active"] and rec.trust_updated_at > 0
+                        else 0
+                    ),
+                )
+            ),
         )

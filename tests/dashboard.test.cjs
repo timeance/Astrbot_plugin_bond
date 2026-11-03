@@ -386,46 +386,93 @@ test('returning to the shared log table reloads changed evaluation dimension eve
 });
 
 
-test('recommended rules are staged without saving or changing identity, models and privacy',async()=>{
+test('section defaults are staged and preserve other sections, identity and models',async()=>{
  const {ui,pending}=harness();
- ui.fillRecommendedRules();assert.equal(pending.length,0);
- const values={'decay.half_life_base':10,'decay.half_life_growth':1.3,'economy.negative_weight':1.5,'economy.repair_threshold':2,timezone:'UTC',master_ids:'8001',group_whitelist:['7001'],'diagnostics.enabled':false,'assessment.small_provider_id':'chosen','inject.enabled':false};
+ const values={relation_mode:'realistic','decay.half_life_base':10,'relation_daily_caps.affinity_up':12,
+  timezone:'UTC',master_ids:'8001','command.ranking_access':'master','judge.provider_id':'summary',
+  'assessment.small_provider_id':'chosen','inject.memory_days':4};
  ui.detailSettings.value={revision:'before',values:{...values},fields:[
-  {path:'decay.half_life_base',default:30},{path:'decay.half_life_growth',default:1},
-  {path:'economy.negative_weight',default:1},{path:'economy.repair_threshold',default:0},
-  {path:'timezone',default:'Asia/Shanghai'},{path:'master_ids',default:''},
-  {path:'group_whitelist',default:[]},{path:'diagnostics.enabled',default:true},
-  {path:'assessment.small_provider_id',default:''},{path:'inject.enabled',default:true}
- ]};
- ui.detailValues.value={...values};
- ui.detailLoading.value=true;ui.fillRecommendedRules();assert.equal(ui.detailValues.value['decay.half_life_base'],10);
- ui.detailLoading.value=false;ui.fillRecommendedRules();
- const expected={'decay.half_life_base':30,'decay.half_life_growth':1,'economy.negative_weight':1,'economy.repair_threshold':0};
- assert.equal(JSON.stringify(ui.detailValues.value),JSON.stringify({...values,...expected}));
- assert.equal(ui.detailSettings.value.values['decay.half_life_base'],10);
+  {path:'relation_mode',group:'rules',default:'galgame'},
+  {path:'decay.half_life_base',group:'rules',default:60},
+  {path:'relation_daily_caps.affinity_up',group:'rules',default:10},
+  {path:'timezone',group:'rules',default:'Asia/Shanghai'},
+  {path:'master_ids',group:'basic',default:''},
+  {path:'command.ranking_access',group:'commands',default:'all'},
+  {path:'judge.provider_id',group:'memory',default:''},
+  {path:'inject.memory_days',group:'memory',default:7}
+ ]};ui.detailValues.value={...values};
+ ui.detailLoading.value=true;ui.restoreSectionDefaults('rules');
+ assert.equal(ui.detailValues.value['decay.half_life_base'],10);
+ ui.detailLoading.value=false;ui.restoreSectionDefaults('basic');
+ assert.equal(ui.detailValues.value.master_ids,'8001');
+ ui.restoreSectionDefaults('rules');
+ assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],10);
+ assert.equal(ui.detailValues.value['command.ranking_access'],'master');
+ assert.equal(ui.detailValues.value['assessment.small_provider_id'],'chosen');
+ assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
  assert.equal(pending.length,0);
- const saving=ui.saveSettings();
- assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify(expected));
- assert.equal(pending[0].params.revision,'before');
- pending[0].resolve({success:true,revision:'after',values:{...values,...expected},fields:[]});await saving;
+ const save=ui.saveSettings();
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({relation_mode:'galgame','decay.half_life_base':60,'relation_daily_caps.affinity_up':10,timezone:'Asia/Shanghai'}));
+ pending[0].resolve({success:true,revision:'after',values:{...ui.detailValues.value},fields:ui.detailSettings.value.fields});await save;
  assert.match(ui.detailNotice.value,/重载/);
+ ui.restoreSectionDefaults('memory');
+ assert.equal(ui.detailValues.value['judge.provider_id'],'summary');
+ assert.equal(ui.detailValues.value['inject.memory_days'],7);
 });
 
-
-test('two recommended templates stage mode and keep ranking permission untouched',()=>{
- const {ui,pending}=harness();
- const values={relation_mode:'realistic','command.ranking_access':'master','decay.half_life_base':60,'economy.negative_weight':1.5};
- ui.detailSettings.value={revision:'r',values:{...values},fields:[
-  {path:'relation_mode',default:'realistic'},{path:'command.ranking_access',default:'all'},
-  {path:'decay.half_life_base',default:30},{path:'economy.negative_weight',default:1}
- ]};
- ui.detailValues.value={...values};ui.fillRecommendedRules('galgame');
- assert.equal(ui.detailValues.value.relation_mode,'galgame');
- assert.equal(ui.detailValues.value['command.ranking_access'],'master');
- assert.equal(ui.detailValues.value['decay.half_life_base'],30);
- assert.equal(ui.detailValues.value['economy.negative_weight'],1);
+test('mode previews multiply only positive base values and keep loaded runtime unchanged',()=>{
+ const {ui}=harness();
+ const values={relation_mode:'realistic','relation_daily_caps.affinity_up':12,'relation_daily_caps.affinity_down':8,
+ 'relation_daily_caps.familiarity_up':5,'relation_daily_caps.familiarity_down':0,
+ 'relation_daily_caps.trust_up':2,'relation_daily_caps.trust_down':5,
+ 'familiarity_growth.under10':1.5,'economy.level_mult.youhao':.75,
+ 'decay.enabled':true,'decay.half_life_base':60,'decay.trust_enabled':true,'decay.trust_half_life':180};
+ ui.detailSettings.value={values:{...values},active_values:{...values},fields:[]};ui.detailValues.value={...values};
+ ui.detailValues.value.relation_mode='galgame';
+ assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/基础值 12，当前模式实际 24/);
+ assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_down'}),/实际 8/);
+ assert.match(ui.effectiveSetting({path:'familiarity_growth.under10'}),/实际 3 倍/);
+ assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/实际 1.5 倍/);
+ assert.equal(ui.effectiveSetting({path:'decay.half_life_base'}),null);
+ ui.detailValues.value['economy.enabled']=false;
+ assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/不生效/);
+ assert.equal(ui.activeRuleSummary.value.mode,'基础 ×1');
+ assert.equal(ui.activeRuleSummary.value.caps[1].up,12);
  assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
- ui.fillRecommendedRules('invalid');assert.equal(ui.detailValues.value.relation_mode,'galgame');
- ui.fillRecommendedRules('realistic');assert.equal(ui.detailValues.value.relation_mode,'realistic');
+ assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],12);
+ ui.detailValues.value.relation_mode='realistic';
+ assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/实际 12/);
+});
+
+test('evaluation defaults preserve selected models and mode and save only allowed parameters',async()=>{
+ const {ui,pending}=harness();
+ ui.modelConfig.value={enabled:true,small_provider_id:'chosen',large_provider_id:'review',assessment_mode:'single',cooldown_sec:120,window_sec:90,window_max_calls:1};
+ ui.restoreEvaluationDefaults();
+ assert.equal(ui.modelConfig.value.small_provider_id,'chosen');
+ assert.equal(ui.modelConfig.value.large_provider_id,'review');
+ assert.equal(ui.modelConfig.value.assessment_mode,'single');
+ assert.equal(ui.modelConfig.value.enabled,true);
+ assert.equal(ui.modelConfig.value.window_sec,300);assert.equal(ui.modelConfig.value.window_max_calls,5);
+ assert.equal(ui.modelConfig.value.per_user_daily_small_cap,30);assert.equal(ui.modelConfig.value.per_user_daily_large_cap,8);
+ assert.equal(ui.modelConfig.value.per_bot_daily_small_cap,300);assert.equal(ui.modelConfig.value.per_bot_daily_large_cap,100);
+ assert.equal(ui.modelConfig.value.context_chars,4000);assert.equal(ui.modelConfig.value.context_events,8);
  assert.equal(pending.length,0);
+ const save=ui.saveModels();const payload=pending[0].params.config;
+ for(const key of ['enabled','small_provider_id','large_provider_id','cooldown_sec'])assert.equal(payload[key],undefined);
+ assert.equal(payload.window_sec,300);assert.equal(payload.context_events,8);
+ pending[0].resolve({success:true,restart_required:true});await save;
+ assert.match(ui.modelNotice.value,/重载/);
+});
+
+for(const [key,value] of [['window_sec',0],['window_max_calls',1.5],['per_user_daily_small_cap',-1],['context_chars',''],['context_events',NaN],['context_turns',21],['context_chars',20001],['context_days',91],['context_events',21]])test(`invalid ${key} is rejected before saving`,async()=>{
+ const {ui,pending}=harness();ui.restoreEvaluationDefaults();ui.modelConfig.value[key]=value;
+ await ui.saveModels();assert.equal(pending.length,0);assert.equal(ui.modelNoticeError.value,true);
+});
+
+test('rule and assessment controls keep a single entry and explain saved versus runtime',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
+ assert.match(source,/UTC 00:00/);assert.match(source,/当前运行关系参数/);
+ assert.match(source,/历史不重新计分/);assert.match(source,/不同实质互动可分别计分/);
 });

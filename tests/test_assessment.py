@@ -210,7 +210,7 @@ def test_large_budget_survives_restart_and_unknown_usage(tmp_path):
 def test_200_synthetic_routing_replay(tmp_path):
     cases = [
         ("普通群聊", False, None),
-        ("你好", True, None),
+        ("你好", True, "uncertain"),
         ("/设置好感100", True, None),
         ("谢谢你的帮助", True, "thanks"),
         ("和你聊天很开心", True, "friendly"),
@@ -250,9 +250,14 @@ def test_200_synthetic_routing_replay(tmp_path):
                     directed=directed,
                 )
                 counts[status] = counts.get(status, 0) + 1
-            assert providers["small"].calls == 140
+            assert providers["small"].calls == 160
             assert providers["large"].calls == 60
-            assert counts == {"filtered": 60, "accepted": 120, "failed": 20}
+            assert counts == {
+                "filtered": 40,
+                "accepted": 120,
+                "failed": 20,
+                "abstained": 20,
+            }
             stats = await store.assessment_stats()
             assert all(row["tokens"] is None for row in stats["calls"])
         finally:
@@ -345,7 +350,9 @@ def test_cancelled_assessment_releases_capacity_and_preserves_dedup(tmp_path):
     asyncio.run(run())
 
 
-def test_admission_cooldown_is_independent_of_model_latency(tmp_path, monkeypatch):
+def test_saved_legacy_cooldown_does_not_block_continuous_interactions(
+    tmp_path, monkeypatch
+):
     from dataclasses import replace
     import astrbot_plugin_bond.storage.sqlite_backend as backend
 
@@ -365,16 +372,16 @@ def test_admission_cooldown_is_independent_of_model_latency(tmp_path, monkeypatc
             clock[0] = 1119
             assert (
                 await service.assess(interaction(message="early"), directed=True)
-                == "duplicate_or_cooldown"
+                == "accepted"
             )
-            assert providers["small"].calls == 1
+            assert providers["small"].calls == 2
             clock[0] = 1121
             assert (
                 await service.assess(interaction(message="second"), directed=True)
                 == "accepted"
             )
-            assert providers["small"].calls == 2
-            assert len(await favor.query_logs("789", "456")) == 2
+            assert providers["small"].calls == 3
+            assert len(await favor.query_logs("789", "456")) == 3
         finally:
             await store.close()
 
@@ -450,10 +457,10 @@ def test_small_and_large_share_one_prompt_snapshot(tmp_path):
     "text",
     ["早安😊", "早安～", "☀️ 早安！", "你好👨‍👩‍👧‍👦", "HELLO✨", "“hi”", "早安！"],
 )
-def test_decorated_whole_greeting_is_filtered(text):
+def test_greetings_are_left_to_the_model(text):
     from astrbot_plugin_bond.core.assessment import locally_relevant
 
-    assert not locally_relevant(text, True)
+    assert locally_relevant(text, True)
 
 
 @pytest.mark.parametrize(

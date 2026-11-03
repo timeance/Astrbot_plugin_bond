@@ -3,11 +3,13 @@
 同日递减、档位乘数和噪声下限是工程节奏参数，不是心理学定律。
 默认不放大负向变化、不启用事后恢复抑制，限制模型误判的额外影响。
 自定义恢复抑制仅压低后续亲近度增长，不修复信任。
-规则引擎与跨插件 API 不经过本层；出口统一 round1。
+规则引擎与跨插件 API 不经过本层；事务回调可显式保留未舍入增量。
 """
 
 from __future__ import annotations
 
+import math
+from numbers import Real
 from dataclasses import dataclass, field
 
 from .decimal import round1
@@ -25,7 +27,7 @@ DEFAULT_LEVEL_MULT: dict[str, float] = {
 }
 
 # 手感预设（economy.preset）：参数组合打包，显式配置覆盖 preset 值。
-# 两个可选预设保留原值；具体参数优先，选择预设不会覆盖已保存的参数。
+# 旧预设提供基础参数；显式具体参数优先，关系模式倍率另由 RelationPolicy 执行。
 # repair_scale_* 为独立配置，不随预设改变。
 PRESETS: dict[str, dict] = {
     "default": {
@@ -74,6 +76,56 @@ PRESETS: dict[str, dict] = {
 }
 
 
+@dataclass(frozen=True)
+class FamiliarityConfig:
+    """熟悉度自身的六段正向倍率，独立于亲近度等级。"""
+
+    under10: float = 1.5
+    under30: float = 1.2
+    under55: float = 0.8
+    under80: float = 0.5
+    under95: float = 0.3
+    at95: float = 0.15
+
+    def __post_init__(self):
+        for key in self.__dataclass_fields__:
+            value = getattr(self, key)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, Real)
+                or not math.isfinite(float(value))
+                or value < 0
+            ):
+                raise ValueError(f"熟悉度倍率 {key} 必须是非负有限数值")
+
+    @classmethod
+    def from_config(cls, cfg=None):
+        raw = cfg or {}
+        return cls(**{key: raw[key] for key in cls.__dataclass_fields__ if key in raw})
+
+
+def familiarity_multiplier(current_f, cfg: FamiliarityConfig | None = None) -> float:
+    """按未舍入的当前熟悉度选档；只提供数值倍率，不判断事件有效性。"""
+    if (
+        isinstance(current_f, bool)
+        or not isinstance(current_f, Real)
+        or not math.isfinite(float(current_f))
+        or not 0 <= current_f <= 100
+    ):
+        raise ValueError("当前熟悉度必须在 0..100 范围内")
+    config = cfg if cfg is not None else FamiliarityConfig()
+    for threshold, key in (
+        (10, "under10"),
+        (30, "under30"),
+        (55, "under55"),
+        (80, "under80"),
+        (95, "under95"),
+    ):
+        if current_f < threshold:
+            return float(getattr(config, key))
+    return float(config.at95)
+
+
 @dataclass
 class EconomyConfig:
     """经济学层配置（由 FavorService 持有，main.py 从 economy.* 装配）。
@@ -110,8 +162,8 @@ class EconomyConfig:
     def from_config(cls, cfg: dict | None) -> "EconomyConfig | None":
         """从 economy.* 配置构建；缺省回落默认值。enabled=false 时返回 None。
 
-        preset 先垫底（default/galgame/realistic 三档手感预设），显式给出
-        的具体参数覆盖 preset 值——一键切手感，细调仍可逐参数覆盖。
+        旧 preset 为缺失的基础参数垫底，显式具体参数保持有效。
+        正向关系模式倍率由 RelationPolicy 统一执行一次。
         repair_scale_* 不在预设内（等级调制独立配置）。
         level_mult 的配置键为等级拼音（与 _conf_schema.json 一致），
         这里统一翻成中文等级名存储（apply 按等级名查表）。
@@ -163,17 +215,21 @@ def apply(
     cfg: EconomyConfig | None = None,
     repair: bool = False,
     repair_factor: float | None = None,
+    *,
+    rounded: bool = True,
 ) -> EconomyResult:
     """对评审分值跑完整经济学管线。
 
     顺序：噪声地板 → 负面权重/阶段乘数 → 同日重复衰减 → 修复期压制 → round1。
+    rounded=False 时所有环节保留精度，供最终模式倍率与事务结算使用。
     delta=0 直接返回（中性评审不产生任何流水）。
     positive_today: 当日已生效的正向评审次数（第 N+1 次吃 N 次衰减）。
     repair: 是否处于亲近度恢复抑制期（重大得罪后的时间窗内），仅压制正分。
     """
+    normalize = round1 if rounded else float
     if cfg is None:
-        return EconomyResult(delta=round1(delta))
-    d = round1(delta)
+        return EconomyResult(delta=normalize(delta))
+    d = normalize(delta)
     if d == 0:
         return EconomyResult(delta=0.0)
 
@@ -186,25 +242,25 @@ def apply(
     # 2. 负面权重 / 阶段乘数（二选一，按方向）
     if d < 0:
         if cfg.negative_weight != 1:
-            d = round1(d * cfg.negative_weight)
+            d = normalize(d * cfg.negative_weight)
             res.multiplied = True
     else:
         mult = float(cfg.level_mult.get(level_name, 1.0))
         if mult != 1:
-            d = round1(d * mult)
+            d = normalize(d * mult)
             res.multiplied = True
 
     # 3. 同日重复衰减：仅正分（适用于所有正向事件，不推断恶意）
     if d > 0 and cfg.same_day_decay > 0 and positive_today > 0:
         factor = max(0.25, 1 - cfg.same_day_decay * positive_today)
         if factor < 1:
-            d = round1(d * factor)
+            d = normalize(d * factor)
             res.decayed = True
 
     # 4. 亲近度恢复抑制期：重大得罪后的时间窗内，正分只算半效（仅当显式启用）
     factor = cfg.repair_factor if repair_factor is None else repair_factor
     if d > 0 and repair and factor != 1:
-        d = round1(d * factor)
+        d = normalize(d * factor)
         res.repairing = True
 
     res.delta = d

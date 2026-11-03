@@ -16,6 +16,10 @@ class RuntimeService:
         self._bot_discovery = bot_discovery
         self.storage = storage
         self._config = config
+        from ..core.settings import snapshot
+        from copy import deepcopy
+
+        self._active_detail_values = deepcopy(snapshot(config)["values"])
         self._factory = factory
         self._bundles = {}
         self._lock = asyncio.Lock()
@@ -127,7 +131,7 @@ class RuntimeService:
     def detailed_settings(self):
         from ..core.settings import snapshot
 
-        return snapshot(self._config)
+        return dict(snapshot(self._config), active_values=self._active_detail_values)
 
     async def save_detailed_settings(self, values, revision):
         from copy import deepcopy

@@ -1,65 +1,45 @@
-"""增长模板的纯规则合同及实际 FavorService/SQLite 回归。"""
-
-import asyncio
-from unittest.mock import patch
+"""模式仅统一缩放正向规则和正向额度，不改基础参数。"""
 
 import pytest
 
-from astrbot_plugin_bond.core.decimal import round1
-from astrbot_plugin_bond.core.levels import LevelTable
-from astrbot_plugin_bond.core.relation_policy import DEFAULT_RULES, RelationPolicy
-from astrbot_plugin_bond.core.relation_profiles import build_relation_profile
-from astrbot_plugin_bond.services.favor_service import FavorService
-from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
-
-START = 1793664000  # 固定合成时钟，每次推进整天，避免时区边界不确定。
-
-
-def service(store, mode):
-    policy, caps = build_relation_profile(mode)
-    return FavorService(
-        store,
-        LevelTable.from_config(None),
-        relation_policy=policy,
-        relation_caps=caps,
-        decay_enabled=False,
-        tz_name="Asia/Shanghai",
-    )
+from astrbot_plugin_bond.core.level_economy import (
+    EconomyConfig,
+    FamiliarityConfig,
+    apply,
+    familiarity_multiplier,
+)
+from astrbot_plugin_bond.core.relation_policy import RelationPolicy
+from astrbot_plugin_bond.core.relation_profiles import (
+    DEFAULT_DAILY_CAPS,
+    build_relation_profile,
+    positive_mode_multiplier,
+)
 
 
-async def burst(favor, prefix, event="friendly", count=30):
-    for index in range(count):
-        await favor.apply_relation_event(
-            "g", "u", event, event_id=f"{prefix}:{index}", cooldown_sec=0
-        )
-
-
-@pytest.mark.parametrize("mode", ["realistic", "galgame"])
-def test_profile_mapping_preserves_caps_trust_and_nonpositive_requests(mode):
+@pytest.mark.parametrize("mode,factor", [("realistic", 1), ("galgame", 2)])
+def test_profile_keeps_base_rules_and_only_scales_positive_caps(mode, factor):
     baseline = RelationPolicy()
     policy, caps = build_relation_profile(mode)
-    snapshot = policy.snapshot()
-    assert snapshot["event_caps"] == baseline.snapshot()["event_caps"]
-    assert caps == dict(
-        familiarity=(3, 0) if mode == "galgame" else (2, 0),
-        affinity=(4.5, 6) if mode == "galgame" else (3, 6),
-        trust=(1, 4),
-    )
-    for event, rule in DEFAULT_RULES.items():
-        for dimension, value in rule.items():
-            boosted = mode == "galgame" and dimension != "trust" and value > 0
-            expected = value * 1.25 if boosted else value
-            assert snapshot["rules"][event][dimension] == expected
-        for intensity in (0, 1, 2, 100):
-            actual = policy.deltas(event, intensity)
-            for dimension, value in actual.items():
-                request = snapshot["rules"][event].get(dimension, 0) * intensity
-                cap = snapshot["event_caps"][event][dimension]
-                assert value == round1(max(-cap, min(cap, request)))
-            assert actual["trust"] == baseline.deltas(event, intensity)["trust"]
-        if event in ("uncertain", "criticism"):
-            assert policy.deltas(event)["affinity"] == 0
-            assert policy.deltas(event)["trust"] == 0
+    assert policy.snapshot()["rules"] == baseline.snapshot()["rules"]
+    assert policy.snapshot()["event_caps"] == baseline.snapshot()["event_caps"]
+    assert policy.positive_multiplier == factor
+    assert caps == {
+        key: (positive * factor, negative)
+        for key, (positive, negative) in DEFAULT_DAILY_CAPS.items()
+    }
+    assert caps["familiarity"] == (5 * factor, 0)
+    assert caps["affinity"] == (10 * factor, 8)
+    assert caps["trust"] == (2 * factor, 5)
+    for event in ("thanks", "friendly", "apology"):
+        assert policy.deltas(event)["trust"] == 0
+    for event in ("insult", "manipulation"):
+        assert policy.deltas(event) == baseline.deltas(event)
+
+
+def test_omitted_mode_defaults_to_galgame():
+    policy, caps = build_relation_profile()
+    assert policy.positive_multiplier == 2
+    assert caps == dict(familiarity=(10, 0), affinity=(20, 8), trust=(4, 5))
 
 
 @pytest.mark.parametrize("mode", ["", "Galgame", "unknown", None, [], {}])
@@ -68,180 +48,139 @@ def test_unknown_mode_is_rejected(mode):
         build_relation_profile(mode)
 
 
-def test_profile_instances_do_not_share_mutable_configuration():
-    original = RelationPolicy().snapshot()
-    first, caps = build_relation_profile("galgame")
+def test_custom_base_rules_caps_and_daily_limits_remain_authoritative():
+    rules = {"friendly": dict(familiarity=5, affinity=3, trust=0.2)}
+    event_caps = {"friendly": dict(familiarity=0.4, affinity=0.6, trust=0.3)}
+    daily = dict(familiarity=(0.7, 0), affinity=(3, 4), trust=(0.4, 0.8))
+    policy, caps = build_relation_profile(
+        "galgame", rules=rules, event_caps=event_caps, caps=daily
+    )
+    assert policy.deltas("friendly") == dict(familiarity=0.8, affinity=1.2, trust=0.4)
+    assert caps == dict(familiarity=(1.4, 0), affinity=(6, 4), trust=(0.8, 0.8))
+    assert rules["friendly"]["affinity"] == 3
+    assert daily["affinity"] == (3, 4)
+    assert event_caps["friendly"]["affinity"] == 0.6
+
+
+def test_profile_instances_and_snapshots_do_not_share_mutable_state():
+    policy, caps = build_relation_profile()
     caps["trust"] = (100, 100)
-    first.snapshot()["rules"]["friendly"]["trust"] = 100
-    second, fresh_caps = build_relation_profile("galgame")
-    assert fresh_caps["trust"] == (1, 4)
-    assert second.snapshot() == first.snapshot()
-    assert RelationPolicy().snapshot() == original
+    policy.snapshot()["rules"]["friendly"]["trust"] = 100
+    second, fresh = build_relation_profile()
+    assert fresh["trust"] == (4, 5)
+    assert policy.snapshot() == second.snapshot()
+    assert DEFAULT_DAILY_CAPS["trust"] == (2, 5)
 
 
-@pytest.mark.parametrize("mode", ["realistic", "galgame"])
-def test_service_burst_cross_day_and_duplicate_persistence(tmp_path, mode):
-    async def run():
-        store = SQLiteBackend(tmp_path / "group.db")
-        await store.init()
-        try:
-            favor = service(store, mode)
-            _, caps = build_relation_profile(mode)
-            daily = dict(
-                familiarity=caps["familiarity"][0],
-                affinity=caps["affinity"][0],
-                trust=0,
-            )
-            with patch("time.time", return_value=START):
-                first = await favor.apply_relation_event(
-                    "g", "u", "friendly", event_id="first", cooldown_sec=0
-                )
-                assert first["delta"] == favor._relation_policy.deltas("friendly")
-                duplicate = await favor.apply_relation_event(
-                    "g", "u", "friendly", event_id="first", cooldown_sec=0
-                )
-                assert duplicate["skipped"] == "duplicate"
-                await burst(favor, "day1")
-                assert (await favor.get_relation("g", "u")).as_dict() == daily
-            await store.close()
-            await store.init()
-            favor = service(store, mode)
-            with patch("time.time", return_value=START + 86400):
-                before = (await favor.get_relation("g", "u")).as_dict()
-                assert before == daily
-                assert (
-                    await favor.apply_relation_event(
-                        "g", "u", "friendly", event_id="first", cooldown_sec=0
-                    )
-                )["skipped"] == "duplicate"
-                assert (await favor.get_relation("g", "u")).as_dict() == before
-                await burst(favor, "day2")
-                assert (await favor.get_relation("g", "u")).as_dict() == {
-                    dimension: value * 2 for dimension, value in daily.items()
-                }
-        finally:
-            await store.close()
-
-    asyncio.run(run())
+@pytest.mark.parametrize(
+    "daily",
+    [
+        {"wrong": (1, 1)},
+        {"trust": (1,)},
+        {"trust": (-1, 2)},
+        {"trust": (True, 0)},
+        {"trust": (float("inf"), 0)},
+    ],
+)
+def test_invalid_custom_daily_caps_are_rejected(daily):
+    with pytest.raises(ValueError):
+        build_relation_profile(caps=daily)
 
 
-@pytest.mark.parametrize("mode", ["realistic", "galgame"])
-def test_negative_and_trust_limits_are_identical_in_real_service(tmp_path, mode):
-    async def run():
-        store = SQLiteBackend(tmp_path / "group.db")
-        await store.init()
-        try:
-            with patch("time.time", return_value=START):
-                favor = service(store, mode)
-                first = await favor.apply_relation_event(
-                    "g", "u", "insult", event_id="insult", cooldown_sec=0
-                )
-                assert first["delta"] == dict(familiarity=0, affinity=-1, trust=-1.5)
-                await burst(favor, "negative", event="insult")
-                assert (await favor.get_relation("g", "u")).as_dict() == dict(
-                    familiarity=0, affinity=-6, trust=-4
-                )
-                for event in (
-                    "thanks",
-                    "friendly",
-                    "apology",
-                    "criticism",
-                    "uncertain",
-                ):
-                    result = await favor.apply_relation_event(
-                        "g", "u", event, event_id=event, cooldown_sec=0
-                    )
-                    assert result["delta"]["trust"] == 0
-                assert (await favor.get_relation("g", "u")).trust == -4
-        finally:
-            await store.close()
-
-    asyncio.run(run())
+@pytest.mark.parametrize(
+    "current_f,expected",
+    [(0, 0.3), (10, 0.24), (30, 0.16), (55, 0.1), (80, 0.06), (95, 0.03)],
+)
+def test_transaction_pipeline_preserves_raw_f_and_applies_mode_once(
+    current_f, expected
+):
+    policy, _ = build_relation_profile()
+    deltas = policy.base_deltas("normal_question")
+    mult = familiarity_multiplier(current_f, FamiliarityConfig())
+    deltas["familiarity"] *= mult
+    deltas["affinity"] = apply(
+        deltas["affinity"], "陌生", cfg=EconomyConfig(), rounded=False
+    ).delta
+    deltas = policy.scale_positive(deltas, rounded=False)
+    result = policy.limit_deltas(
+        "normal_question", deltas, familiarity_multiplier=mult, rounded=False
+    )
+    assert result["familiarity"] == pytest.approx(expected)
+    assert result["affinity"] == result["trust"] == 0
 
 
-def test_switch_profiles_keeps_state_idempotency_and_used_daily_quota(tmp_path):
-    async def run():
-        store = SQLiteBackend(tmp_path / "group.db")
-        await store.init()
-        try:
-            with patch("time.time", return_value=START):
-                realistic = service(store, "realistic")
-                await burst(realistic, "realistic")
-                before = (await realistic.get_relation("g", "u")).as_dict()
-                logs = await store.query_logs("g", "u")
-                galgame = service(store, "galgame")
-                assert (await galgame.get_relation("g", "u")).as_dict() == before
-                assert await store.query_logs("g", "u") == logs
-                assert (
-                    await galgame.apply_relation_event(
-                        "g", "u", "friendly", event_id="realistic:0", cooldown_sec=0
-                    )
-                )["skipped"] == "duplicate"
-                await burst(galgame, "galgame")
-                # 只补齐新模板与旧模板的额度差，不能重新获得一整天额度。
-                assert (await galgame.get_relation("g", "u")).as_dict() == dict(
-                    familiarity=3, affinity=4.5, trust=0
-                )
-                await burst(service(store, "realistic"), "back")
-                await burst(service(store, "galgame"), "again")
-                assert (await galgame.get_relation("g", "u")).as_dict() == dict(
-                    familiarity=3, affinity=4.5, trust=0
-                )
-            with patch("time.time", return_value=START + 86400):
-                await burst(service(store, "realistic"), "tomorrow")
-                assert (await realistic.get_relation("g", "u")).as_dict() == dict(
-                    familiarity=5, affinity=7.5, trust=0
-                )
-        finally:
-            await store.close()
-
-    asyncio.run(run())
+def test_custom_positive_trust_gets_mode_once_without_a_curve():
+    policy, _ = build_relation_profile(rules={"friendly": {"trust": 0.13}})
+    assert policy.deltas("friendly", rounded=False)["trust"] == pytest.approx(0.26)
 
 
-def test_explicit_custom_policy_still_controls_service(tmp_path):
-    async def run():
-        store = SQLiteBackend(tmp_path / "group.db")
-        await store.init()
-        try:
-            custom = RelationPolicy(rules={"friendly": {"affinity": 1.7, "trust": 0.4}})
-            favor = FavorService(
-                store, LevelTable.from_config(None), relation_policy=custom
-            )
-            with patch("time.time", return_value=START):
-                result = await favor.apply_relation_event(
-                    "g", "u", "friendly", event_id="custom", cooldown_sec=0
-                )
-            assert result["delta"] == dict(familiarity=0.3, affinity=1.7, trust=0.4)
-        finally:
-            await store.close()
-
-    asyncio.run(run())
+def test_intensity_cannot_bypass_curve_scaled_final_caps():
+    policy, _ = build_relation_profile(rules={"friendly": {"familiarity": 100}})
+    deltas = policy.base_deltas("friendly", 100)
+    assert deltas["familiarity"] == 1
+    deltas["familiarity"] *= 1.5
+    result = policy.limit_deltas(
+        "friendly",
+        policy.scale_positive(deltas, rounded=False),
+        familiarity_multiplier=1.5,
+        rounded=False,
+    )
+    assert result["familiarity"] == 3
 
 
-def test_ten_friendly_events_with_recommended_economy(tmp_path):
-    from astrbot_plugin_bond.core.level_economy import EconomyConfig
+def test_uncertain_and_zero_intensity_never_generate_fractional_rewards():
+    policy, _ = build_relation_profile()
+    assert policy.deltas("uncertain", rounded=False) == dict(
+        familiarity=0, affinity=0, trust=0
+    )
+    assert policy.deltas("friendly", 0, rounded=False) == dict(
+        familiarity=0, affinity=0, trust=0
+    )
 
-    async def run():
-        results = {}
-        for mode in ("realistic", "galgame"):
-            store = SQLiteBackend(tmp_path / f"{mode}.db")
-            await store.init()
-            try:
-                policy, caps = build_relation_profile(mode)
-                favor = FavorService(
-                    store,
-                    LevelTable.from_config(None),
-                    relation_policy=policy,
-                    relation_caps=caps,
-                    economy=EconomyConfig(),
-                )
-                with patch("time.time", return_value=START):
-                    await burst(favor, mode, count=10)
-                    results[mode] = (await favor.get_relation("g", "u")).as_dict()
-            finally:
-                await store.close()
-        assert results["realistic"] == dict(familiarity=2, affinity=3, trust=0)
-        # 后七次1×0.25按既有半数偶舍入为0.2，累计3.7而不是原始请求总和。
-        assert results["galgame"] == dict(familiarity=3, affinity=3.7, trust=0)
 
-    asyncio.run(run())
+@pytest.mark.parametrize("mode,expected", [("realistic", 1.0), ("galgame", 2.0)])
+def test_public_mode_helper_matches_policy(mode, expected):
+    assert positive_mode_multiplier(mode) == expected
+    assert build_relation_profile(mode)[0].positive_multiplier == expected
+
+
+@pytest.mark.parametrize(
+    "current,level_mult",
+    [(-20, 1), (29.9, 1), (30, 0.75), (55, 0.55), (80, 0.35), (95, 0.2)],
+)
+@pytest.mark.parametrize(
+    "positive_today,day_mult", [(0, 1), (1, 0.75), (2, 0.5), (3, 0.25)]
+)
+def test_affinity_curve_then_mode_keeps_full_double_precision(
+    current, level_mult, positive_today, day_mult
+):
+    from astrbot_plugin_bond.core.levels import LevelTable
+
+    cfg = EconomyConfig()
+    level = LevelTable.from_config(None).level_of(current).name
+    outcomes = []
+    for mode in ("realistic", "galgame"):
+        policy, _ = build_relation_profile(mode)
+        raw = policy.base_deltas("friendly")
+        raw["affinity"] = apply(
+            raw["affinity"], level, positive_today, cfg, rounded=False
+        ).delta
+        final = policy.limit_deltas(
+            "friendly", policy.scale_positive(raw, rounded=False), rounded=False
+        )
+        outcomes.append(final["affinity"])
+    assert outcomes[0] == pytest.approx(0.8 * level_mult * day_mult)
+    assert outcomes[1] == pytest.approx(outcomes[0] * 2)
+
+
+def test_custom_negative_weight_still_obeys_base_event_cap():
+    policy, _ = build_relation_profile()
+    raw = policy.base_deltas("insult")
+    raw["affinity"] = apply(
+        raw["affinity"], "陌生", cfg=EconomyConfig(negative_weight=10), rounded=False
+    ).delta
+    result = policy.limit_deltas(
+        "insult", policy.scale_positive(raw, rounded=False), rounded=False
+    )
+    assert result["affinity"] == -2
+    assert result["trust"] == -1.5

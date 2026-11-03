@@ -1,6 +1,7 @@
 """真实回放的候选收益、弃权代价与来源合同；不评估模型语义准确率。"""
 
 import asyncio
+import shutil
 import json
 import inspect
 import linecache
@@ -18,12 +19,26 @@ from astrbot_plugin_bond.tests.research_support import ratio
 def report(tmp_path_factory):
     original = AssessmentService.assess
     inner = getattr(AssessmentService, "_assess", None)
-    data = asyncio.run(
-        candidates.experiment(tmp_path_factory.mktemp("attribution") / "runtime")
-    )
+    runtime = tmp_path_factory.mktemp("attribution") / "runtime"
+    original_run = candidates.run_arm
+
+    async def compact_arm(path, *args, **kwargs):
+        result = await original_run(path, *args, **kwargs)
+        target = path.resolve()
+        if not target.is_relative_to(runtime.resolve()) or target == runtime.resolve():
+            raise ValueError("合成回放清理路径越界")
+        # 每个实验臂关闭 SQLite 后即可回收临时库，完整报告与轨迹仍在内存中。
+        shutil.rmtree(target)
+        return result
+
+    with patch.object(candidates, "run_arm", compact_arm):
+        data = asyncio.run(candidates.experiment(runtime))
     assert AssessmentService.assess is original
     assert getattr(AssessmentService, "_assess", None) is inner
-    return data
+    try:
+        yield data
+    finally:
+        shutil.rmtree(runtime)
 
 
 def fixture_cases():
@@ -44,10 +59,12 @@ def test_original_denominators_and_real_service_control(report):
         events=1201, forbidden=381, zero_trust=1195
     )
     expected = {
-        "control": (6, 2, 0, 0),
-        "quoted_evidence": (4, 1, 0, 0),
-        "joke_abstain": (3, 2, 1, 0),
-        "manipulation_no_source": (5, 1, 4, 4),
+        # 原脚本让 350 条无信息寒暄返回 friendly，另有一条旧冷却样本现在入场。
+        # 不修改 gold/Provider 来追求旧指标；候选臂差异仍须逐项保持可解释。
+        "control": (357, 2, 0, 0),
+        "quoted_evidence": (355, 1, 0, 0),
+        "joke_abstain": (354, 2, 1, 0),
+        "manipulation_no_source": (356, 1, 4, 4),
     }
     for arm, (false_updates, false_trust, suppressed, negative) in expected.items():
         row = summary["original"][arm]
@@ -97,10 +114,18 @@ def test_provider_inputs_responses_and_call_counts_are_unchanged(report):
                 row["metrics"]["provider_calls"] == control["metrics"]["provider_calls"]
             )
             assert all(
-                set(c["payload"]) == {"target_bot", "sender", "text"}
+                set(c["payload"])
+                == {
+                    "target_bot",
+                    "sender",
+                    "text",
+                    "trusted_metadata",
+                    "recent_turns",
+                    "scored_events",
+                }
                 for c in row["provider_transcript"]
             )
-    assert report["original"]["control"]["metrics"]["provider_calls"] == 492
+    assert report["original"]["control"]["metrics"]["provider_calls"] == 1193
     assert report["summary"]["source_files_unchanged"]
     assert report["summary"]["protected_source_sha256"] == candidates.protected_hashes()
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SUPPORTED_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+SUPPORTED_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 
 
 def set_user_version(conn: sqlite3.Connection, version: int) -> None:
@@ -47,5 +47,7 @@ def set_user_version(conn: sqlite3.Connection, version: int) -> None:
         conn.execute("PRAGMA user_version(14)")
     elif v == 15:
         conn.execute("PRAGMA user_version(15)")
+    elif v == 16:
+        conn.execute("PRAGMA user_version(16)")
     else:
         raise ValueError(f"不支持的 schema 版本: {v}")

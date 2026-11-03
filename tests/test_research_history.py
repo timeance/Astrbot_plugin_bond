@@ -13,6 +13,11 @@ from astrbot_plugin_bond.storage.migrations import MIGRATIONS, SCHEMA_VERSION
 from astrbot_plugin_bond.storage.pragma_version import set_user_version
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
 
+# 固定旧历史实验的F倍率；新分段曲线由关系框架测试独立验证。
+LEGACY_FAMILIARITY = dict.fromkeys(
+    ("under10", "under30", "under55", "under80", "under95", "at95"), 1
+)
+
 
 @pytest.fixture
 def history(tmp_path):
@@ -23,6 +28,7 @@ def history(tmp_path):
         db,
         LevelTable.from_config(None),
         relation_policy=RelationPolicy(rules={"thanks": {"trust": 0.2}}),
+        familiarity_growth=LEGACY_FAMILIARITY,
     )
     try:
         yield db, service
@@ -35,6 +41,7 @@ def test_a3_pagination_is_a_read_window_not_retention(history, monkeypatch):
     service = FavorService(
         db,
         LevelTable.from_config(None),
+        familiarity_growth=LEGACY_FAMILIARITY,
         relation_caps={
             key: (1000, 1000) for key in ("familiarity", "affinity", "trust")
         },

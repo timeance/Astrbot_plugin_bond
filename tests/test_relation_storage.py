@@ -61,9 +61,9 @@ def test_relation_dedup_cooldown_and_independent_caps(tmp_path):
             )
         state = await service.get_relation("g", "u")
         assert (
-            0 <= state.familiarity <= 2
-            and 0 <= state.affinity <= 3
-            and 0 <= state.trust <= 1
+            0 <= state.familiarity <= 5
+            and 0 <= state.affinity <= 10
+            and 0 <= state.trust <= 2
         )
         # 管理员设置不消耗自然额度，熟悉度与信任可与亲近度相反。
         await service.set_relation(
