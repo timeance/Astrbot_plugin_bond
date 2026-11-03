@@ -21,6 +21,7 @@ from pathlib import Path
 class DiagnosticRecorder:
     VERSION = 1
     MAX_BYTES, MAX_LINE, MAX_FILES, MAX_NAMESPACES = 20 * 1024 * 1024, 2048, 512, 128
+    SEGMENT_BYTES, MAX_EXPORT_ROWS = 256 * 1024, 32768
     MODES = ("per_group", "global")
     KINDS = frozenset("assessment call relation render entry".split())
     ENUMS = {
@@ -297,7 +298,7 @@ class DiagnosticRecorder:
             if not match or path.is_symlink() or not path.is_file():
                 raise ValueError("诊断根目录须专用且无链接")
             info = path.stat()
-            if info.st_size > 256 * 1024 or len(files) >= self.MAX_FILES:
+            if info.st_size > self.SEGMENT_BYTES or len(files) >= self.MAX_FILES:
                 raise ValueError("诊断文件超限")
             files.append(
                 (
@@ -317,7 +318,7 @@ class DiagnosticRecorder:
         path.unlink()
         notes[(selector, code)] += count
 
-    def _prune(self, reserve=0):
+    def _prune(self, reserve=0, *, new_file=True):
         notes, files = Counter(), self._files(create=bool(reserve))
         total, remaining = sum(f[3] for f in files), len(files)
         for file in files:
@@ -325,7 +326,7 @@ class DiagnosticRecorder:
             if (
                 expired
                 or total + reserve > self.max_bytes
-                or (reserve and remaining >= self.MAX_FILES)
+                or (reserve and new_file and remaining >= self.MAX_FILES)
             ):
                 self._remove(file, "expired_rows" if expired else "evicted_rows", notes)
                 total -= file[3]
@@ -335,27 +336,60 @@ class DiagnosticRecorder:
     def _persist(self, batch):
         notes, groups = Counter(), {}
         for selector, line in batch:
-            groups.setdefault(selector, []).append(line)
-        for selector, lines in groups.items():
+            day = int(json.loads(line)["ts"] // 86400)
+            groups.setdefault((selector, day), []).append(line)
+        for (selector, day), lines in groups.items():
             chunk, size = [], 0
             for line in lines:
-                if size + len(line) > min(256 * 1024, self.max_bytes):
-                    self._segment(selector, chunk, notes)
+                if size + len(line) > min(self.SEGMENT_BYTES, self.max_bytes):
+                    self._segment(selector, day, chunk, notes)
                     chunk, size = [], 0
                 chunk.append(line)
                 size += len(line)
             if chunk:
-                self._segment(selector, chunk, notes)
+                self._segment(selector, day, chunk, notes)
         return notes
 
-    def _segment(self, selector, lines, notes):
+    def _segment(self, selector, day, lines, notes):
         try:
-            notes.update(self._prune(sum(map(len, lines))))
-            self._sequence += 1
-            path = self.root / f"{self.session}_{selector}_{self._sequence:016x}.jsonl"
-            with path.open("xb") as stream:
-                stream.write(b"".join(lines))
-            os.utime(path, (self.clock(), self.clock()))
+            payload = b"".join(lines)
+            files = self._files(create=True)
+            candidates = [
+                f
+                for f in files
+                if f[4] == self.session
+                and f[5] == selector
+                and int(f[0] // 86400) == day
+            ]
+            target = max(candidates, key=lambda f: f[1], default=None)
+            if target and target[3] + len(payload) > min(
+                self.SEGMENT_BYTES, self.max_bytes
+            ):
+                target = None
+            notes.update(self._prune(len(payload), new_file=target is None))
+            append = target is not None and target[2].exists()
+            if append:
+                path, size, stamp = target[2], target[3], target[0]
+            else:
+                self._sequence += 1
+                path = (
+                    self.root / f"{self.session}_{selector}_{self._sequence:016x}.jsonl"
+                )
+                size, stamp = 0, json.loads(lines[0])["ts"]
+            with path.open("r+b" if append else "xb") as stream:
+                stream.seek(size)
+                try:
+                    if stream.write(payload) != len(payload):
+                        raise OSError("诊断写入不完整")
+                    stream.flush()
+                    # 追加不得刷新保留期限或改变按片段起始时间淘汰的顺序。
+                    os.utime(path, (stamp, stamp))
+                except Exception:
+                    stream.seek(size)
+                    stream.truncate()
+                    stream.flush()
+                    os.utime(path, (stamp, stamp))
+                    raise
             notes[(selector, "written")] += len(lines)
         except Exception:
             notes[(selector, "dropped")] += len(lines)
@@ -427,7 +461,7 @@ class DiagnosticRecorder:
         )
 
     def _read(self, selector, mode):
-        notes, rows = self._prune(), deque(maxlen=4096)
+        notes, rows = self._prune(), deque(maxlen=self.MAX_EXPORT_ROWS)
         for file in self._files():
             if file[5] != selector:
                 continue

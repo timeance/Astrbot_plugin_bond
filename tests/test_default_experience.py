@@ -116,6 +116,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
         values = snapshot({})["values"]
         assert values["decay.enabled"] is True
         assert values["decay.half_life_base"] == 30
+        assert values["decay.half_life_growth"] == 1.0
         assert values["decay.half_life_max"] == 120
         old = snapshot(
             {"decay": {"enabled": False, "half_life_base": 10, "half_life_max": 60}}
@@ -132,6 +133,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
             LevelTable.from_config(None),
             decay_enabled=values["decay.enabled"],
             half_life_base=values["decay.half_life_base"],
+            half_life_growth=values["decay.half_life_growth"],
             half_life_max=values["decay.half_life_max"],
             decay_floor_enabled=True,
         )

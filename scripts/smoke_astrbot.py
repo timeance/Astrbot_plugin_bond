@@ -186,7 +186,9 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
         old_deps = await plugin._runtime.select(BOT_IDS[0], "per_group")
         # 通过真实 main 装配确认新安装默认，而非仅检查配置快照。
-        assert old_deps.favor._decay == (30.0, 1.3, 120.0, 0.0)
+        assert old_deps.favor._decay == (30.0, 1.0, 120.0, 0.0)
+        assert old_deps.favor._economy.negative_weight == 1.0
+        assert old_deps.favor._economy.repair_threshold == 0.0
         entered = asyncio.Event()
         release = asyncio.Event()
         seen = {}
@@ -766,7 +768,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     config2 = AstrBotConfig(str(config_path), schema=schema)
     config2["inject"]["enabled"] = True
     # 存量显式关闭和旧参数不能被升级后的默认值覆盖。
-    config2["decay"].update(enabled=False, half_life_base=10, half_life_max=60)
+    config2["decay"].update(
+        enabled=False, half_life_base=10, half_life_growth=1.3, half_life_max=60
+    )
+    config2["economy"].update(negative_weight=1.5, repair_threshold=2)
     config2.save_config()
     config2 = AstrBotConfig(str(config_path), schema=schema)
     context2 = _context(Context, config2)
@@ -781,6 +786,9 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert deps2.favor._decay is None
         assert plugin2._dependency_config["decay"]["half_life_base"] == 10
         assert plugin2._dependency_config["decay"]["half_life_max"] == 60
+        assert plugin2._dependency_config["decay"]["half_life_growth"] == 1.3
+        assert deps2.favor._economy.negative_weight == 1.5
+        assert deps2.favor._economy.repair_threshold == 2
         assert (await deps2.favor.get(OLD_GROUP, OLD_USER)).favor == 12
         event2 = SimpleNamespace(
             get_group_id=lambda: OLD_GROUP,

@@ -1,20 +1,9 @@
-"""心弦好感度 - 时间衰减（真人记忆规律版）。
+"""亲近度时间衰减的纯函数。
 
-研究依据：
-- 艾宾浩斯遗忘曲线（Murre & Dros 2015 复现）：记忆按比例衰退、先快后慢；
-- 间隔效应（Cepeda 2006/2008）与 SM-2：每次成功复习延长记忆稳定性；
-- Half-Life Regression（Duolingo 2016）与 MemoryBank（2023，陪伴机器人）：
-  p = 0.5^(Δ/h) 的指数衰减 + 随互动巩固的半衰期，是生产系统的标准形。
-
-公式：effective = baseline + (stored − baseline) × 0.5^(闲置天数 / h)
-
-半衰期 h 的巩固规则（SM-2 温和版）：
-- 新关系 h₀ = half_life_base（默认 10 天，每天损约 6.6% 的存量距离）；
-- 每次正向互动（delta>0 落库）：h = min(h_max, h × growth)——巩固；
-- 中性/负向互动：h 不变（得罪一次不会"忘了你是谁"，SM-2 失败不降 EF）。
-
-stored 值永不因衰减被物理改写（只算 effective 展示值；写路径先结算后叠加，
-衰减被锁定）。本模块为纯函数，可单测。
+使用 baseline + (stored - baseline) * 0.5 ** (闲置天数 / h)。这是产品节奏
+模型，不是经过真人关系校准的记忆规律。新安装参数由配置与 main.py 装配。
+推荐的固定半衰期直接取当前配置；可选巩固模式保留历史值，但读取和写入都
+受当前基础值及上限约束。读取不改库，正常写入时才结算衰减。
 """
 
 from __future__ import annotations
@@ -62,6 +51,14 @@ def effective_favor(
     return round1(eff)
 
 
+def resolve_half_life(h: float, *, base: float, growth: float, h_max: float) -> float:
+    """固定模式用当前基础值；巩固模式将历史值限制在当前配置范围内。"""
+    base = max(HALF_LIFE_MIN, float(base))
+    if growth <= 1:
+        return base
+    return min(max(base, float(h or 0)), max(base, float(h_max)))
+
+
 def consolidate_half_life(
     h: float,
     *,
@@ -73,11 +70,15 @@ def consolidate_half_life(
     """互动后结算新的半衰期（巩固规则）。
 
     - 正向互动：h = min(h_max, max(h, base) × growth)（首次互动从 base 起步）；
-    - 非正向互动：h 原样返回（但调用方仍会刷新 updated_at 时间锚）；
+    - 非正向互动：使用当前配置解析后的 h，不额外巩固；
     - h 非法（<=0）时回落 base；输入输出均不低于 HALF_LIFE_MIN 保险丝。
       收敛到一位小数。
     """
-    cur = max(HALF_LIFE_MIN, float(h or 0.0), float(base))
+    cur = resolve_half_life(h, base=base, growth=growth, h_max=h_max)
     if not positive:
         return round1(cur)
-    return round1(max(HALF_LIFE_MIN, min(float(h_max), cur * float(growth))))
+    return round1(
+        min(
+            max(HALF_LIFE_MIN, float(base), float(h_max)), cur * max(1.0, float(growth))
+        )
+    )

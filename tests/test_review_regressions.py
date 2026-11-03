@@ -311,7 +311,9 @@ def test_deep_relationship_uses_scaled_repair_factor(backend):
         repair_params_for_level,
     )
 
-    cfg = EconomyConfig(noise_floor=0, level_mult={}, same_day_decay=0)
+    cfg = EconomyConfig(
+        noise_floor=0, level_mult={}, same_day_decay=0, repair_threshold=2
+    )
     svc = service(backend, economy=cfg)
 
     async def run():

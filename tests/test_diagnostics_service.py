@@ -646,17 +646,18 @@ def test_global_quota_includes_files_from_previous_recorders(tmp_path):
     asyncio.run(run())
 
 
-def test_export_rows_are_bounded_and_truncation_is_reported(tmp_path):
+def test_export_rows_are_bounded_and_truncation_is_reported(tmp_path, monkeypatch):
     async def run():
         recorder = DiagnosticRecorder(tmp_path / "logs", TaskRegistry(), True)
+        monkeypatch.setattr(recorder, "MAX_EXPORT_ROWS", 4200)
         for batch in range(33):
             for index in range(128):
                 assert emit(recorder, elapsed_ms=batch * 128 + index)
             await recorder.flush()
         await recorder.close()
         result = await recorder.export(BOT, "per_group")
-        assert len(result["rows"]) == 4096
-        assert result["missing"]["export_truncated"] == 33 * 128 - 4096
+        assert len(result["rows"]) == 4200
+        assert result["missing"]["export_truncated"] == 33 * 128 - 4200
         assert result["stats"]["gap"]
         assert result["rows"][-1]["fields"]["elapsed_ms"] == 33 * 128 - 1
         assert all(
@@ -737,5 +738,210 @@ def test_path_link_guard_without_windows_symlink_privilege(tmp_path, monkeypatch
         await recorder.close()
         assert recorder.stats()["missing"]["write_errors"] == 1
         assert not recorder.root.exists()
+
+    asyncio.run(run())
+
+
+def test_single_row_flushes_share_bounded_segments(tmp_path):
+    async def run():
+        now = [2_000_000_000.0]
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, clock=lambda: now[0]
+        )
+        for index in range(600):
+            assert emit(recorder, elapsed_ms=index)
+            await recorder.flush()
+            now[0] += 1
+        result = await recorder.export(BOT, "per_group")
+        assert len(result["rows"]) == 600
+        assert len(list(recorder.root.iterdir())) < 4
+        assert result["missing"]["evicted_rows"] == 0
+        assert result["stats"]["counters"]["written"] == 600
+        assert all(
+            p.stat().st_size <= recorder.SEGMENT_BYTES for p in recorder.root.iterdir()
+        )
+        await recorder.close()
+
+    asyncio.run(run())
+
+
+def test_daily_segments_keep_start_mtime_and_expire_without_refresh(tmp_path):
+    async def run():
+        day = 23000 * 86400
+        now = [day + 100.0]
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, clock=lambda: now[0]
+        )
+        assert emit(recorder, elapsed_ms=1)
+        await recorder.flush()
+        first = next(recorder.root.iterdir())
+        stamp = first.stat().st_mtime
+        now[0] += 100
+        assert emit(recorder, elapsed_ms=2)
+        await recorder.flush()
+        assert first.stat().st_mtime == stamp
+        now[0] = day + 86400 + 100.0
+        assert emit(recorder, elapsed_ms=3)
+        assert emit(recorder, OTHER_BOT)
+        assert emit(recorder, mode="global")
+        await recorder.flush()
+        assert len(list(recorder.root.iterdir())) == 4
+        for p in recorder.root.iterdir():
+            rows = [json.loads(line) for line in p.read_bytes().splitlines()]
+            assert len({int(r["ts"] // 86400) for r in rows}) == 1
+            assert len({(r["session"], r["namespace"]) for r in rows}) == 1
+        now[0] = stamp + 7 * 86400 + 1
+        result = await recorder.export(BOT, "per_group")
+        assert [r["fields"]["elapsed_ms"] for r in result["rows"]] == [3]
+        assert result["missing"]["expired_rows"] == 2
+        await recorder.clear(BOT, "per_group")
+        assert emit(recorder, elapsed_ms=4)
+        await recorder.flush()
+        assert [
+            r["fields"]["elapsed_ms"]
+            for r in (await recorder.export(BOT, "per_group"))["rows"]
+        ] == [4]
+        assert len((await recorder.export(OTHER_BOT, "per_group"))["rows"]) == 1
+        await recorder.close()
+
+    asyncio.run(run())
+
+
+def test_append_at_file_cap_and_rotation_still_evicts(tmp_path, monkeypatch):
+    async def run():
+        now = [2_000_000_000.0]
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, clock=lambda: now[0]
+        )
+        monkeypatch.setattr(recorder, "MAX_FILES", 2)
+        assert emit(recorder)
+        assert emit(recorder, OTHER_BOT)
+        await recorder.flush()
+        assert emit(recorder)
+        await recorder.flush()
+        assert len((await recorder.export(BOT, "per_group"))["rows"]) == 2
+        assert recorder.stats()["missing"]["evicted_rows"] == 0
+        now[0] += 86400
+        assert emit(recorder)
+        await recorder.flush()
+        assert len(list(recorder.root.iterdir())) == 2
+        assert recorder.stats()["missing"]["evicted_rows"] > 0
+        await recorder.close()
+
+    asyncio.run(run())
+
+
+def test_partial_append_is_rolled_back_and_counts_only_success(tmp_path, monkeypatch):
+    async def run():
+        recorder = DiagnosticRecorder(tmp_path / "logs", TaskRegistry(), True)
+        assert emit(recorder, elapsed_ms=1)
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        original_bytes = path.read_bytes()
+        original_mtime = path.stat().st_mtime
+        original_open = Path.open
+
+        class PartialWrite:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                self.stream.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def __getattr__(self, name):
+                return getattr(self.stream, name)
+
+            def write(self, payload):
+                self.stream.write(payload[:10])
+                raise OSError(TEXT)
+
+        def opening(p, mode="r", *args, **kwargs):
+            stream = original_open(p, mode, *args, **kwargs)
+            return PartialWrite(stream) if mode == "r+b" else stream
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "open", opening)
+            assert emit(recorder, elapsed_ms=2)
+            await recorder.flush()
+        assert path.read_bytes() == original_bytes
+        assert path.stat().st_mtime == original_mtime
+        result = await recorder.export(BOT, "per_group")
+        assert result["stats"]["counters"]["written"] == 1
+        assert result["missing"]["write_errors"] == 1
+        assert result["missing"]["dropped"] == 1
+        assert emit(recorder, elapsed_ms=3)
+        await recorder.close()
+        assert [
+            r["fields"]["elapsed_ms"]
+            for r in (await recorder.export(BOT, "per_group"))["rows"]
+        ] == [1, 3]
+
+    asyncio.run(run())
+
+
+def test_old_segments_and_export_beyond_4096_remain_readable(tmp_path):
+    async def run():
+        root = tmp_path / "logs"
+        old = DiagnosticRecorder(root, TaskRegistry(), True)
+        assert emit(old, elapsed_ms=0)
+        await old.close()
+        original = next(root.iterdir())
+        row = original.read_bytes()
+        selector = old._selector(BOT, "per_group")
+        # 旧版每次 flush 一个分段，文件名和行 schema 保持不变。
+        (root / f"{old.session}_{selector}_{2:016x}.jsonl").write_bytes(row)
+        current = DiagnosticRecorder(root, TaskRegistry(), True)
+        for batch in range(17):
+            for index in range(256):
+                assert emit(current, elapsed_ms=batch * 256 + index + 1)
+            await current.flush()
+        result = await current.export(BOT, "per_group")
+        assert len(result["rows"]) == 17 * 256 + 2
+        assert result["missing"]["export_truncated"] == 0
+        assert len({r["session"] for r in result["rows"]}) == 2
+        assert current.MAX_EXPORT_ROWS == 32768
+        await current.close()
+
+    asyncio.run(run())
+
+
+def test_rotation_never_backfills_older_segment_and_byte_cap_evicts_oldest(
+    tmp_path, monkeypatch
+):
+    async def run():
+        now = [2_000_000_000.0]
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, clock=lambda: now[0]
+        )
+        assert emit(recorder, elapsed_ms=0)
+        line_size = len(recorder._queue[0][1])
+        monkeypatch.setattr(recorder, "SEGMENT_BYTES", 4 * line_size)
+        assert emit(recorder, elapsed_ms=1)
+        await recorder.flush()
+        now[0] += 10
+        for index in range(2, 5):
+            assert emit(recorder, elapsed_ms=index)
+        await recorder.flush()
+        for index in range(5, 7):
+            now[0] += 10
+            assert emit(recorder, elapsed_ms=index)
+            await recorder.flush()
+        assert len(list(recorder.root.iterdir())) == 3
+        rows = (await recorder.export(BOT, "per_group"))["rows"]
+        assert [r["fields"]["elapsed_ms"] for r in rows] == list(range(7))
+        recorder.max_bytes = sum(p.stat().st_size for p in recorder.root.iterdir())
+        assert emit(recorder, elapsed_ms=7)
+        await recorder.flush()
+        result = await recorder.export(BOT, "per_group")
+        assert [r["fields"]["elapsed_ms"] for r in result["rows"]] == list(range(2, 8))
+        assert result["missing"]["evicted_rows"] == 2
+        assert (
+            sum(p.stat().st_size for p in recorder.root.iterdir()) <= recorder.max_bytes
+        )
+        await recorder.close()
 
     asyncio.run(run())

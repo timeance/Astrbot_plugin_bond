@@ -17,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from ..core.decay import consolidate_half_life, effective_favor
+from ..core.decay import consolidate_half_life, effective_favor, resolve_half_life
 from ..core.decimal import round1
 from ..core.models import FavorRecord
 from ..core.relation_policy import affinity_bounds_for_undo
@@ -257,22 +257,29 @@ class SQLiteBackend(StorageBackend):
                 effective(current, last_ts, half_life)
                 if effective is not None
                 else effective_favor(
-                    current, last_ts, now, half_life=half_life, baseline=baseline
+                    current,
+                    last_ts,
+                    now,
+                    half_life=resolve_half_life(
+                        half_life, base=base, growth=growth, h_max=h_max
+                    ),
+                    baseline=baseline,
                 )
             )
-            # 正向互动巩固半衰期（SM-2 式），新 h 随本次写库落列
-            new_h = consolidate_half_life(
+        # 先封顶及舍入；只有实际正增长才能巩固，避免零分事件悄悄延长半衰期。
+        new_value = round1(max(min_favor, min(max_favor, current + delta)))
+        real_delta = round1(new_value - current)
+        new_h = (
+            consolidate_half_life(
                 half_life,
                 base=base,
                 growth=growth,
                 h_max=h_max,
-                positive=delta > 0,
+                positive=real_delta > 0,
             )
-        else:
-            new_h = half_life
-        # 收敛到 1 位小数：吸收每日限幅边界处的浮点幽灵微增量
-        new_value = round1(max(min_favor, min(max_favor, current + delta)))
-        real_delta = round1(new_value - current)
+            if decay
+            else half_life
+        )
         return new_value, real_delta, new_h
 
     async def apply_delta(
@@ -368,8 +375,7 @@ class SQLiteBackend(StorageBackend):
                     if allowed == 0:
                         # 当日额度耗尽：不动任何表（与历史行为一致——
                         # 旧实现在 service 层提前 return，不写不摸）
-                        conn.rollback()
-                        cur, _, _ = self._compute_favor_write(
+                        cur, _, current_h = self._compute_favor_write(
                             conn,
                             group_id,
                             user_id,
@@ -381,8 +387,12 @@ class SQLiteBackend(StorageBackend):
                             now,
                             effective,
                         )
+                        # guard 可能刚平移临时关系暂停的时间锚；先取正确快照再回滚。
+                        conn.rollback()
                         return (
-                            FavorRecord(group_id, user_id, cur, now),
+                            FavorRecord(
+                                group_id, user_id, cur, now, half_life=current_h
+                            ),
                             0.0,
                             0.0,
                             True,

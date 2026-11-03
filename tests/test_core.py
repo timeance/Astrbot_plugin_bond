@@ -1668,7 +1668,9 @@ class TestLevelEconomy:
     def setup_method(self):
         from astrbot_plugin_bond.core.level_economy import EconomyConfig, apply
 
-        self.cfg = EconomyConfig()  # 默认：地板0.5 负重1.5 斜率0.25
+        self.cfg = EconomyConfig(
+            negative_weight=1.5, repair_threshold=2
+        )  # 显式验证旧配置
         self.apply = apply
 
     def test_zero_passthrough(self):
@@ -1779,10 +1781,10 @@ class TestLevelEconomy:
         from astrbot_plugin_bond.core.level_economy import EconomyConfig
 
         eco = EconomyConfig.from_config({"preset": "不是预设"})
-        assert eco.negative_weight == 1.5  # 回落 default
+        assert eco.negative_weight == 1.0  # 回落当前 default
 
-    def test_preset_default_equals_legacy(self):
-        # default 预设与旧版硬编码默认完全一致（行为零变化）；
+    def test_preset_default_equals_dataclass(self):
+        # default 预设与当前数据类默认一致；
         # repair_scale_* 不在预设内，独立取默认值
         from astrbot_plugin_bond.core.level_economy import (
             EconomyConfig,
@@ -1810,7 +1812,7 @@ class TestApplyJudgeEconomy:
         self.dir = tempfile.mkdtemp()
         self.storage = SQLiteBackend(Path(self.dir) / "t.db")
         asyncio.run(self.storage.init())
-        self.eco = EconomyConfig()
+        self.eco = EconomyConfig(negative_weight=1.5, repair_threshold=2)
 
     def _svc(self, eco=True):
         # 显式放开每日限幅：本组测试聚焦经济学层，不让限幅层抢戏
@@ -2060,7 +2062,7 @@ class TestRepairLevelScale:
     def setup_method(self):
         from astrbot_plugin_bond.core.level_economy import EconomyConfig
 
-        self.cfg = EconomyConfig()  # 默认 scale_high=1.5 / scale_low=1.0
+        self.cfg = EconomyConfig(repair_threshold=2)  # 显式开启恢复抑制
 
     def test_deep_level_longer_window(self):
         from astrbot_plugin_bond.core.level_economy import repair_params_for_level
@@ -2082,7 +2084,7 @@ class TestRepairLevelScale:
             repair_params_for_level,
         )
 
-        cfg = EconomyConfig(repair_scale_high=1.0)
+        cfg = EconomyConfig(repair_threshold=2, repair_scale_high=1.0)
         assert repair_params_for_level("挚爱", cfg) == (48.0, 0.5)
 
     def test_none_cfg_no_repair(self):
@@ -2102,7 +2104,7 @@ class TestRepairLevelIntegration:
         self.dir = tempfile.mkdtemp()
         self.storage = SQLiteBackend(Path(self.dir) / "t.db")
         asyncio.run(self.storage.init())
-        self.eco = EconomyConfig()
+        self.eco = EconomyConfig(negative_weight=1.5, repair_threshold=2)
 
     def _svc(self):
         return FavorService(
