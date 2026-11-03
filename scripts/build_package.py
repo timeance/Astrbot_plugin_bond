@@ -62,6 +62,15 @@ def validate_archive(archive: Path) -> None:
             "resources/prompts/judge_prompt.txt",
             "resources/prompts/inject_template.txt",
             "resources/prompts/bond_behavior.txt",
+            "resources/ranking/yachiyo-wave.png",
+            "resources/ranking/yachiyo-peace.png",
+            "resources/ranking/yachiyo-heart.png",
+            "resources/ranking/yachiyo-hug.png",
+            "resources/ranking/yachiyo-pout.png",
+            "resources/ranking/yachiyo-laugh.png",
+            "resources/ranking/yachiyo-normal-smile.png",
+            "resources/ranking/yachiyo-normal-wave.png",
+            "resources/ranking/yachiyo-normal-hug.png",
         }
         missing = required - names
         if missing:

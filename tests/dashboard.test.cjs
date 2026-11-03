@@ -9,12 +9,14 @@ function harness(timerOverrides={},deferredEndpoints=[]){
   apiGet:async(endpoint,params)=>{
    reads.push({endpoint,params});
    if(deferredEndpoints.includes(endpoint)||endpoint==='prompts'||endpoint==='member'||(endpoint==='diagnostics'&&params.action==='export'))return new Promise(resolve=>pendingGets.push({endpoint,params,resolve}));
+   if(endpoint==='settings')return {success:true,fields:[],values:{},revision:'settings-initial',providers:[]};
+   if(endpoint==='bots')return {success:true,bots:[]};
    return {success:true,groups:[],users:[],logs:[{id:params.bot_id}]};
   },
   apiPost:(endpoint,params)=>new Promise(resolve=>pending.push({endpoint,params,resolve}))
  };
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8'),{
-  Vue:{ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},onUnmounted:()=>{},createApp:options=>({mount(){ui=options.setup()}})},window:{AstrBotPluginPage:bridge},console,setTimeout,clearTimeout,...timerOverrides
+  Vue:{ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},onUnmounted:()=>{},createApp:options=>({mount(){ui=options.setup()}})},window:{AstrBotPluginPage:bridge},document:{documentElement:{dataset:{bondTheme:'dark'}}},console,setTimeout,clearTimeout,...timerOverrides
  });
  ui.bots.value=[{bot_id:'10001',scope_mode:'per_group'},{bot_id:'20002',scope_mode:'per_group'}];ui.selectedBot.value='10001';
  return {ui,pending,pendingGets,reads};
@@ -111,15 +113,19 @@ for(const operation of ['switch','restore']) test(`log tab reloads after ${opera
 });
 
 
-test('detailed settings save sends changed fields only and ignores late completion',async()=>{
- const {ui,pending}=harness();
+test('global settings save sends only changed fields and survives switching Bot',async()=>{
+ const {ui,pending,reads}=harness();
+ ui.tab.value='settings';
  ui.detailSettings.value={revision:'v1',values:{timezone:'UTC',memory_days:4},fields:[]};
  ui.detailValues.value={timezone:'UTC',memory_days:5};
  const save=ui.saveSettings();
  assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({memory_days:5}));
+ assert.equal(pending[0].params.bot_id,undefined);assert.equal(pending[0].params.scope_mode,undefined);
  ui.selectedBot.value='20002';await ui.selectBot();
+ assert.equal(ui.detailValues.value.memory_days,5);assert.equal(ui.detailLoading.value,true);
+ assert.equal(reads.some(item=>item.endpoint==='settings'),false);
  pending[0].resolve({success:true,revision:'v2',values:{memory_days:5},fields:[]});await save;
- assert.equal(ui.detailSettings.value,null);
+ assert.equal(ui.detailSettings.value.revision,'v2');
  assert.equal(ui.detailLoading.value,false);
 });
 
@@ -365,12 +371,14 @@ test('saving configured concurrency keeps the actual running limit unchanged unt
  const {ui,pending,pendingGets}=harness({},['models']);
  const config={enabled:false,small_provider_id:'',large_provider_id:'',assessment_mode:'tiered',small_timeout_sec:20,large_timeout_sec:30,cooldown_sec:120,per_user_daily_large_cap:2,per_bot_daily_large_cap:20};
  const load=ui.loadEvaluation();
- pendingGets[0].resolve({success:true,configured:config,active:config,max_concurrent_assessments:2,active_max_concurrent_assessments:2});await load;
+ pendingGets[0].resolve({success:true,revision:'models-v1',configured:config,active:config,max_concurrent_assessments:2,active_max_concurrent_assessments:2});await load;
  ui.maxConcurrentAssessments.value=5;assert.equal(ui.activeMaxConcurrentAssessments.value,2);
  const save=ui.saveModels();assert.equal(pending[0].params.max_concurrent_assessments,5);
- pending[0].resolve({success:true,restart_required:true});await save;
+ assert.equal(pending[0].params.revision,'models-v1');assert.equal(pending[0].params.config.assessment_mode,undefined);
+ pending[0].resolve({success:true,revision:'models-v2',restart_required:true});await save;
+ assert.equal(ui.modelRevision.value,'models-v2');
  assert.equal(ui.maxConcurrentAssessments.value,5);assert.equal(ui.activeMaxConcurrentAssessments.value,2);
- const reload=ui.loadEvaluation();pendingGets[1].resolve({success:true,configured:config,active:config,max_concurrent_assessments:5,active_max_concurrent_assessments:2});await reload;
+ const reload=ui.loadEvaluation();pendingGets[1].resolve({success:true,revision:'models-v2',configured:config,active:config,max_concurrent_assessments:5,active_max_concurrent_assessments:2});await reload;
  assert.equal(ui.maxConcurrentAssessments.value,5);assert.equal(ui.activeMaxConcurrentAssessments.value,2);
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
  assert.match(source,/运行并发上限<\/dt><dd>{{ activeMaxConcurrentAssessments/);
@@ -392,7 +400,7 @@ test('section defaults are staged and preserve other sections, identity and mode
   timezone:'UTC',master_ids:'8001','command.ranking_access':'master','judge.provider_id':'summary',
   'assessment.small_provider_id':'chosen','inject.memory_days':4};
  ui.detailSettings.value={revision:'before',values:{...values},fields:[
-  {path:'relation_mode',group:'rules',default:'galgame'},
+  {path:'relation_mode',group:'basic',default:'galgame'},
   {path:'decay.half_life_base',group:'rules',default:60},
   {path:'relation_daily_caps.affinity_up',group:'rules',default:10},
   {path:'timezone',group:'rules',default:'Asia/Shanghai'},
@@ -406,14 +414,14 @@ test('section defaults are staged and preserve other sections, identity and mode
  ui.detailLoading.value=false;ui.restoreSectionDefaults('basic');
  assert.equal(ui.detailValues.value.master_ids,'8001');
  ui.restoreSectionDefaults('rules');
- assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ assert.equal(ui.detailValues.value.relation_mode,'realistic');
  assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],10);
  assert.equal(ui.detailValues.value['command.ranking_access'],'master');
  assert.equal(ui.detailValues.value['assessment.small_provider_id'],'chosen');
  assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
  assert.equal(pending.length,0);
  const save=ui.saveSettings();
- assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({relation_mode:'galgame','decay.half_life_base':60,'relation_daily_caps.affinity_up':10,timezone:'Asia/Shanghai'}));
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({'decay.half_life_base':60,'relation_daily_caps.affinity_up':10,timezone:'Asia/Shanghai'}));
  pending[0].resolve({success:true,revision:'after',values:{...ui.detailValues.value},fields:ui.detailSettings.value.fields});await save;
  assert.match(ui.detailNotice.value,/重载/);
  ui.restoreSectionDefaults('memory');
@@ -458,15 +466,16 @@ test('evaluation defaults preserve selected models and mode and save only allowe
  assert.equal(ui.modelConfig.value.per_bot_daily_small_cap,300);assert.equal(ui.modelConfig.value.per_bot_daily_large_cap,100);
  assert.equal(ui.modelConfig.value.context_chars,4000);assert.equal(ui.modelConfig.value.context_events,8);
  assert.equal(pending.length,0);
+ ui.modelRevision.value='before';
  const save=ui.saveModels();const payload=pending[0].params.config;
- for(const key of ['enabled','small_provider_id','large_provider_id','cooldown_sec'])assert.equal(payload[key],undefined);
+ for(const key of ['enabled','assessment_mode','small_provider_id','large_provider_id','cooldown_sec'])assert.equal(payload[key],undefined);
  assert.equal(payload.window_sec,300);assert.equal(payload.context_events,8);
  pending[0].resolve({success:true,restart_required:true});await save;
  assert.match(ui.modelNotice.value,/重载/);
 });
 
 for(const [key,value] of [['window_sec',0],['window_max_calls',1.5],['per_user_daily_small_cap',-1],['context_chars',''],['context_events',NaN],['context_turns',21],['context_chars',20001],['context_days',91],['context_events',21]])test(`invalid ${key} is rejected before saving`,async()=>{
- const {ui,pending}=harness();ui.restoreEvaluationDefaults();ui.modelConfig.value[key]=value;
+ const {ui,pending}=harness();ui.restoreEvaluationDefaults();ui.modelRevision.value='before';ui.modelConfig.value[key]=value;
  await ui.saveModels();assert.equal(pending.length,0);assert.equal(ui.modelNoticeError.value,true);
 });
 
@@ -475,4 +484,165 @@ test('rule and assessment controls keep a single entry and explain saved versus 
  assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
  assert.match(source,/UTC 00:00/);assert.match(source,/当前运行关系参数/);
  assert.match(source,/历史不重新计分/);assert.match(source,/不同实质互动可分别计分/);
+});
+
+test('settings can open and save without a Bot or scope',async()=>{
+ const {ui,pending,pendingGets,reads}=harness({},['settings']);
+ ui.selectedBot.value='';ui.selectedMode.value='';ui.bots.value=[];
+ ui.switchTab('settings');
+ assert.equal(pendingGets.length,1);
+ assert.equal(JSON.stringify(pendingGets[0].params),'{}');
+ const values={'assessment.enabled':false,'assessment.small_provider_id':'','inject.enabled':false};
+ pendingGets[0].resolve({success:true,fields:[],values,revision:'initial',providers:[]});
+ await new Promise(resolve=>setImmediate(resolve));
+ ui.detailValues.value['inject.enabled']=true;
+ const save=ui.saveSettings();
+ assert.equal(pending[0].endpoint,'settings');
+ assert.equal(JSON.stringify(pending[0].params),JSON.stringify({values:{'inject.enabled':true},revision:'initial'}));
+ pending[0].resolve({success:true,fields:[],values:{...values,'inject.enabled':true},revision:'saved',providers:[]});await save;
+ assert.equal(ui.detailSettings.value.revision,'saved');assert.match(ui.detailNotice.value,/重载/);
+ assert.equal(reads.some(item=>item.endpoint==='groups'),false);
+});
+
+test('switching Bot, refreshing its list and revisiting settings preserve global drafts',async()=>{
+ const {ui,reads}=harness();
+ ui.detailSettings.value={revision:'draft-base',values:{relation_mode:'realistic'},fields:[]};
+ ui.detailValues.value={relation_mode:'galgame'};
+ ui.tab.value='settings';ui.selectedBot.value='20002';await ui.selectBot();
+ ui.switchTab('users');ui.switchTab('settings');
+ await ui.fetchBots();
+ assert.equal(ui.selectedBot.value,'');
+ assert.equal(ui.detailSettings.value.revision,'draft-base');
+ assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ assert.equal(reads.some(item=>item.endpoint==='settings'),false);
+});
+
+for(const staleSuccess of [true,false]) test(`global settings reject stale ${staleSuccess?'success':'failure'} responses`,async()=>{
+ const {ui,pendingGets}=harness({},['settings']);
+ const old=ui.loadSettings();const current=ui.loadSettings();
+ pendingGets[0].resolve({success:staleSuccess,error:'旧错误',fields:[],values:{relation_mode:'old'},revision:'old'});await old;
+ assert.equal(ui.detailSettings.value,null);assert.equal(ui.detailLoading.value,true);assert.equal(ui.detailNotice.value,'');
+ pendingGets[1].resolve({success:true,fields:[],values:{relation_mode:'galgame'},revision:'current',providers:[]});await current;
+ assert.equal(ui.detailSettings.value.revision,'current');assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ assert.equal(ui.detailLoading.value,false);
+});
+
+test('failed settings saves preserve the draft and reject overlapping requests',async()=>{
+ const {ui,pending,reads}=harness();
+ ui.detailSettings.value={revision:'old-revision',values:{relation_mode:'realistic'},fields:[]};
+ ui.detailValues.value={relation_mode:'galgame'};
+ const save=ui.saveSettings();await ui.saveSettings();await ui.loadSettings();
+ assert.equal(pending.length,1);assert.equal(reads.length,0);
+ pending[0].resolve({success:false,error:'配置已更新，请刷新后重试'});await save;
+ assert.equal(ui.detailSettings.value.revision,'old-revision');assert.equal(ui.detailValues.value.relation_mode,'galgame');
+ assert.equal(ui.detailNoticeError.value,true);assert.match(ui.detailNotice.value,/刷新/);assert.equal(ui.detailLoading.value,false);
+});
+
+test('enabled assessment requires a daily provider before settings are submitted',async()=>{
+ const {ui,pending}=harness();
+ ui.detailSettings.value={revision:'v1',values:{'assessment.enabled':false},fields:[]};
+ ui.detailValues.value={'assessment.enabled':true,'assessment.small_provider_id':'   '};
+ await ui.saveSettings();
+ assert.equal(pending.length,0);assert.match(ui.detailNotice.value,/日常评估模型/);assert.equal(ui.detailNoticeError.value,true);
+ ui.detailValues.value['assessment.small_provider_id']='synthetic-text-provider';
+ const save=ui.saveSettings();assert.equal(pending.length,1);
+ pending[0].resolve({success:true,revision:'v2',values:{...ui.detailValues.value},fields:[]});await save;
+ assert.equal(ui.detailNoticeError.value,false);
+});
+
+test('provider options expose only IDs and model names and retain missing selections',()=>{
+ const {ui}=harness();
+ ui.detailSettings.value={fields:[],providers:[{id:'daily',model:'text-model',api_key:'synthetic-hidden'}]};
+ ui.detailValues.value={'assessment.small_provider_id':'daily','assessment.large_provider_id':'missing'};
+ const daily=ui.providerOptions('assessment.small_provider_id');
+ assert.equal(daily.length,1);assert.equal(daily[0].label,'text-model · daily');
+ assert.doesNotMatch(JSON.stringify(daily),/api_key|synthetic-hidden/);
+ const review=ui.providerOptions('assessment.large_provider_id');
+ assert.equal(review[1].id,'missing');assert.match(review[1].label,/暂不可用/);
+ ui.detailSettings.value.providers=[];
+ assert.equal(ui.providerOptions('assessment.small_provider_id')[0].id,'daily');
+ ui.detailValues.value['assessment.small_provider_id']='';assert.equal(ui.providerOptions('assessment.small_provider_id').length,0);
+});
+
+test('list placeholders distinguish groups, ignored bots and owners',()=>{
+ const {ui}=harness();
+ assert.match(ui.listPlaceholder('group_whitelist'),/所有群/);
+ assert.match(ui.listPlaceholder('ignored_bot_ids'),/机器人账号/);
+ assert.match(ui.listPlaceholder('master_ids'),/主人账号/);
+ assert.doesNotMatch(ui.listPlaceholder('ignored_bot_ids'),/所有群/);
+ ui.updateListSetting('ignored_bot_ids','9001, 9002，9003');
+ assert.deepEqual(Array.from(ui.detailValues.value.ignored_bot_ids),['9001','9002','9003']);
+});
+
+
+test('evaluation saves require a loaded revision and adopt the revision from each save',async()=>{
+ const {ui,pending,pendingGets}=harness({},['models']);
+ await ui.saveModels();assert.equal(pending.length,0);assert.match(ui.modelNotice.value,/刷新/);
+ const load=ui.loadEvaluation();
+ pendingGets[0].resolve({success:true,revision:'r1',configured:{},active:{}});await load;
+ const save=ui.saveModels();assert.equal(pending[0].params.revision,'r1');
+ for(const key of ['enabled','assessment_mode','small_provider_id','large_provider_id'])assert.equal(pending[0].params.config[key],undefined);
+ pending[0].resolve({success:true,revision:'r2',restart_required:true});await save;
+ const again=ui.saveModels();assert.equal(pending[1].params.revision,'r2');
+ pending[1].resolve({success:false,error:'配置已更新'});await again;
+ assert.equal(ui.modelRevision.value,'r2');assert.equal(ui.modelNoticeError.value,true);
+});
+
+test('evaluation ignores older same-scope loads including their revisions',async()=>{
+ const {ui,pendingGets}=harness({},['models']);
+ const old=ui.loadEvaluation();const current=ui.loadEvaluation();
+ pendingGets[0].resolve({success:true,revision:'old',configured:{cooldown_sec:5},active:{}});await old;
+ assert.equal(ui.modelRevision.value,'');assert.equal(ui.evaluationLoading.value,true);
+ pendingGets[1].resolve({success:true,revision:'current',configured:{cooldown_sec:60},active:{}});await current;
+ assert.equal(ui.modelRevision.value,'current');assert.equal(ui.modelConfig.value.cooldown_sec,60);
+});
+
+test('theme bootstrap runs before CSS and restores only the independent light preference',()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../pages/dashboard/index.html'),'utf8');
+ const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
+ assert.ok(html.indexOf(script)<html.indexOf('rel="stylesheet"'));
+ assert.match(html,/<html[^>]*data-bond-theme="dark"/);
+ for(const stored of ['light','dark','invalid',null]){
+  const document={documentElement:{dataset:{bondTheme:'dark',theme:'light'}}};
+  vm.runInNewContext(script,{document,window:{localStorage:{getItem:key=>{assert.equal(key,'bond-theme');return stored;}}}});
+  assert.equal(document.documentElement.dataset.bondTheme,stored==='light'?'light':'dark');
+  assert.equal(document.documentElement.dataset.theme,'light');
+ }
+ const document={documentElement:{dataset:{bondTheme:'dark'}}};
+ vm.runInNewContext(script,{document,window:{get localStorage(){throw new Error('storage blocked');}}});
+ assert.equal(document.documentElement.dataset.bondTheme,'dark');
+});
+
+test('manual theme switching survives unavailable storage and ignores the host theme',()=>{
+ const document={documentElement:{dataset:{bondTheme:'dark',theme:'light'}}};
+ const {ui}=harness({document});
+ ui.toggleTheme();assert.equal(ui.theme.value,'light');assert.equal(document.documentElement.dataset.bondTheme,'light');
+ document.documentElement.dataset.theme='dark';
+ assert.equal(ui.theme.value,'light');
+ ui.toggleTheme();assert.equal(ui.theme.value,'dark');assert.equal(document.documentElement.dataset.bondTheme,'dark');
+});
+
+test('manual theme choice is persisted independently of the host',()=>{
+ const writes=[];
+ const {ui}=harness({window:{localStorage:{setItem:(...args)=>writes.push(args)}}});
+ ui.toggleTheme();ui.toggleTheme();
+ assert.deepEqual(writes,[['bond-theme','light'],['bond-theme','dark']]);
+});
+
+test('quick start layout, section defaults and theme styling match the page contract',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ const css=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.css'),'utf8');
+ const toolbar=source.match(/<div class="xx-settings-toolbar xx-detail-toolbar">([\s\S]*?)<\/div>/)[1];
+ assert.match(toolbar,/刷新设置/);assert.match(toolbar,/xx-btn-primary/);assert.doesNotMatch(toolbar,/填入/);
+ assert.doesNotMatch(source,/fillRecommendedRules|recommendDialog|填入写实推荐|填入 Galgame 推荐/);
+ assert.match(source,/restoreSectionDefaults\(group.group\)/);
+ assert.match(source,/:open="group.group === 'basic'"/);
+ assert.match(source,/基础设置（快速开始）/);
+ assert.match(source,/模式不覆盖基础参数/);
+ assert.doesNotMatch(source,/v-model="modelConfig.assessment_mode"|请在 AstrBot 的 Bond 插件配置中修改|亲近度基线固定为0/);
+ assert.match(source,/暂无可用模型，请先在 AstrBot 配置文本模型。/);
+ assert.match(css,/--xx-bg: #10172D/);assert.match(css,/--xx-card: #19233D/);assert.match(css,/--xx-ink: #E8EDFA/);
+ assert.match(css,/:root\[data-bond-theme="light"\]/);assert.doesNotMatch(css,/\[data-theme/);
+ assert.match(css,/color-scheme: dark/);assert.match(css,/color-scheme: light/);assert.match(css,/color-scheme: inherit/);
+ assert.match(css,/\.xx-page select/);assert.match(css,/\.xx-recommend-dialog::backdrop/);
 });

@@ -20,7 +20,7 @@ def _context(Context, config):
         event_queue=asyncio.Queue(),
         config=config,
         db=None,
-        provider_manager=None,
+        provider_manager=SimpleNamespace(provider_insts=[]),
         platform_manager=None,
         conversation_manager=None,
         message_history_manager=None,
@@ -711,10 +711,27 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert "小千" not in ranking
         status, settings = await call(
             page.handle_settings,
-            f"/astrbot_plugin_bond/settings?bot_id={BOT_IDS[0]}&scope_mode=per_group",
+            "/astrbot_plugin_bond/settings",
             username="dashboard-admin",
         )
         assert status == 200 and settings["values"]["inject.memory_days"] == 9
+        assert settings["providers"] == []
+        context.provider_manager.provider_insts.append(
+            SimpleNamespace(
+                meta=lambda: SimpleNamespace(id="smoke", model="synthetic-model")
+            )
+        )
+        try:
+            status, listed = await call(
+                page.handle_settings,
+                "/astrbot_plugin_bond/settings",
+                username="dashboard-admin",
+            )
+            assert status == 200
+            assert listed["providers"] == [{"id": "smoke", "model": "synthetic-model"}]
+            assert listed["revision"] == settings["revision"]
+        finally:
+            context.provider_manager.provider_insts.clear()
         status, saved = await call(
             page.handle_settings,
             "/astrbot_plugin_bond/settings",
@@ -741,15 +758,57 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             username="dashboard-admin",
         )
         assert status == 200 and "active" in body and "configured" in body
+        assert body["revision"] == saved["revision"] != settings["revision"]
         configured = dict(body["configured"], small_provider_id="new-provider")
+        # 两个设置入口共用修订号，详细设置保存后旧模型表单不能覆盖它。
+        status, stale = await call(
+            page.handle_models,
+            "/astrbot_plugin_bond/models",
+            "POST",
+            dict(
+                target,
+                config=configured,
+                max_concurrent_assessments=3,
+                revision=settings["revision"],
+            ),
+            "dashboard-admin",
+        )
+        assert status == 409 and not stale["success"]
+        assert config["assessment"]["small_provider_id"] == ""
+        assert config["assessment"]["max_concurrent_assessments"] == 2
         status, body = await call(
             page.handle_models,
             "/astrbot_plugin_bond/models",
             "POST",
-            dict(target, config=configured, max_concurrent_assessments=3),
+            dict(
+                target,
+                config=configured,
+                max_concurrent_assessments=3,
+                revision=body["revision"],
+            ),
             "dashboard-admin",
         )
         assert status == 200 and body["restart_required"]
+        model_revision = body["revision"]
+        assert model_revision != saved["revision"]
+        status, current = await call(
+            page.handle_settings,
+            "/astrbot_plugin_bond/settings",
+            username="dashboard-admin",
+        )
+        assert status == 200 and current["revision"] == model_revision
+        # 反方向亦受保护：模型设置保存后旧详细设置表单不能覆盖它。
+        status, stale = await call(
+            page.handle_settings,
+            "/astrbot_plugin_bond/settings",
+            "POST",
+            dict(values={"inject.memory_days": 11}, revision=saved["revision"]),
+            "dashboard-admin",
+        )
+        assert status == 409 and not stale["success"]
+        assert config["inject"]["memory_days"] == 10
+        assert config["assessment"]["small_provider_id"] == "new-provider"
+        assert plugin._runtime.detailed_settings()["revision"] == model_revision
         assert old_deps.assessment.config.small_provider_id == "smoke"
         assert (
             await plugin._runtime.select(BOT_IDS[1], "global")

@@ -3,6 +3,12 @@ const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
   setup() {
     const bridge = window.AstrBotPluginPage;
+    const theme = ref(document.documentElement.dataset.bondTheme === "light" ? "light" : "dark");
+    const toggleTheme = () => {
+      theme.value = theme.value === "dark" ? "light" : "dark";
+      document.documentElement.dataset.bondTheme = theme.value;
+      try { window.localStorage.setItem("bond-theme", theme.value); } catch { /* 当前页仍可切换。 */ }
+    };
     const tab = ref("users");
     const loading = ref(false);
     const errorMsg = ref("");
@@ -64,6 +70,8 @@ createApp({
     const evaluationLoading = ref(false);
     const modelSaving = ref(false);
     const modelConfig = ref({});
+    const modelRevision = ref("");
+    let evaluationRequestId = 0;
     const activeModelConfig = ref({});
     const maxConcurrentAssessments = ref(2);
     const activeMaxConcurrentAssessments = ref(null);
@@ -110,29 +118,53 @@ createApp({
     const detailValues = ref({});
     const detailLoading = ref(false);
     const detailNotice = ref("");
+    const detailNoticeError = ref(false);
+    let settingsRequestId = 0;
+    let settingsSaving = false;
     const detailGroups = computed(() => detailSettings.value ? [...new Set(detailSettings.value.fields.map(f => f.group))].map(group => ({group, title: detailSettings.value.fields.find(f => f.group === group).title, fields: detailSettings.value.fields.filter(f => f.group === group)})) : []);
     const settingsRequest = async (save = false) => {
-      const snapshot = scopeSnapshot();
-      const revision = scopeRevision.value;
-      if (!snapshot || detailLoading.value || (save && !detailSettings.value)) return;
+      if (settingsSaving || (save && (detailLoading.value || !detailSettings.value))) return;
+      const requestId = ++settingsRequestId;
+      settingsSaving = save;
       detailLoading.value = true;
       detailNotice.value = "";
+      detailNoticeError.value = false;
       try {
-        const values = Object.fromEntries(Object.entries(detailValues.value).filter(([key,value]) => value !== detailSettings.value?.values[key]));
+        if (save && detailValues.value["assessment.enabled"] && !String(detailValues.value["assessment.small_provider_id"] || "").trim()) {
+          throw new Error("启用自动评估前，请选择日常评估模型。");
+        }
+        const values = Object.fromEntries(Object.entries(detailValues.value).filter(([key,value]) => JSON.stringify(value) !== JSON.stringify(detailSettings.value?.values[key])));
         if (save && !Object.keys(values).length) { detailNotice.value = "没有需要保存的修改"; return; }
-        const data = save ? await scopedPost("settings", {values, revision: detailSettings.value.revision}, snapshot) : await scopedGet("settings", {}, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
+        const data = save ? await bridge.apiPost("settings", {values, revision: detailSettings.value.revision}) : await bridge.apiGet("settings", {});
+        if (requestId !== settingsRequestId) return;
         if (!data.success) throw new Error(data.error || "设置读取失败，请重试");
         detailSettings.value = data;
         detailValues.value = {...data.values};
         if (save) detailNotice.value = "设置已保存，重载插件后生效。";
       } catch(error) {
-        if (isCurrentScope(snapshot, revision)) detailNotice.value = String(error);
+        if (requestId === settingsRequestId) {
+          detailNotice.value = String(error);
+          detailNoticeError.value = true;
+        }
       } finally {
-        if (isCurrentScope(snapshot, revision)) detailLoading.value = false;
+        if (requestId === settingsRequestId) {
+          detailLoading.value = false;
+          settingsSaving = false;
+        }
       }
     };
     const updateListSetting = (path, raw) => { detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean); };
+    const listPlaceholder = (path) => ({
+      group_whitelist: "留空对所有群生效，多个群号用逗号分隔",
+      ignored_bot_ids: "留空不忽略，多个机器人账号用逗号分隔",
+      master_ids: "可选，多个主人账号用逗号分隔",
+    })[path] || "多个项目用逗号分隔";
+    const providerOptions = (path) => {
+      const options = (detailSettings.value?.providers || []).map(({id, model}) => ({id, label: model ? `${model} · ${id}` : id}));
+      const selected = detailValues.value[path];
+      if (selected && !options.some(option => option.id === selected)) options.push({id: selected, label: `${selected}（暂不可用）`});
+      return options;
+    };
     const loadSettings = () => settingsRequest();
     const saveSettings = () => settingsRequest(true);
     const restoreSectionDefaults = (group) => {
@@ -143,6 +175,7 @@ createApp({
         }
       }
       detailNotice.value = "已填入当前设置区的默认值。检查后保存并重载；刷新可撤回未保存修改。模型选择与基础身份设置保持原值。";
+      detailNoticeError.value = false;
     };
     const modeMultiplier = values => values.relation_mode === "galgame" ? 2 : 1;
     const effectiveSetting = field => {
@@ -238,7 +271,6 @@ createApp({
       releaseDiagnosticDownload(); diagnosticStats.value = null; diagnosticLoading.value = false;
       diagnosticNotice.value = ""; diagnosticConfirm.value = false;
       scopeRevision.value += 1;
-      detailSettings.value = null; detailValues.value = {}; detailLoading.value = false; detailNotice.value = "";
       loading.value = false;
       memberLoading.value = false;
       memberSaveLoading.value = false;
@@ -278,7 +310,9 @@ createApp({
       promptRequestTarget.value = null;
       memberRequestTarget.value = null;
       evaluationLoading.value = false;
+      evaluationRequestId += 1;
       modelSaving.value = false;
+      modelRevision.value = "";
       modelConfig.value = {};
       activeModelConfig.value = {};
       activeMaxConcurrentAssessments.value = null;
@@ -739,7 +773,7 @@ createApp({
 
     const modelPayload = () => {
       const raw = normalizeModelConfig(modelConfig.value);
-      const payload = {assessment_mode: raw.assessment_mode === "single" ? "single" : "tiered"};
+      const payload = {};
       for (const field of evaluationFields) {
         const value = Number(raw[field.key]);
         if (raw[field.key] === "" || raw[field.key] == null || !Number.isFinite(value) || value < field.min || (field.max != null && value > field.max) ||
@@ -752,12 +786,14 @@ createApp({
       if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 32) {
         throw new Error("并发评估上限必须是 1 到 32 的整数");
       }
-      return { config: payload, max_concurrent_assessments: maxConcurrent };
+      return { config: payload, max_concurrent_assessments: maxConcurrent, revision: modelRevision.value };
     };
 
     const loadEvaluation = async (snapshot = scopeSnapshot()) => {
-      if (!snapshot) return;
+      if (!snapshot || modelSaving.value) return;
       const revision = scopeRevision.value;
+      const requestId = ++evaluationRequestId;
+      modelRevision.value = "";
       evaluationLoading.value = true;
       setModelNotice("");
       try {
@@ -765,9 +801,10 @@ createApp({
           scopedGet("models", {}, snapshot),
           scopedGet("assessment_stats", {}, snapshot),
         ]);
-        if (!isCurrentScope(snapshot, revision)) return;
+        if (!isCurrentScope(snapshot, revision) || requestId !== evaluationRequestId) return;
         if (modelData && modelData.success === false) throw new Error(modelData.error || "加载评估配置失败");
         if (statsData && statsData.success === false) throw new Error(statsData.error || "加载评估统计失败");
+        modelRevision.value = modelData.revision || "";
         modelConfig.value = normalizeModelConfig(modelData.configured);
         activeModelConfig.value = normalizeModelConfig(modelData.active);
         maxConcurrentAssessments.value = Number(modelData.max_concurrent_assessments || 2);
@@ -778,18 +815,19 @@ createApp({
           currency_cost: statsData.stats ? statsData.stats.currency_cost : null,
         };
       } catch (e) {
-        if (isCurrentScope(snapshot, revision)) setModelNotice(String(e), true);
+        if (isCurrentScope(snapshot, revision) && requestId === evaluationRequestId) setModelNotice(String(e), true);
       } finally {
-        if (isCurrentScope(snapshot, revision)) evaluationLoading.value = false;
+        if (isCurrentScope(snapshot, revision) && requestId === evaluationRequestId) evaluationLoading.value = false;
       }
     };
 
     const saveModels = async () => {
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
-      if (!snapshot) return;
+      if (!snapshot || evaluationLoading.value || modelSaving.value) return;
       let body;
       try {
+        if (!modelRevision.value) throw new Error("请先刷新评估配置后再保存。");
         body = modelPayload();
       } catch (e) {
         setModelNotice(String(e), true);
@@ -801,6 +839,7 @@ createApp({
         const data = await scopedPost("models", body, snapshot);
         if (!isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) throw new Error(data.error || "评估配置保存失败");
+        modelRevision.value = data.revision || "";
         modelConfig.value = normalizeModelConfig({...modelConfig.value, ...body.config});
         maxConcurrentAssessments.value = body.max_concurrent_assessments;
         setModelNotice(data && data.restart_required
@@ -830,7 +869,6 @@ createApp({
         if (tab.value === "logs") await fetchLogs();
         if (tab.value === "prompts") await loadPrompts(snapshot);
         if (tab.value === "evaluation") await loadEvaluation(snapshot);
-        if (tab.value === "settings") await loadSettings();
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) {
           errorMsg.value = String(e);
@@ -1072,7 +1110,7 @@ createApp({
       if (t === "users") resetUserPage();
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
-      if (t === "settings") loadSettings();
+      if (t === "settings" && !detailSettings.value && !detailLoading.value) loadSettings();
     };
 
     onMounted(async () => {
@@ -1085,6 +1123,7 @@ createApp({
     });
 
     return {
+      theme, toggleTheme,
       tab, loading, errorMsg, logs, users, visibleUsers, groups,
       filterGroup, filterUser, filterLimit,
       logDimension, logSource, logDimensions, logDeltaParts, fmtKnownDelta, showEvaluationChanges,
@@ -1106,8 +1145,9 @@ createApp({
       loadPrompts, savePrompt,
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
-      loadEvaluation, saveModels,
-      detailSettings, detailValues, detailLoading, detailNotice, detailGroups, loadSettings, saveSettings, restoreSectionDefaults, effectiveSetting, activeRuleSummary, updateListSetting,
+      loadEvaluation, saveModels, modelRevision,
+      detailSettings, detailValues, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
+      restoreSectionDefaults, effectiveSetting, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions,
       evaluationFields, restoreEvaluationDefaults,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
     };
@@ -1116,16 +1156,19 @@ createApp({
     <div class="xx-page">
       <header class="xx-header">
         <div class="xx-title">
-          <h2>Bond 关系面板</h2>
+          <h2>Bond 关系好感系统</h2>
           <p class="xx-sub">成员关系、提示词与评估设置</p>
         </div>
-        <nav class="xx-tabs">
+        <div class="xx-header-actions">
+        <nav class="xx-tabs" aria-label="页面导航">
           <button class="xx-tab" :class="{ active: tab === 'users' }" @click="switchTab('users')">当前总览</button>
           <button class="xx-tab" :class="{ active: tab === 'logs' }" @click="switchTab('logs')">变动流水</button>
           <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
           <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
           <button class="xx-tab" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">详细设置</button>
         </nav>
+        <button class="xx-btn xx-btn-mini xx-theme-toggle" @click="toggleTheme" :aria-label="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">{{ theme === 'dark' ? '浅色模式' : '深色模式' }}</button>
+        </div>
       </header>
       <div class="xx-string"></div>
 
@@ -1159,6 +1202,7 @@ createApp({
           </button>
         </div>
         <span v-if="latestBackup" class="xx-scope-note">最近备份：<code>{{ latestBackup }}</code></span>
+        <span v-if="!selectedBot" class="xx-scope-note">尚未发现 Bot，可先<button class="xx-btn xx-btn-mini" @click="switchTab('settings')">完成基础设置</button></span>
       </section>
 
       <div v-if="tab === 'users' || tab === 'logs'" class="xx-filters">
@@ -1360,9 +1404,8 @@ createApp({
         <div class="xx-settings-grid xx-evaluation-grid">
           <section class="xx-form-card">
             <h4>评估详细设置</h4>
-            <p class="xx-help">自动评估开关和模型选择在 AstrBot 的 Bond 插件配置中修改。以下设置对所有 Bot 生效。</p>
+            <p class="xx-help">自动评估开关、评估模式和模型选择在“详细设置 → 基础设置（快速开始）”修改。以下参数对所有 Bot 生效。</p>
             <details open><summary>窗口、预算与有界上下文</summary>
-            <label class="xx-form-row"><span>评估模式</span><select v-model="modelConfig.assessment_mode"><option value="single">单模型</option><option value="tiered">分级复核</option></select></label>
             <label v-for="field in evaluationFields" :key="field.key" class="xx-form-row"><span>{{ field.label }}</span><input class="xx-input" type="number" :min="field.min" :max="field.max" :step="field.step" v-model.number="modelConfig[field.key]"></label>
             <label class="xx-form-row"><span>插件全局并发上限（重载后生效）</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
             </details>
@@ -1370,7 +1413,7 @@ createApp({
             <p class="xx-help">关系分数额度按“详细设置 → 每日限额时区”在当地 00:00 刷新，与调用预算不同。上下文仅限同 Bot、同群、同成员的相关发言、必要 Bot 回复及近期已计分摘要；历史不重新计分。模型负责分类及判断语义重复，框架校验证据并执行数值约束，仍可能误判。</p>
             <div class="xx-modal-actions">
               <button class="xx-btn" @click="restoreEvaluationDefaults()" :disabled="evaluationLoading || modelSaving">恢复此区默认设置</button>
-              <button class="xx-btn" @click="saveModels" :disabled="evaluationLoading || modelSaving">
+              <button class="xx-btn xx-btn-primary" @click="saveModels" :disabled="evaluationLoading || modelSaving || !modelRevision">
                 {{ modelSaving ? "保存中…" : "保存配置" }}
               </button>
             </div>
@@ -1418,11 +1461,11 @@ createApp({
         <p><strong>基础参数只配置一套；Galgame将全部正向增量与正向每日额度乘2。</strong></p>
         <p class="xx-help">模式不覆盖基础参数，不改变扣分、模型或预算，不将已有分数翻倍。熟悉度不随时间衰减；亲近度和信任度独立向0收敛。普通有内容的问答可增加熟悉度，不自动增加亲近度；感谢、示好、道歉不直接恢复正信任。框架的数值约束不能消除模型误判。</p>
         <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
-        <p class="xx-help">自动评估、回复中的关系信息和模型选择，请在 AstrBot 的 Bond 插件配置中修改。</p>
-        <p v-if="detailNotice" role="status">{{ detailNotice }}</p>
-        <div class="xx-actions">
-          <button class="xx-btn" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
-          <button class="xx-btn" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
+        <p class="xx-help">模式、自动评估、回复中的关系信息和模型选择在下方“基础设置（快速开始）”编辑；额度、分段倍率和衰减在“关系变化”编辑。各区恢复默认只填入该区参数，不修改基础设置或模型；保存并重载后生效。</p>
+        <p v-if="detailNotice" role="status" :class="['xx-status', detailNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ detailNotice }}</p>
+        <div class="xx-settings-toolbar xx-detail-toolbar">
+          <button class="xx-btn xx-btn-mini" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
+          <button class="xx-btn xx-btn-primary" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
         <div class="xx-form-card" v-if="activeRuleSummary">
           <h4>当前运行关系参数（重载前保持原值）</h4>
@@ -1438,10 +1481,17 @@ createApp({
               <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="field.label + '：说明'" :aria-describedby="'hint-' + field.path">?</button><span class="xx-help-tooltip" role="tooltip" :id="'hint-' + field.path">{{ field.hint }}</span></span>
             </span>
             <input :id="'setting-' + field.path" v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
-            <select :id="'setting-' + field.path" v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
+            <div v-else-if="field.special === 'select_provider'" class="xx-provider-field">
+              <select :id="'setting-' + field.path" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :aria-describedby="'provider-hint-' + field.path">
+                <option value="">{{ field.path === 'assessment.large_provider_id' ? '不使用复核模型' : '选择模型' }}</option>
+                <option v-for="provider in providerOptions(field.path)" :key="provider.id" :value="provider.id">{{ provider.label }}</option>
+              </select>
+              <p v-if="!detailSettings.providers?.length" class="xx-help" :id="'provider-hint-' + field.path">暂无可用模型，请先在 AstrBot 配置文本模型。</p>
+            </div>
+            <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
             <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
-            <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="detailValues[field.path].join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" placeholder="留空对所有群生效；多个群号用逗号分隔">
-            <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="(detailValues[field.path] || []).join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
+            <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :placeholder="field.path === 'master_ids' ? listPlaceholder(field.path) : ''">
             <span v-if="effectiveSetting(field) !== null" class="xx-help">{{ effectiveSetting(field) }}</span>
           </div>
         </details>

@@ -7,6 +7,7 @@ from dataclasses import asdict
 from uuid import uuid4
 
 from ..core.scope import GLOBAL_GROUP, account_id, scope_mode as validate_scope_mode
+from ..core.settings import SettingsRevisionError
 
 PLUGIN_NAME = "astrbot_plugin_bond"
 
@@ -20,6 +21,7 @@ except ImportError:  # pragma: no cover
 
 ERROR_UNAUTHORIZED = "未授权"
 ERROR_INVALID = "请求参数无效"
+ERROR_SETTINGS_REVISION = "设置已变更，请刷新后重试"
 ERROR_BOT = "Bot 或数据空间不可用"
 ERROR_OPERATION = "操作失败"
 ERROR_UNDO = "记录不存在或不可撤销"
@@ -39,6 +41,7 @@ class PageApi:
 
     def __init__(self, runtime) -> None:
         self._runtime = runtime
+        self._context = None
 
     @staticmethod
     async def _params() -> dict:
@@ -177,6 +180,7 @@ class PageApi:
 
     def register(self, context) -> None:
         """注册原生插件 API；宿主负责把这些 handler 放入已认证 dashboard。"""
+        self._context = context
         reg = getattr(context, "register_web_api", None)
         if reg is None or jsonify is None:
             return
@@ -584,12 +588,18 @@ class PageApi:
             _, _, deps = await self._deps(params)
             if request.method == "POST":
                 try:
-                    await self._runtime.save_assessment_settings(
-                        params.get("config"), params.get("max_concurrent_assessments")
+                    revision = await self._runtime.save_assessment_settings(
+                        params.get("config"),
+                        params.get("max_concurrent_assessments"),
+                        params.get("revision"),
                     )
+                except SettingsRevisionError:
+                    return self._error(ERROR_SETTINGS_REVISION, 409)
                 except (ValueError, TypeError):
                     raise _PageRequestError from None
-                return self._response({"success": True, "restart_required": True})
+                return self._response(
+                    {"success": True, "restart_required": True, "revision": revision}
+                )
             configured, limit = self._runtime.assessment_settings()
             return self._response(
                 {
@@ -598,6 +608,7 @@ class PageApi:
                     "active": asdict(deps.assessment.config),
                     "max_concurrent_assessments": limit,
                     "active_max_concurrent_assessments": deps.assessment.capacity.limit,
+                    "revision": self._runtime.detailed_settings()["revision"],
                 }
             )
 
@@ -656,18 +667,26 @@ class PageApi:
     async def handle_settings(self):
         async def run():
             params = await self._params()
-            self._target(params)
+            providers = []
+            if self._context is not None:
+                for provider in self._context.get_all_providers():
+                    meta = provider.meta()
+                    providers.append({"id": meta.id, "model": meta.model})
+            settings = None
             if request.method == "POST":
                 try:
-                    await self._runtime.save_detailed_settings(
+                    settings = await self._runtime.save_detailed_settings(
                         params.get("values"), params.get("revision")
                     )
+                except SettingsRevisionError:
+                    return self._error(ERROR_SETTINGS_REVISION, 409)
                 except (ValueError, TypeError, KeyError):
                     return self._error("设置无效或已被修改，请刷新页面并检查输入")
             return self._response(
                 {
                     "success": True,
-                    **self._runtime.detailed_settings(),
+                    **(settings or self._runtime.detailed_settings()),
+                    "providers": providers,
                     "restart_required": request.method == "POST",
                 }
             )
