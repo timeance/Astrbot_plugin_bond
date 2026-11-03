@@ -105,6 +105,36 @@ class AssessmentService:
         self.pending = set()
         self.budget_stores = budget_stores
 
+    async def today_usage(self, *, now=None):
+        """按 UTC 汇总同 Bot 两个持久空间；配额来自本 bundle 的运行配置。"""
+        from datetime import datetime, timedelta, timezone
+
+        now = time.time() if now is None else now
+        today = datetime.fromtimestamp(now, timezone.utc).date()
+        counts = {"small": 0, "large": 0}
+        async with self.capacity.budget_lock:
+            stores = (
+                list(await self.budget_stores())
+                if self.budget_stores
+                else [self.storage]
+            )
+            if self.storage not in stores:
+                stores.append(self.storage)
+            for store in stores:
+                for tier, count in (
+                    await store.assessment_day_counts(today.isoformat())
+                ).items():
+                    counts[tier] += count
+        return dict(
+            day=today.isoformat(),
+            timezone="UTC",
+            reset_at=datetime.combine(
+                today + timedelta(days=1), datetime.min.time(), timezone.utc
+            ).timestamp(),
+            initial=dict(used=counts["small"], cap=self.config.per_bot_daily_small_cap),
+            review=dict(used=counts["large"], cap=self.config.per_bot_daily_large_cap),
+        )
+
     def _remember(self, interaction, role, text, message_id, reply=None):
         if (
             not self.config.enabled

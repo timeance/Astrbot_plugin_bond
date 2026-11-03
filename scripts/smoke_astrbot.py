@@ -139,7 +139,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     routes = context.registered_web_apis
     route_names = {route.rsplit("/", 1)[-1]: methods for route, _, methods, _ in routes}
-    assert len(routes) == 17
+    assert len(routes) == 18
     assert set(route_names) == {
         "logs",
         "relation",
@@ -148,6 +148,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         "models",
         "settings",
         "assessment_stats",
+        "today_summary",
         "diagnostics",
         "groups",
         "users",
@@ -163,6 +164,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     assert route_names["logs"] == ["GET"]
     assert route_names["groups"] == ["GET"]
     assert route_names["users"] == ["GET"]
+    assert route_names["today_summary"] == ["GET"]
     assert route_names["member"] == ["GET", "POST"]
     from astrbot.dashboard.api.plugins import _match_registered_web_api
 
@@ -985,7 +987,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
-        assert len(context2.registered_web_apis) == 17
+        assert len(context2.registered_web_apis) == 18
         assert plugin2._prompts.load_error
         # 保留旧亲近度关闭输入，并直接核验真实工厂收到三维独立基线。
         with patch(
@@ -1048,7 +1050,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "Galgame×2额度、F60/A30/T90衰减、三维独立基线、新旧配置、窗口预算、回复钩子、scope 持久化、冻结 listener、17 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
+        "Galgame×2额度、F60/A30/T90衰减、三维独立基线、新旧配置、窗口预算、回复钩子、scope 持久化、冻结 listener、18 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"

@@ -3,7 +3,7 @@ const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
   setup() {
     const bridge = window.AstrBotPluginPage;
-    const theme = ref(document.documentElement.dataset.bondTheme === "light" ? "light" : "dark");
+    const theme = ref(document.documentElement.dataset.bondTheme === "dark" ? "dark" : "light");
     const toggleTheme = () => {
       theme.value = theme.value === "dark" ? "light" : "dark";
       document.documentElement.dataset.bondTheme = theme.value;
@@ -14,6 +14,10 @@ createApp({
     const errorMsg = ref("");
     const logs = ref([]);
     const users = ref([]);
+    const todaySummary = ref(null);
+    const todayLoading = ref(false);
+    const todayError = ref("");
+    let todayRequestId = 0;
     const userPage = ref(1);
     const userPageSize = ref(50);
     const userPages = ref(1);
@@ -174,7 +178,7 @@ createApp({
           detailValues.value[field.path] = Array.isArray(field.default) ? [...field.default] : field.default;
         }
       }
-      detailNotice.value = "已填入当前设置区的默认值。检查后保存并重载；刷新可撤回未保存修改。模型选择与基础身份设置保持原值。";
+      detailNotice.value = "已填入本区默认值，保存并重载后生效。刷新可撤回；模型选择不变。";
       detailNoticeError.value = false;
     };
     const modeMultiplier = values => values.relation_mode === "galgame" ? 2 : 1;
@@ -186,7 +190,7 @@ createApp({
       const base = Number(raw);
       if (raw === "" || raw == null || !Number.isFinite(base)) return "请输入有效数值";
       const actual = path.endsWith("_down") ? base : base * modeMultiplier(detailValues.value);
-      return `基础值 ${base}，当前模式实际 ${Number(actual.toFixed(6))}${path.includes("growth.") || path.includes("level_mult.") ? " 倍" : ""}（表单预览，保存并重载后生效）`;
+      return `基础值 ${base}，当前模式实际 ${Number(actual.toFixed(6))}${path.includes("growth.") || path.includes("level_mult.") ? " 倍" : ""}（预览）`;
     };
     const activeRuleSummary = computed(() => {
       const values = detailSettings.value?.active_values;
@@ -229,18 +233,18 @@ createApp({
       context_events: 8,
     };
     const evaluationFields = [
-      {key:"small_timeout_sec", label:"初评超时（秒）", min:0.1, step:0.1},
-      {key:"large_timeout_sec", label:"复核超时（秒）", min:0.1, step:0.1},
-      {key:"window_sec", label:"个人滚动初评窗口（秒）", min:1, step:1},
-      {key:"window_max_calls", label:"窗口内最多初评次数", min:0, step:1},
-      {key:"per_user_daily_small_cap", label:"每成员每日初评次数", min:0, step:1},
-      {key:"per_user_daily_large_cap", label:"每成员每日复核次数", min:0, step:1},
-      {key:"per_bot_daily_small_cap", label:"每 Bot 每日初评次数", min:0, step:1},
-      {key:"per_bot_daily_large_cap", label:"每 Bot 每日复核次数", min:0, step:1},
-      {key:"context_turns", label:"近期相关上下文条数", min:0, max:20, step:1},
-      {key:"context_chars", label:"上下文字符上限", min:0, max:20000, step:1},
-      {key:"context_days", label:"已计分摘要回顾天数", min:0, max:90, step:1},
-      {key:"context_events", label:"已计分摘要条数", min:0, max:20, step:1},
+      {key:"small_timeout_sec", label:"初评超时（秒）", hint:"等待日常模型的最长时间。超时后本次不评分，已发起的调用仍计入用量。", min:0.1, step:0.1},
+      {key:"large_timeout_sec", label:"复核超时（秒）", hint:"等待复核模型的最长时间。必须复核的互动若超时，本次不评分。", min:0.1, step:0.1},
+      {key:"window_sec", label:"初评窗口（秒）", hint:"向前回看这段时间，限制同一成员的初评次数。同一 Bot 下跨群合计。", min:1, step:1},
+      {key:"window_max_calls", label:"窗口内初评上限", hint:"每名成员在窗口内最多初评多少次。不同互动可分别评分；0 表示暂停初评。", min:0, step:1},
+      {key:"per_user_daily_small_cap", label:"每人每日初评上限", hint:"同一 Bot 每天为每名成员初评的次数，跨群合计。UTC 00:00 重置；0 表示暂停初评。", min:0, step:1},
+      {key:"per_user_daily_large_cap", label:"每人每日复核上限", hint:"每名成员每天最多复核多少次。复核来自已初评的互动；0 表示不复核。UTC 00:00 重置。", min:0, step:1},
+      {key:"per_bot_daily_small_cap", label:"每 Bot 每日初评上限", hint:"这个 Bot 每天的初评总次数，跨群和数据空间合计。UTC 00:00 重置；0 表示暂停初评。", min:0, step:1},
+      {key:"per_bot_daily_large_cap", label:"每 Bot 每日复核上限", hint:"这个 Bot 每天的复核总次数，跨群和数据空间合计。UTC 00:00 重置；0 表示不复核。", min:0, step:1},
+      {key:"context_turns", label:"近期发言条数", hint:"给模型参考的近期发言与 Bot 回复条数，仅限同群、同成员。0 表示不带近期发言。", min:0, max:20, step:1},
+      {key:"context_chars", label:"上下文总字数上限", hint:"限制引用、近期发言和已计分摘要的总长度。0 表示不带这些内容，当前消息仍会送评。", min:0, max:20000, step:1},
+      {key:"context_days", label:"历史回顾天数", hint:"只参考这些天内的发言和已计分摘要，帮助模型理解上下文。0 表示不回顾历史。", min:0, max:90, step:1},
+      {key:"context_events", label:"已计分摘要条数", hint:"最多参考多少条本群已计分事件，帮助识别重复表达。历史不再计分；0 表示不带摘要。", min:0, max:20, step:1},
     ];
     const restoreEvaluationDefaults = () => {
       if (evaluationLoading.value || modelSaving.value) return;
@@ -277,6 +281,10 @@ createApp({
       releaseDiagnosticDownload(); diagnosticStats.value = null; diagnosticLoading.value = false;
       diagnosticNotice.value = ""; diagnosticConfirm.value = false;
       scopeRevision.value += 1;
+      todayRequestId += 1;
+      todaySummary.value = null;
+      todayLoading.value = false;
+      todayError.value = "";
       loading.value = false;
       memberLoading.value = false;
       memberSaveLoading.value = false;
@@ -635,7 +643,7 @@ createApp({
         if (data && data.success === false) throw new Error(data.error || "三维关系保存失败");
         if (!await loadMemberRecord(member.group_id, member.user_id, snapshot, revision, target)) return;
         if (!isCurrentMemberRequest(target, revision)) return;
-        await fetchUsers();
+        await Promise.all([fetchUsers(), fetchTodaySummary()]);
         if (!isCurrentMemberRequest(target, revision)) return;
         setMemberNotice("三维关系已保存");
       } catch (e) {
@@ -866,6 +874,7 @@ createApp({
         const [groupData] = await Promise.all([
           scopedGet("groups", {}, snapshot),
           fetchUsers(),
+          fetchTodaySummary(),
         ]);
         if (!isCurrentScope(snapshot, revision)) return;
         if (groupData && groupData.success === false) {
@@ -1046,6 +1055,26 @@ createApp({
       return fetchLogs();
     };
 
+    const fetchTodaySummary = async () => {
+      const snapshot = scopeSnapshot(), revision = scopeRevision.value;
+      if (!snapshot) return;
+      const requestId = ++todayRequestId;
+      const current = () => requestId === todayRequestId && isCurrentScope(snapshot, revision);
+      todayLoading.value = true;
+      todayError.value = "";
+      todaySummary.value = null;
+      try {
+        const data = await scopedGet("today_summary", {}, snapshot);
+        if (!current()) return;
+        if (!data?.success || !data.summary) throw new Error("今日概览加载失败，请刷新重试。");
+        todaySummary.value = data.summary;
+      } catch (error) {
+        if (current()) todayError.value = "今日概览加载失败，请刷新重试。";
+      } finally {
+        if (current()) todayLoading.value = false;
+      }
+    };
+
     const userQueryKey = () => JSON.stringify([
       filterGroup.value, filterUser.value.trim(), userPage.value,
       userPageSize.value, includeZeroUsers.value,
@@ -1105,7 +1134,7 @@ createApp({
       if (tab.value === "prompts") return loadPrompts();
       if (tab.value === "evaluation") return loadEvaluation();
       if (tab.value === "settings") return loadSettings();
-      return fetchUsers();
+      return Promise.all([fetchUsers(), fetchTodaySummary()]);
     };
     const switchTab = (t) => {
       if (t !== "users") { userRequestId += 1; loading.value = false; }
@@ -1113,7 +1142,7 @@ createApp({
       tab.value = t;
       errorMsg.value = "";
       if (t === "logs") fetchLogs();
-      if (t === "users") resetUserPage();
+      if (t === "users") { resetUserPage(); fetchTodaySummary(); }
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
       if (t === "settings" && !detailSettings.value && !detailLoading.value) loadSettings();
@@ -1131,6 +1160,7 @@ createApp({
     return {
       theme, toggleTheme,
       tab, loading, errorMsg, logs, users, visibleUsers, groups,
+      todaySummary, todayLoading, todayError, fetchTodaySummary,
       filterGroup, filterUser, filterLimit,
       logDimension, logSource, logDimensions, logDeltaParts, fmtKnownDelta, showEvaluationChanges,
       userPage, userPageSize, userPages, userTotal, userMatchedCount,
@@ -1232,6 +1262,18 @@ createApp({
       </div>
 
       <p v-if="errorMsg" class="xx-error">{{ errorMsg }}</p>
+
+      <section v-if="tab === 'users'" class="xx-today-summary" aria-label="今日概览" :aria-busy="todayLoading">
+        <strong>今日概览</strong>
+        <template v-if="todaySummary">
+          <span>初评 <b>{{ todaySummary.initial.used }} / {{ todaySummary.initial.limit }}</b></span>
+          <span>复核 <b>{{ todaySummary.review.used }} / {{ todaySummary.review.limit }}</b></span>
+          <span>关系变动成员 <b>{{ todaySummary.changed_members }}</b> 人</span>
+          <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="今日概览：统计范围" aria-describedby="today-summary-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="today-summary-hint">初评、复核按所选 Bot 跨群合计，失败调用也计入；UTC 日期 {{ todaySummary.call_day }}。变动人数按当前空间的 {{ todaySummary.relation_timezone }} 日期 {{ todaySummary.relation_day }} 统计，包含实际改分和撤销，不含临时关系与时间衰减；同一成员只算一人，不受列表筛选影响。</span></span>
+        </template>
+        <span v-else role="status">{{ !selectedBot ? '选择 Bot 后查看' : todayLoading ? '加载中…' : todayError || '尚未加载' }}</span>
+        <span v-if="todaySummary" class="xx-help">所选 Bot 用量 · 当前空间人数</span>
+      </section>
 
       <div v-if="tab === 'users'" class="xx-member-pagination" aria-label="成员列表分页">
         <span role="status" aria-live="polite">共 {{ userMatchedCount }} 条成员记录，当前显示范围 {{ userTotal }} 条</span>
@@ -1357,7 +1399,7 @@ createApp({
         <div class="xx-settings-grid">
           <section class="xx-form-card">
             <h4>编辑模板</h4>
-            <p class="xx-muted-text">assessment 的程序输出协议会在运行时追加，编辑框只显示可保存的模板。</p>
+            <p class="xx-muted-text">评估结果的格式由程序补充，这里只编辑判断要求。</p>
             <label class="xx-form-row">
               <span>模式</span>
               <select v-model="promptMode" :disabled="promptLoading || promptSaving">
@@ -1395,7 +1437,7 @@ createApp({
         <div class="xx-panel-head">
           <div>
             <h3>互动评估</h3>
-            <p class="xx-help">保存配置后需要重载插件才会应用；右侧仍显示当前运行中的配置。</p>
+            <p class="xx-help">设置对所有 Bot 生效，保存后重载插件。</p>
           </div>
           <button class="xx-btn xx-btn-mini" @click="loadEvaluation()" :disabled="evaluationLoading || modelSaving">
             {{ evaluationLoading ? "加载中…" : "刷新" }}
@@ -1405,36 +1447,42 @@ createApp({
         <div class="xx-member-pagination">
           <label>按维度查看评估变动 <select v-model="logDimension"><option value="all">全部维度</option><option v-for="item in logDimensions" :key="item.key" :value="item.key">{{ item.label }}</option></select></label>
           <button class="xx-btn xx-btn-mini" @click="showEvaluationChanges()">查看评估流水</button>
-          <span class="xx-help">仅切换查看维度，不会关闭任何维度的评分。</span>
+          <span class="xx-help">只筛选流水。</span>
         </div>
         <div class="xx-settings-grid xx-evaluation-grid">
-          <section class="xx-form-card">
-            <h4>评估详细设置</h4>
-            <p class="xx-help">自动评估开关、评估模式和模型选择在“详细设置 → 基础设置（快速开始）”修改。以下参数对所有 Bot 生效。</p>
-            <details open><summary>窗口、预算与有界上下文</summary>
-            <label v-for="field in evaluationFields" :key="field.key" class="xx-form-row"><span>{{ field.label }}</span><input class="xx-input" type="number" :min="field.min" :max="field.max" :step="field.step" v-model.number="modelConfig[field.key]"></label>
-            <label class="xx-form-row"><span>插件全局并发上限（重载后生效）</span><input class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments"></label>
-            </details>
-            <p class="xx-help">初评与复核预算分别记账，按 UTC 00:00 刷新；同 Bot 下个人窗口和预算跨群、跨数据空间共享，不同 Bot 独立。滚动窗口替代旧长冷却，同窗口内不同实质互动可分别计分。失败、超时也消耗已发起调用的预算；并发满时跳过，不排队。</p>
-            <p class="xx-help">关系分数额度按“详细设置 → 每日限额时区”在当地 00:00 刷新，与调用预算不同。上下文仅限同 Bot、同群、同成员的相关发言、必要 Bot 回复及近期已计分摘要；历史不重新计分。模型负责分类及判断语义重复，框架校验证据并执行数值约束，仍可能误判。</p>
+          <details class="xx-form-card xx-evaluation-settings">
+            <summary>评估设置</summary>
+            <p class="xx-help">开关和模型在“详细设置 → 基础设置”中选择。</p>
+            <div v-for="field in evaluationFields" :key="field.key" class="xx-form-row">
+              <span class="xx-field-label"><label :for="'evaluation-' + field.key">{{ field.label }}</label>
+                <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="field.label + '：说明'" :aria-describedby="'eval-hint-' + field.key">?</button><span class="xx-help-tooltip" role="tooltip" :id="'eval-hint-' + field.key">{{ field.hint }}</span></span>
+              </span>
+              <input :id="'evaluation-' + field.key" class="xx-input" type="number" :min="field.min" :max="field.max" :step="field.step" v-model.number="modelConfig[field.key]" :disabled="evaluationLoading || modelSaving">
+            </div>
+            <div class="xx-form-row">
+              <span class="xx-field-label"><label for="evaluation-concurrent">同时评估上限</label>
+                <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="同时评估上限：说明" aria-describedby="eval-hint-concurrent">?</button><span class="xx-help-tooltip" role="tooltip" id="eval-hint-concurrent">所有 Bot 同时进行的评估总数。达到上限时跳过新评估，聊天照常进行。</span></span>
+              </span>
+              <input id="evaluation-concurrent" class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments" :disabled="evaluationLoading || modelSaving">
+            </div>
             <div class="xx-modal-actions">
               <button class="xx-btn" @click="restoreEvaluationDefaults()" :disabled="evaluationLoading || modelSaving">恢复此区默认设置</button>
               <button class="xx-btn xx-btn-primary" @click="saveModels" :disabled="evaluationLoading || modelSaving || !modelRevision">
                 {{ modelSaving ? "保存中…" : "保存配置" }}
               </button>
             </div>
-          </section>
+          </details>
           <section class="xx-form-card">
             <h4>当前运行配置</h4>
             <dl class="xx-config-list">
               <div><dt>状态</dt><dd>{{ activeModelConfig.enabled ? "已启用" : "未启用" }}</dd></div>
-              <div><dt>小模型</dt><dd class="xx-mono">{{ activeModelConfig.small_provider_id || "未设置" }}</dd></div>
+              <div><dt>日常模型</dt><dd class="xx-mono">{{ activeModelConfig.small_provider_id || "未设置" }}</dd></div>
               <div><dt>复核模型</dt><dd class="xx-mono">{{ activeModelConfig.large_provider_id || "未设置" }}</dd></div>
               <div><dt>模式</dt><dd>{{ activeModelConfig.assessment_mode === 'single' ? "单模型" : "分级复核" }}</dd></div>
               <div><dt>超时</dt><dd>{{ activeModelConfig.small_timeout_sec || "-" }} / {{ activeModelConfig.large_timeout_sec || "-" }} 秒</dd></div>
               <div><dt>滚动初评窗口</dt><dd>{{ activeModelConfig.window_sec }} 秒 / {{ activeModelConfig.window_max_calls }} 次</dd></div>
               <div><dt>每日初评 / 复核（UTC）</dt><dd>个人 {{ activeModelConfig.per_user_daily_small_cap }} / {{ activeModelConfig.per_user_daily_large_cap }}；Bot {{ activeModelConfig.per_bot_daily_small_cap }} / {{ activeModelConfig.per_bot_daily_large_cap }}</dd></div>
-              <div><dt>有界上下文</dt><dd>{{ activeModelConfig.context_turns }} 条 / {{ activeModelConfig.context_chars }} 字符；摘要 {{ activeModelConfig.context_days }} 天 / {{ activeModelConfig.context_events }} 条</dd></div>
+              <div><dt>参考上下文</dt><dd>{{ activeModelConfig.context_turns }} 条 / {{ activeModelConfig.context_chars }} 字符；摘要 {{ activeModelConfig.context_days }} 天 / {{ activeModelConfig.context_events }} 条</dd></div>
               <div><dt>运行并发上限</dt><dd>{{ activeMaxConcurrentAssessments ?? "未知" }}</dd></div>
             </dl>
           </section>
@@ -1464,25 +1512,29 @@ createApp({
 
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
-        <p><strong>基础参数只配置一套；Galgame将全部正向增量与正向每日额度乘2。</strong></p>
-        <p class="xx-help">模式不覆盖基础参数，不改变扣分、模型或预算，不将已有分数翻倍。三维各有独立的衰减开关、半衰期与基线，两种模式使用相同衰减规则。普通有内容的问答可增加熟悉度，不自动增加亲近度；感谢、示好、道歉不直接恢复正信任。框架的数值约束不能消除模型误判。</p>
-        <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
-        <p class="xx-help">模式、自动评估、回复中的关系信息和模型选择在下方“基础设置（快速开始）”编辑；额度、分段倍率和衰减在“关系变化”编辑。各区恢复默认只填入该区参数，不修改基础设置或模型；保存并重载后生效。</p>
+        <p class="xx-help">对所有 Bot 生效。修改后保存并重载插件；下方预览不会立即改变运行值。</p>
         <p v-if="detailNotice" role="status" :class="['xx-status', detailNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ detailNotice }}</p>
         <div class="xx-settings-toolbar xx-detail-toolbar">
           <button class="xx-btn xx-btn-mini" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
           <button class="xx-btn xx-btn-primary" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
         <div class="xx-form-card" v-if="activeRuleSummary">
-          <h4>当前运行关系参数（重载前保持原值）</h4>
-          <p>模式：{{ activeRuleSummary.mode }}；熟悉度衰减：{{ activeRuleSummary.familiarity }}；亲近度衰减：{{ activeRuleSummary.affinity }}；信任度衰减：{{ activeRuleSummary.trust }}。</p>
-          <p>衰减基线：熟悉度 {{ activeRuleSummary.baselines.familiarity }}；亲近度 ±{{ activeRuleSummary.baselines.affinity }}；信任度 ±{{ activeRuleSummary.baselines.trust }}。</p>
-          <p class="xx-help">熟悉度高于基线才衰减，低于或等于基线保持不变；亲近度和信任度在[-基线,+基线]内不动，区间外向同号基线收敛。半衰期表示距对应基线的差值减半，不是分值本身减半；区间内保持原值，区间外不跨过对应基线。</p>
-          <p v-for="cap in activeRuleSummary.caps" :key="cap.key">{{ cap.label }}每日实际额度：+{{ cap.up }} / −{{ cap.down }}。</p>
-          <p class="xx-help">下方输入为已保存或尚未保存的基础参数；“当前模式实际”是表单预览，不表示运行值已改变。</p>
+          <h4>当前运行关系参数 · {{ activeRuleSummary.mode }}</h4>
+          <div class="xx-table-wrap xx-rule-summary">
+            <table class="xx-table" aria-label="当前运行关系参数">
+              <thead><tr><th scope="col">维度</th><th scope="col">每日加分 / 扣分上限</th><th scope="col">衰减速度</th><th scope="col">基线</th></tr></thead>
+              <tbody><tr v-for="cap in activeRuleSummary.caps" :key="cap.key">
+                <th scope="row">{{ cap.label }}</th><td>+{{ cap.up }} / −{{ cap.down }}</td><td>{{ activeRuleSummary[cap.key] }}</td>
+                <td>{{ cap.key !== 'familiarity' && activeRuleSummary.baselines[cap.key] > 0 ? '±' : '' }}{{ activeRuleSummary.baselines[cap.key] }}</td>
+              </tr></tbody>
+            </table>
+          </div>
         </div>
-        <details v-for="group in detailGroups" :key="group.group" :open="group.group === 'basic'" class="xx-form-card">
+        <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
           <summary>{{ group.title }}</summary>
+          <p v-if="group.group === 'rules'" class="xx-help">只填写基础值，右侧显示当前模式的计算结果。
+            <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="关系变化：额度与区间说明" aria-describedby="rules-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="rules-hint">加分和扣分分别累计，时间衰减不占额度。倍率区间按默认分界标注；修改过分界时，以自定义分界为准。</span></span>
+          </p>
           <button v-if="group.group !== 'basic'" class="xx-btn xx-btn-mini" @click="restoreSectionDefaults(group.group)" :disabled="detailLoading">恢复此区默认设置</button>
           <div v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
             <span class="xx-field-label"><label :for="'setting-' + field.path">{{ field.label }}</label>
@@ -1505,8 +1557,7 @@ createApp({
         </details>
         <div class="xx-form-card">
           <h4>当前空间的诊断记录</h4>
-          <p class="xx-help">上方“关系诊断记录”开启并重载后持续记录。写入或导出时清理超过7天的内容，全部空间合计最多20MB，量大时会更早轮转，不新增聊天原文，不自动上传。</p>
-          <p class="xx-help">以下操作仅针对当前选择的 Bot 和数据空间。记录能检查机制运行，不能代替人工判断关系词是否贴切。</p>
+          <p class="xx-help">开启“关系诊断记录”后可导出本空间的运行记录。最多保留7天、合计20MB，不保存聊天原文，不自动上传。</p>
           <div class="xx-actions">
             <button class="xx-btn" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
             <button class="xx-btn" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>

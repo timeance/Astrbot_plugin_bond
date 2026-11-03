@@ -1643,6 +1643,43 @@ class SQLiteBackend(StorageBackend):
             )
         return [dict(zip(("event_id", "ts", "reason", "message"), row)) for row in rows]
 
+    async def assessment_day_counts(self, day):
+        return await asyncio.to_thread(self._assessment_day_counts_sync, day)
+
+    def _assessment_day_counts_sync(self, day):
+        with self._lock:
+            return dict(
+                self._c()
+                .execute(
+                    "SELECT tier,COUNT(*) FROM assessment_call WHERE day=? GROUP BY tier",
+                    (day,),
+                )
+                .fetchall()
+            )
+
+    async def changed_members_count(self, start, end):
+        return await asyncio.to_thread(self._changed_members_count_sync, start, end)
+
+    def _changed_members_count_sync(self, start, end):
+        with self._lock:
+            # 先枚举现存群键，再逐群按已有时间索引查询，避免遍历历史流水。
+            # reset 同事务删除对应记录和流水，不会留下仅有流水的群。
+            return (
+                self._c()
+                .execute(
+                    "SELECT COUNT(DISTINCT logs.user_id) FROM "
+                    "(SELECT DISTINCT group_id FROM favor) AS groups "
+                    "CROSS JOIN favor_log AS logs INDEXED BY idx_favor_log_group_ts "
+                    "WHERE logs.group_id=groups.group_id AND logs.ts>=? AND logs.ts<? "
+                    "AND (logs.delta!=0 "
+                    "OR COALESCE(json_extract(logs.relation_delta,'$.familiarity'),0)!=0 "
+                    "OR COALESCE(json_extract(logs.relation_delta,'$.affinity'),0)!=0 "
+                    "OR COALESCE(json_extract(logs.relation_delta,'$.trust'),0)!=0)",
+                    (start, end),
+                )
+                .fetchone()[0]
+            )
+
     async def assessment_stats(self):
         """无用量的调用保持 NULL，不能汇总成免费或零 Token。"""
         with self._lock:

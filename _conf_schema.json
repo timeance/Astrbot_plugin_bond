@@ -4,150 +4,150 @@
     "description": "主人 QQ",
     "default": "",
     "invisible": false,
-    "hint": "多个QQ号用英文逗号分隔。用于关系身份标记；仅主人排行模式也按此名单核验。不授予管理权限、不豁免评分；称呼沿用当前人格。保存后重载插件生效。"
+    "hint": "多个 QQ 用英文逗号分隔，用于主人标记和“仅主人”排行权限。不授予管理权限或免除评分，称呼服从人格。"
   },
   "max_favor": {
     "type": "float",
-    "description": "好感度上限",
+    "description": "亲近度上限（兼容参数）：旧好感度写入通道的分值上限。",
     "default": 100,
     "invisible": true
   },
   "min_favor": {
     "type": "float",
-    "description": "好感度下限（负值支持，默认与 max_favor 对称；「厌恶」等级下界应与此一致）",
+    "description": "亲近度下限（兼容参数）：填写负数，并与旧“厌恶”档位下界保持一致。",
     "default": -100,
     "invisible": true
   },
   "default_favor": {
     "type": "float",
-    "description": "新成员初始好感度",
+    "description": "新成员初始亲近度：仅用于创建新成员记录，不改已有分值。",
     "default": 0,
     "invisible": true
   },
   "timezone": {
     "type": "string",
-    "description": "每日限幅与同日衰减的\"一天\"边界时区（IANA 名称，如 Asia/Shanghai、Europe/London）。默认 Asia/Shanghai——容器系统时区多为 UTC，不设默认的话\"一天\"会在北京时间早 8 点才换日",
+    "description": "关系额度换日时区：如 Asia/Shanghai，决定关系额度和同日递减的换日时间；调用预算固定在 UTC 00:00 刷新。",
     "default": "Asia/Shanghai",
     "invisible": true
   },
   "daily_cap_up": {
     "type": "float",
-    "description": "旧标量写入通道的每日上涨限额，不控制新版三维评估；三维每日限幅分别计算。",
+    "description": "旧通道每日加分上限：仅限制旧好感度写入通道；三维评估使用各维每日额度。",
     "default": 4,
     "invisible": true
   },
   "daily_cap_down": {
     "type": "float",
-    "description": "旧标量写入通道的每日下降限额，不控制新版三维评估。",
+    "description": "旧通道每日扣分上限：填写非负数。仅限制旧好感度写入通道，不控制三维评估。",
     "default": 8,
     "invisible": true
   },
   "judge": {
     "type": "object",
-    "description": "上游评估配置留档；仅摘要模型解析继续使用，自动评分使用 assessment",
+    "description": "印象汇总与旧评估参数：印象汇总仍使用这里的模型、超时和人格解析设置；自动关系评估使用 assessment。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "已停用的旧标量开关；请使用 assessment.enabled"
+        "description": "旧评分开关（已停用）：此项不再启用评分；请使用“自动评估互动”。"
       },
       "provider_id": {
         "type": "string",
         "_special": "select_provider",
         "default": "",
-        "description": "印象汇总使用的模型；留空由宿主解析默认模型，可能与当前群会话模型不同。不控制三维评估。"
+        "description": "印象汇总模型（可选）：留空使用宿主默认模型，可能不同于当前群模型。汇总另行调用，不占互动评估预算。"
       },
       "cooldown_sec": {
         "type": "int",
         "default": 120,
-        "description": "同一成员评估冷却秒数"
+        "description": "旧评分冷却（已停用）：当前自动评估改用滚动初评窗口，此项不控制调用间隔。"
       },
       "timeout_sec": {
         "type": "int",
         "default": 60,
-        "description": "评审/印象汇总调用的超时秒数（provider 挂起则按失败降级，冷却照常占用；0=不设超时）"
+        "description": "印象汇总超时（秒）：超时保留原印象；0 表示不设超时。"
       },
       "max_abs_delta": {
         "type": "float",
         "default": 3,
-        "description": "单次评估最大调整幅度（绝对值，支持一位小数）"
+        "description": "旧评分单次限幅（已停用）：不控制当前三维评估；三维分值由本地事件规则计算。"
       },
       "only_when_at_or_reply": {
         "type": "bool",
         "default": true,
-        "description": "仅在@或回复当前助手时才评估（省成本）"
+        "description": "旧评分指向开关（已停用）：不改变当前评估入口；当前入口须通过可信元数据确认受话人。"
       },
       "narrative_reason": {
         "type": "bool",
         "default": false,
-        "description": "开启后强制用当前会话（主）模型评估，并按当前助手口吻写变动理由（仅分值非 0 时），写入流水供面板查看，更符合人格"
+        "description": "旧人格理由模式（兼容参数）：旧评分已停用；开启仍会让印象汇总忽略指定模型，尝试宿主默认模型。麦麦模型跟随优先。"
       },
       "context_window": {
         "type": "int",
         "default": 0,
-        "description": "评估时带入最近 N 条会话消息作为上下文（仅文本，图片忽略），便于结合语境判断（如识别反讽）。0=不带上下文（最省 token）"
+        "description": "旧评分上下文条数（已停用）：当前评估使用 assessment 中的有界上下文设置，此项不增加评估上下文。"
       },
       "roster": {
         "type": "text",
         "default": "",
-        "description": "群成员花名册（注入评估提示词，让评审知道外号↔QQ 映射，避免把熟人玩笑误判为敌意）。每行一条，如：阿狸=123456789（群友外号示例）；留空关闭"
+        "description": "旧评分花名册（已停用）：当前三维评估不读取此花名册，也不从文本推断账号身份。"
       },
       "follow_persona": {
         "type": "bool",
         "default": true,
-        "description": "评估提示词跟随 AstrBot 当前人格：切换人格后，评审按该人格的名字与人设判断态度（如当前助手 vs 其他角色）。关闭则固定用下面的 bot_name"
+        "description": "印象汇总使用当前人格名：尝试读取当前人格名；关闭或读取失败时使用备用称呼，不修改宿主人格。"
       },
       "bot_name": {
         "type": "string",
         "default": "当前助手",
-        "description": "未开启 follow_persona 或解析不到人格时的兜底称呼"
+        "description": "印象汇总备用称呼：未使用当前人格名或解析失败时，用此称呼指代 Bot。"
       },
       "attitude_deltas": {
         "type": "object",
-        "description": "五档区间锚点：模型自由给分，但分值被钳制在档位区间内（相邻档锚点构成区间）；分值方向与档位不符时以档位为准",
+        "description": "旧评分档位锚点（已停用）：以下锚点仅为旧评分留档，不控制当前三维事件增量。",
         "items": {
           "diyi": {
             "type": "float",
             "default": -2.5,
-            "description": "敌意档区间下界锚点"
+            "description": "旧敌意下界锚点（已停用）：仅为旧评分留档，不影响当前三维评估。"
           },
           "lengdan": {
             "type": "float",
             "default": -0.8,
-            "description": "冷淡/敌意档分界锚点"
+            "description": "旧冷淡与敌意分界锚点（已停用）：仅为旧评分留档，不影响当前三维评估。"
           },
           "zhongxing": {
             "type": "float",
             "default": 0,
-            "description": "中性档（固定 0）"
+            "description": "旧中性零值锚点（已停用）：仅为旧评分留档，不影响当前三维评估。"
           },
           "youhao": {
             "type": "float",
             "default": 0.6,
-            "description": "友好/热情档分界锚点"
+            "description": "旧友好与热情分界锚点（已停用）：仅为旧评分留档，不影响当前三维评估。"
           },
           "reqing": {
             "type": "float",
             "default": 1.8,
-            "description": "热情档区间上界锚点"
+            "description": "旧热情上界锚点（已停用）：仅为旧评分留档，不影响当前三维评估。"
           }
         }
       },
       "follow_maisoul_replyer": {
         "type": "bool",
         "default": false,
-        "description": "检测到麦麦插件时，评估模型跟随其 replyer 当前绑定的模型（人格口径一致；未装麦麦/解析失败自动回落：narrative_reason 强制会话模型 > provider_id > 会话主模型）"
+        "description": "印象模型跟随麦麦（兼容参数）：优先使用麦麦 replyer 模型；不可用时使用本插件指定模型或宿主默认模型。不改变三维评估模型。"
       }
     },
     "invisible": true
   },
   "levels": {
     "type": "object",
-    "description": "好感度等级阈值与态度指引（guidance 为普通成员态度；master_guidance 为主人专属态度——负好感＝闹别扭，正值＝亲疏程度；disclosure 为自我表露分寸，关系越深袒露层越深）",
+    "description": "亲近度档位（兼容设置）：阈值用于增长倍率和衰减托底；旧态度指引不参与三维关系注入。",
     "items": {
       "yanwu": {
         "type": "object",
-        "description": "厌恶（负值区间，下界应与 min_favor 一致）",
+        "description": "厌恶档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -168,13 +168,13 @@
           "interaction": {
             "type": "text",
             "default": "不主动搭话，被问到才极简回应",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "厌恶：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       },
       "mosheng": {
         "type": "object",
-        "description": "陌生",
+        "description": "陌生档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -195,13 +195,13 @@
           "interaction": {
             "type": "text",
             "default": "以好奇提问为主，少评价少建议，保持礼貌",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "陌生：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       },
       "renshi": {
         "type": "object",
-        "description": "认识",
+        "description": "认识档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -222,13 +222,13 @@
           "interaction": {
             "type": "text",
             "default": "可以开玩笑和接梗，偶尔给点小建议",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "认识：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       },
       "youhao": {
         "type": "object",
-        "description": "友好",
+        "description": "友好档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -249,13 +249,13 @@
           "interaction": {
             "type": "text",
             "default": "愿意给建议、分享观点，也会温和地表达不同意见",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "友好：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       },
       "qinmi": {
         "type": "object",
-        "description": "亲密",
+        "description": "亲密档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -276,13 +276,13 @@
           "interaction": {
             "type": "text",
             "default": "敢给建议、可以温和地怼回去，偶尔护短",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "亲密：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       },
       "zhiyou": {
         "type": "object",
-        "description": "挚友",
+        "description": "挚友档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -303,13 +303,13 @@
           "interaction": {
             "type": "text",
             "default": "有话直说，该泼冷水就泼，事后仍然向着 TA",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "挚友：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       },
       "zhiai": {
         "type": "object",
-        "description": "挚爱",
+        "description": "挚爱档位（旧）：用于旧亲近度档位计算，不等于三维关系称谓。",
         "items": {
           "min": {
             "type": "float",
@@ -330,7 +330,7 @@
           "interaction": {
             "type": "text",
             "default": "毫无保留地说真实想法，任性和提醒都不藏着",
-            "description": "互动风格（迁就度阶梯：关系越深越敢说话）"
+            "description": "挚爱：旧互动风格指引：留档内容，不改变宿主的接话或主动发言策略。"
           }
         }
       }
@@ -339,59 +339,59 @@
   },
   "inject": {
     "type": "object",
-    "description": "回复中的关系信息",
+    "description": "回复中的关系信息：控制补充给回复模型的关系、印象和近期事件，不改变宿主接话策略。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "让回复体现当前关系",
+        "description": "回复体现关系",
         "invisible": false,
-        "hint": "根据当前关系调整语气，沿用 AstrBot 当前人格。修改后重载插件生效。"
+        "hint": "补充关系和成员印象，沿用当前人格与接话策略。全局空间不带入其他群的印象和流水。"
       },
       "memory_count": {
         "type": "int",
         "default": 3,
-        "description": "向回复补充近期事件类别/理由，最多10条；0关闭。不补充聊天原文或具体分值。",
+        "description": "近期事件条数：最多补充 10 条当前群的事件类别和理由，不带原文或分值。0 关闭；全局空间不注入近期事件。",
         "invisible": true
       },
       "memory_days": {
         "type": "int",
         "default": 7,
-        "description": "近期事件的回顾天数；0取消时间筛选，不删除历史流水。",
+        "description": "近期事件回顾天数：普通事件的回顾天数，重要事件可更久。0 取消时间筛选，不删除流水。",
         "invisible": true
       },
       "memory_sig_threshold": {
         "type": "float",
         "default": 1.0,
-        "description": "显著性加权：|增减| ≥ 该值的事件视为重要（被重骂/被真诚打动），记忆窗口延长。0=关闭（全部按普通窗口）",
+        "description": "重要事件亲近度阈值：亲近度变化绝对值达到此数时，延长事件回顾期。0 关闭延长；不看其他两维。",
         "invisible": true
       },
       "memory_sig_window_mult": {
         "type": "float",
         "default": 3.0,
-        "description": "重要事件的记忆窗口倍数（×memory_days）——大事记得久，小寒暄照常淡忘。1=与普通窗口相同",
+        "description": "重要事件回顾倍数：重要事件的回顾天数乘以此数；1 表示与普通事件相同。",
         "invisible": true
       }
     }
   },
   "command": {
     "type": "object",
-    "description": "指令相关",
+    "description": "查询与排行：设置公开排行的查询权限、展示方式和文字唤醒。",
     "items": {
       "ranking_limit": {
         "type": "int",
         "default": 10,
-        "description": "好感排行默认条数"
+        "description": "排行显示人数：公开排行最多显示 10 人，超出 10 的设置不生效。"
       },
       "text_wake_enabled": {
         "type": "bool",
         "default": false,
-        "description": "无需斜杠，用指定短语查询本群排行；仍遵守排行权限。"
+        "description": "文字唤醒排行：用指定短语查询本群排行，无需斜杠，仍遵守排行权限。"
       },
       "text_wake_ranking": {
         "type": "string",
         "default": "好感排行,好感榜单,好感排名",
-        "description": "文字唤醒「全群排行」的短语，逗号分隔（精确匹配整条消息）"
+        "description": "排行唤醒短语：多个短语用英文逗号分隔，须匹配整条消息；忽略首尾空白。"
       },
       "ranking_access": {
         "type": "string",
@@ -401,109 +401,109 @@
           "master"
         ],
         "description": "排行查询权限",
-        "hint": "all＝所有人；master＝仅主人。主人按Bond的主人QQ配置与平台发言者ID匹配，未配置时无人可查。限制同时作用于命令、文字唤醒和模型工具；不授予管理权限，也不阻止获准者转发榜单。"
+        "hint": "可设所有人或仅主人。仅主人按主人 QQ 名单核验，未填名单则无人可查；所有查询入口共用此权限，群内其他人仍能看到已发出的榜单。"
       },
       "ranking_image": {
         "type": "bool",
         "default": true,
         "description": "图片排行",
-        "hint": "命令和文字唤醒使用八千代月读空间风格图片，最多10人，展示昵称、头像和关系称谓。会向QQ头像服务请求榜内成员头像；失败显示占位头像，绘图失败回退文字。模型工具仍返回关系资料。"
+        "hint": "图片显示最多 10 人的昵称、头像和关系，不显示分值。头像向 QQ 头像服务请求；失败用占位图，绘图失败改发文字。模型工具仍返回文字。"
       }
     },
     "invisible": false
   },
   "render": {
     "type": "object",
-    "description": "图片排行字体；其余旧布局参数仅留档。",
+    "description": "排行图片字体：字体设置仍生效；旧多列布局参数仅留档。",
     "items": {
       "font_path": {
         "type": "string",
         "default": "",
-        "description": "可选中文字体路径；留空使用随插件打包的开源中文字体，无需联网下载。"
+        "description": "排行图片字体路径：留空使用内置开源中文字体，无需下载；自定义字体不可用时回退内置字体。"
       },
       "rows_per_col": {
         "type": "int",
         "default": 12,
-        "description": "旧多列布局参数留档；当前排行固定为单列，最多10人。"
+        "description": "旧每列行数（已停用）：当前排行固定单列，最多 10 人，此项不改变布局。"
       }
     },
     "invisible": true
   },
   "decay": {
     "type": "object",
-    "description": "三维关系分别向可调基线衰减，开关与半衰期独立；F低于基线不变，A/T在对称停止区间内不变。关系模式不改变衰减，临时关系期间暂停。这是产品节奏设置，不是经过验证的人际关系定律。",
+    "description": "时间衰减：三维各自设置开关、半衰期和基线，临时关系期间暂停；切换关系模式不改变衰减。",
     "items": {
       "familiarity_baseline": {
         "type": "float",
         "default": 0,
-        "description": "熟悉度基线（0～100），默认0。高于基线向其收敛，低于或等于基线保持不变，不自动加分。"
+        "description": "熟悉度基线：范围 0～100；高于基线时逐渐靠近基线，低于或等于基线时不变。"
       },
       "familiarity_enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用熟悉度时间衰减；默认开启，高于熟悉度基线时向基线收敛，低于或等于基线不变；与其他两维独立。临时关系期间暂停。"
+        "description": "启用熟悉度衰减：开启后随时间向基线下降，低于或等于基线时不变；关闭后停止。临时关系期间暂停。"
       },
       "familiarity_half_life": {
         "type": "float",
         "default": 60,
-        "description": "熟悉度半衰期（天，至少5天）；默认60天后距熟悉度基线的差值约减半，不是到期归零。保存并重载后对已有和新成员生效。"
+        "description": "熟悉度半衰期（天）：至少 5 天。每经过此天数，熟悉度距基线的差值约减半，对已有和新成员均生效。"
       },
       "affinity_baseline": {
         "type": "float",
         "default": 0,
-        "description": "亲近度对称基线幅度（0～100），默认0。高于+b向+b收敛，低于-b向-b收敛，[-b,+b]内保持不变。"
+        "description": "亲近度对称基线：范围 0～100。填 20 时，高于 +20 向 +20 靠近，低于 −20 向 −20 靠近，区间内不变；托底可能更早止跌。"
       },
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用亲近度时间衰减；正负两侧向同号基线收敛，±基线之间保持不变；与其他两维独立。临时关系期间暂停。"
+        "description": "启用亲近度衰减：开启后向同号基线靠近，正负基线之间不变；关闭后停止。临时关系期间暂停。"
       },
       "floor_enabled": {
         "type": "bool",
         "default": true,
-        "description": "沿用旧亲近度数值档位的两级托底；不是五档三维关系称谓的两级变化。仅托底，不主动加分。"
+        "description": "启用亲近度档位托底：为较高的亲近度保留衰减下限，避免长期不互动后降得过低。只影响亲近度，不保证关系称谓保持不变。"
       },
       "half_life_base": {
         "type": "float",
         "default": 30,
-        "description": "亲近度基础半衰期（天，至少5天），默认30天后距同号基线的差值约减半。巩固倍数为1时，已有和新成员都直接使用当前值；启用巩固时作为下限。保存并重载后生效，不需清库。"
+        "description": "亲近度基础半衰期（天）：至少 5 天。距同号基线的差值按此速度减半，托底可提前止跌；巩固倍数大于 1 时，此值为个人半衰期下限。"
       },
       "half_life_growth": {
         "type": "float",
         "default": 1.0,
-        "description": "默认1：固定使用当前基础半衰期，不因连续示好延长。大于1时，正向亲近度实际增长后乘以该值；已有巩固值受当前基础值与上限约束。"
+        "description": "亲近度半衰期巩固倍数：1 为固定半衰期；大于 1 时，每次亲近度实际增加后延长半衰期，直到上限。不重算历史互动。"
       },
       "half_life_max": {
         "type": "float",
         "default": 120,
-        "description": "启用巩固时的半衰期上限（天，不应低于基础值）。重载后也限制已有成员；巩固倍数为1时使用基础半衰期。"
+        "description": "亲近度最长半衰期（天）：仅巩固倍数大于 1 时使用，也限制已有成员；不应低于基础半衰期。"
       },
       "trust_baseline": {
         "type": "float",
         "default": 0,
-        "description": "信任度对称基线幅度（0～100），默认0。例如20表示高于+20向+20收敛、低于-20向-20收敛，区间内保持不变。"
+        "description": "信任度对称基线：范围 0～100。填 20 时，高于 +20 向 +20 靠近，低于 −20 向 −20 靠近，区间内不变。"
       },
       "trust_enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用信任度时间衰减；正负两侧向同号基线收敛，±基线之间保持不变；临时关系期间暂停。"
+        "description": "启用信任度衰减：开启后向同号基线靠近，正负基线之间不变；关闭后停止。临时关系期间暂停。"
       },
       "trust_half_life": {
         "type": "float",
         "default": 90,
-        "description": "信任度半衰期（天）；默认90天后距同号基线的差值约减半，不越过基线或变号。"
+        "description": "信任度半衰期（天）：至少 5 天。每经过此天数，信任度距同号基线的差值约减半，不越过基线或变号。"
       }
     },
     "invisible": true
   },
   "economy": {
     "type": "object",
-    "description": "亲近度增长控制：复用同日递减、阶段乘数和恢复抑制；不改变熟悉度/信任度，不保证识别所有重复表达。",
+    "description": "亲近度增长规则：仅处理亲近度：微小变化过滤、阶段倍率、同日正向递减和可选增长抑制。是否为重复表达由评估模型判断。",
     "items": {
       "preset": {
         "type": "string",
         "default": "default",
-        "description": "旧缺省参数预设留档；保留已有自定义行为。新用户使用关系节奏模板，具体增长参数仍优先。",
+        "description": "旧缺省参数预设：只为缺失的增长参数补默认值，显式设置优先；独立于基础/Galgame 模式。",
         "options": [
           "default",
           "galgame",
@@ -519,86 +519,86 @@
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "亲近度阶段倍率、同日正向递减与可选恢复抑制开关；不替模型判断语义重复。"
+        "description": "启用亲近度增长规则：控制亲近度的过滤、倍率、同日递减和增长抑制；关闭则跳过。不影响另两维、模式倍率或每日额度。"
       },
       "noise_floor": {
         "type": "float",
         "default": 0.5,
-        "description": "亲近度基础增量绝对值低于此值时归零；0关闭。模式加倍在基础过滤后应用。"
+        "description": "亲近度微小变化阈值：基础亲近度增减小于此绝对值时不计分，先过滤再算倍率；0 关闭过滤。"
       },
       "negative_weight": {
         "type": "float",
         "default": 1.0,
-        "description": "负向亲近度增量的倍数；1表示不放大。该参数不是心理学定律，误判也会被放大。"
+        "description": "亲近度扣分倍率：亲近度扣分乘以此数；1 不变，0 不扣。不影响信任扣分，仍受单次和每日上限限制。"
       },
       "same_day_decay": {
         "type": "float",
         "default": 0.25,
-        "description": "当日增长递减：当日第 N+1 次正向评估乘 max(0.25, 1-斜率×N)。作用于全部正向亲近度变化，不表示识别了语义重复；0关闭。"
+        "description": "同日亲近度增长递减：范围 0～1，仅减少亲近度加分。默认同日依次为 100%、75%、50%、25%，最低 25%；0 关闭。"
       },
       "repair_threshold": {
         "type": "float",
         "default": 0.0,
-        "description": "亲近度恢复抑制阈值：单次亲近度下降达到该幅度后，暂时压低后续正向增长。默认0关闭，避免一次误判产生长期压制；不是信任修复。"
+        "description": "亲近度增长抑制触发值：单次亲近度扣分达到此数后，暂时降低后续加分；0 关闭。不恢复信任度。"
       },
       "repair_hours": {
         "type": "float",
         "default": 48,
-        "description": "亲近度恢复抑制时长（小时）：窗口内压低正向 affinity 增量，不代表 trust 自动修复"
+        "description": "亲近度增长抑制时长（小时）：触发后持续多久，再按关系档位系数调整。0 关闭抑制窗口。"
       },
       "repair_factor": {
         "type": "float",
         "default": 0.5,
-        "description": "启用恢复抑制后，窗口内正向亲近度变化的乘数（0.5=半效）；1不压制。"
+        "description": "抑制期亲近度加分倍率：范围 0～1。0.5 按一半加分，0 暂停加分，1 不抑制；亲密档位系数可进一步压低。"
       },
       "repair_scale_high": {
         "type": "float",
         "default": 1.5,
-        "description": "启用恢复抑制后，亲密及以上旧亲近度档位的窗口时长与压制强度系数；不是心理学定律。"
+        "description": "亲密档位抑制系数：亲近度处于亲密及以上时，按此倍数延长抑制时间，并降低加分倍率；1 不额外调整。"
       },
       "repair_scale_low": {
         "type": "float",
         "default": 1.0,
-        "description": "浅关系冒犯系数（友好及以下时）：修复期时长×该值。默认 1=维持基线"
+        "description": "一般档位抑制时长系数：友好及以下的抑制时间乘以此数，1 不延长；亲密系数为 1 时也使用此值。"
       },
       "level_mult": {
         "type": "object",
-        "description": "按旧亲近度档位递减的正向变化乘数；负向不受影响。这是防止持续线性增长的工程规则，不能判断互动质量。",
+        "description": "亲近度分段基础倍率：按亲近度选段，只作用于加分；Galgame 再乘 2。显示区间为默认阈值，历史自定义阈值仍有效。",
         "items": {
           "yanwu": {
             "type": "float",
             "default": 1,
-            "description": "厌恶段乘数"
+            "description": "亲近度 −100～不足 0 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           },
           "mosheng": {
             "type": "float",
             "default": 1,
-            "description": "陌生段乘数"
+            "description": "亲近度 0～不足 10 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           },
           "renshi": {
             "type": "float",
             "default": 1,
-            "description": "认识段乘数"
+            "description": "亲近度 10～不足 30 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           },
           "youhao": {
             "type": "float",
             "default": 0.75,
-            "description": "友好段乘数"
+            "description": "亲近度 30～不足 55 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           },
           "qinmi": {
             "type": "float",
             "default": 0.55,
-            "description": "亲密段乘数"
+            "description": "亲近度 55～不足 80 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           },
           "zhiyou": {
             "type": "float",
             "default": 0.35,
-            "description": "挚友段乘数"
+            "description": "亲近度 80～不足 95 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           },
           "zhiai": {
             "type": "float",
             "default": 0.2,
-            "description": "挚爱段乘数"
+            "description": "亲近度 95～100 加分倍率：此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
           }
         }
       }
@@ -607,37 +607,37 @@
   },
   "impression": {
     "type": "object",
-    "description": "成员印象与标签：AI 根据评审流水定期给每人生成一句印象侧写+短标签，注入对话（让当前助手记得每个人是谁）并展示在面板",
+    "description": "成员印象：从评估记录汇总印象和标签，用于面板和回复；不向其他群带入印象。",
     "items": {
       "interval": {
         "type": "int",
         "default": 8,
-        "description": "每累计 N 次有效评估自动刷新一次该成员印象（后台静默，失败不影响对话）。手动刷新：/印象刷新 QQ号 或面板按钮"
+        "description": "印象更新间隔：每积累此数量的有效评估记录，调用模型汇总印象，会发送记录中的原文和理由；失败保留原印象。"
       },
       "points_mode": {
         "type": "bool",
         "default": false,
-        "description": "P-C 带权印象点模式：印象升级为带权点集（相似合并/限量保留/损失厌恶加权/其他群友匿名化），关闭时维持一句话印象（存量数据自动迁移 schema v9，不动旧数据）"
+        "description": "分点记录印象：开启后分点记录、合并相近要点；关闭时汇总成一句话。不清除分值和流水。"
       }
     },
     "invisible": true
   },
   "relationship": {
     "type": "object",
-    "description": "关系类型：给每人一个关系标签（与好感数值正交：数值管冷热，类型管角色）",
+    "description": "手动关系类型（兼容设置）：保留旧类型管理；不替代三维称谓，类型语气指引不参与当前注入。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "总开关"
+        "description": "启用旧手动关系类型：开启后加载预设类型用于兼容接口和手动管理，不改变三维分值。"
       },
       "types": {
         "type": "object",
-        "description": "预设关系类型（key→展示名/语气指引），可改 label/guidance；指令用 key 设置",
+        "description": "旧关系类型列表：key 用于设定，label 为名称，guidance 为旧语气指引；当前三维注入不使用这些指引。",
         "items": {
           "friend": {
             "type": "object",
-            "description": "朋友",
+            "description": "朋友：旧手动关系类型，不改变当前三维分值。",
             "items": {
               "label": {
                 "type": "string",
@@ -651,7 +651,7 @@
           },
           "soulmate": {
             "type": "object",
-            "description": "挚友",
+            "description": "挚友：旧手动关系类型，不改变当前三维分值。",
             "items": {
               "label": {
                 "type": "string",
@@ -665,7 +665,7 @@
           },
           "lover": {
             "type": "object",
-            "description": "恋人",
+            "description": "恋人：旧手动关系类型，不改变当前三维分值。",
             "items": {
               "label": {
                 "type": "string",
@@ -679,7 +679,7 @@
           },
           "family": {
             "type": "object",
-            "description": "家人",
+            "description": "家人：旧手动关系类型，不改变当前三维分值。",
             "items": {
               "label": {
                 "type": "string",
@@ -693,7 +693,7 @@
           },
           "disliked": {
             "type": "object",
-            "description": "讨厌的人",
+            "description": "讨厌的人：旧手动关系类型，不改变当前三维分值。",
             "items": {
               "label": {
                 "type": "string",
@@ -712,28 +712,28 @@
   },
   "coupling": {
     "type": "object",
-    "description": "旧麦麦情绪联动配置留档，当前自动评估主链路不使用，不建议启用。",
+    "description": "旧麦麦情绪联动：当前自动评估不使用此联动，以下配置仅留档。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "联动开关：方向①评审增益按麦麦连续情绪(pfb)调制（同向最高×2、异向最高÷2）；方向②好感等级跃迁向麦麦注入情绪事件。麦麦侧另有两个总开关（emotion_enable/emotion_feedback_enable），任一关闭本侧自动空转"
+        "description": "旧情绪联动开关（已停用）：不影响当前三维评估和关系分值，也不接管麦麦的发言决策。"
       }
     },
     "invisible": true
   },
   "bot_scope_modes": {
-    "description": "各 Bot 当前数据空间（JSON 对象）",
+    "description": "各 Bot 数据空间",
     "type": "string",
     "default": "{}",
-    "hint": "真实账号ID映射到 per_group 或 global；优先在关系面板切换，仅选择数据空间，不复制、合并或删除旧数据。",
+    "hint": "JSON 对象，将真实 Bot 账号映射到 per_group 或 global；建议在面板切换，不迁移历史。",
     "invisible": true
   },
   "ignored_bot_ids": {
     "description": "忽略的机器人账号",
     "type": "list",
     "default": [],
-    "hint": "这些账号发送的消息不参与关系记录与评估。填写平台账号 ID，每项一个。"
+    "hint": "每项一个平台账号 ID；这些账号不参与成员记录和关系评估。"
   },
   "assessment": {
     "type": "object",
@@ -744,14 +744,14 @@
         "default": false,
         "description": "自动评估互动",
         "invisible": false,
-        "hint": "根据明确指向 Bot 的互动更新关系，会调用所选模型。关闭自动评估后仍记录本地成员资料；停用插件才停止观察。"
+        "hint": "用所选模型判断互动，再由本地规则计分。关闭后停止自动评分，仍记录成员资料。"
       },
       "small_provider_id": {
         "type": "string",
         "default": "",
-        "description": "评估模型",
+        "description": "日常评估模型",
         "invisible": false,
-        "hint": "选择 AstrBot 中已配置的 Provider，用于日常互动判断。",
+        "hint": "启用时必填，手动选择已配置的文本模型；不自动跟随聊天模型。",
         "_special": "select_provider"
       },
       "large_provider_id": {
@@ -759,7 +759,7 @@
         "default": "",
         "description": "复核模型（可选）",
         "invisible": false,
-        "hint": "用于复核容易误判的互动。留空时不调用复核模型；无法确定的互动不评分。",
+        "hint": "用于复核难判互动。留空不调用；需要复核而无法完成时不评分。",
         "_special": "select_provider"
       },
       "assessment_mode": {
@@ -769,121 +769,121 @@
           "single",
           "tiered"
         ],
-        "description": "评估模式",
+        "description": "评估模式：单模型只用日常模型；分级复核会按需复核，必须复核却未完成时不评分。",
         "invisible": true
       },
       "small_timeout_sec": {
         "type": "float",
         "default": 20,
-        "description": "小模型超时秒数",
+        "description": "初评超时（秒）：须大于 0。超时放弃本次评分，已发起的调用仍占初评预算。",
         "invisible": true
       },
       "large_timeout_sec": {
         "type": "float",
         "default": 30,
-        "description": "复核超时秒数",
+        "description": "复核超时（秒）：须大于 0。超时放弃本次评分，已发起的调用仍占复核预算。",
         "invisible": true
       },
       "cooldown_sec": {
         "type": "float",
         "default": 120,
-        "description": "旧冷却参数留档；不再阻断评估，由滚动初评窗口限制调用。",
+        "description": "旧评估冷却（已停用）：保留用于兼容旧配置。当前改用滚动初评窗口，不叠加此冷却。",
         "invisible": true
       },
       "per_user_daily_large_cap": {
         "type": "int",
         "default": 8,
-        "description": "当前 Bot 每用户每日复核次数上限（UTC，跨两个空间）",
+        "description": "每人每日复核上限：同一 Bot 下每人每天最多发起的复核次数；跨群、跨关系空间共用，UTC 00:00 刷新。0 禁止复核；失败和超时也计次，不增加初评机会。",
         "invisible": true
       },
       "per_bot_daily_large_cap": {
         "type": "int",
         "default": 100,
-        "description": "当前 Bot 每日复核次数上限（UTC，跨两个空间）",
+        "description": "每 Bot 每日复核上限：同一 Bot 全部成员共用的每日复核次数，跨群和关系空间累计，UTC 00:00 刷新。0 禁止复核；已发起的失败、超时调用也计次。",
         "invisible": true
       },
       "max_concurrent_assessments": {
         "type": "int",
         "default": 2,
-        "description": "所有 Bot 共用的在途评估上限，无等待队列",
+        "description": "评估并发上限：范围 1～32，所有 Bot 共用。达到上限时跳过新候选，不排队等待。",
         "invisible": true
       },
       "window_sec": {
         "type": "int",
         "default": 300,
-        "description": "个人滚动初评窗口（秒）；同Bot跨群及空间共用",
+        "description": "个人初评窗口（秒）：须大于 0。限制最近这段时间内的初评调用数，同一 Bot 下跨群、跨关系空间共用；重启不清空已用记录。",
         "invisible": true
       },
       "window_max_calls": {
         "type": "int",
         "default": 5,
-        "description": "个人窗口内最多初评调用",
+        "description": "窗口内初评次数上限：每人在同一 Bot 的滚动窗口内最多发起的初评次数。0 禁止初评；失败和超时也计次，不限制窗口内不同有效事件分别计分。",
         "invisible": true
       },
       "per_user_daily_small_cap": {
         "type": "int",
         "default": 30,
-        "description": "每成员每日初评预算（UTC，同Bot跨群及空间）",
+        "description": "每人每日初评上限：同一 Bot 下每人每天最多发起的初评次数，跨群、跨关系空间共用，UTC 00:00 刷新。0 禁止初评；失败和超时也计次，本地跳过不计次。",
         "invisible": true
       },
       "per_bot_daily_small_cap": {
         "type": "int",
         "default": 300,
-        "description": "每Bot每日初评预算（UTC，跨群及空间）",
+        "description": "每 Bot 每日初评上限：同一 Bot 全部成员共用的每日初评次数，跨群和关系空间累计，UTC 00:00 刷新。0 禁止初评；重启不清空当日用量。",
         "invisible": true
       },
       "context_turns": {
         "type": "int",
         "default": 6,
-        "description": "当前Bot、群和成员的近期相关上下文条数",
+        "description": "近期上下文条数：范围 0～20，只取同一 Bot、当前群、本成员的相关发言及 Bot 回复。0 关闭近期发言上下文，不关闭已计分摘要和当前引用。",
         "invisible": true
       },
       "context_chars": {
         "type": "int",
         "default": 4000,
-        "description": "评估上下文最多字符数",
+        "description": "历史上下文字符预算：范围 0～20000，供当前引用、已计分摘要和近期发言共用；优先保留引用和摘要。0 不附带这些历史文本，当前消息和身份元数据仍保留。",
         "invisible": true
       },
       "context_days": {
         "type": "int",
         "default": 7,
-        "description": "近期已计分摘要回顾天数",
+        "description": "上下文回顾天数：范围 0～90，同时限制近期发言和已计分摘要的时间范围。0 关闭两类历史上下文，仍可保留当前引用，不删除流水。",
         "invisible": true
       },
       "context_events": {
         "type": "int",
         "default": 8,
-        "description": "近期已计分摘要最多条数",
+        "description": "已计分摘要条数：范围 0～20，仅取同一 Bot、当前群、本成员的已计分事件，辅助模型识别重复；历史不重新计分。0 关闭摘要，不关闭近期发言。",
         "invisible": true
       }
     },
-    "hint": "详细设置和调用统计请打开 Bond 插件页面。修改后重载插件生效。"
+    "hint": "先手动选择日常模型；窗口、预算和上下文参数在 Bond 评估页设置。"
   },
   "default_scope_mode": {
     "type": "string",
-    "description": "默认关系模式",
+    "description": "默认数据空间",
     "default": "per_group",
     "options": [
       "per_group",
       "global"
     ],
-    "hint": "per_group：每个群分别记录关系；global：同一 Bot 的关系跨群共用。Bond 页面为指定 Bot 选择的模式优先。切换只选择数据空间，不复制或合并历史。保存后重载插件生效。"
+    "hint": "按群分别记录，或在同一 Bot 跨群共用关系；指定 Bot 的选择优先。切换不迁移历史，也不披露其他群的印象和流水。"
   },
   "group_whitelist": {
     "type": "list",
-    "description": "启用 Bond 的群（白名单）",
+    "description": "启用 Bond 的群",
     "default": [],
-    "hint": "留空对所有群生效；填写后仅在这些群记录、评估、注入关系和响应 Bond 群聊指令。每项填写一个群号，对所有 Bot 生效。保存后重载插件生效。"
+    "hint": "留空启用所有群；填写后仅在所列群记录、评估、注入和响应指令。每项一个群号，对所有 Bot 生效，已有记录保留。"
   },
   "diagnostics": {
     "type": "object",
-    "description": "关系诊断",
+    "description": "关系诊断：设置本机诊断记录，供管理员排查评估和关系变化。",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "关系诊断记录",
-        "hint": "记录脱敏后的关系状态、词条、评估状态和耗时；不新增聊天原文或模型原始输出。写入或导出时清理超过7天的内容，总量最多20MB，量大时会提前轮转。仅本机保存，供管理员导出；保存后重载插件生效。"
+        "description": "记录关系诊断",
+        "hint": "本机记录脱敏状态和耗时，不新增原文或模型输出，供管理员导出。保留最多 7 天、20 MB，量大时提前轮转。"
       }
     }
   },
@@ -895,80 +895,80 @@
       "realistic",
       "galgame"
     ],
-    "hint": "realistic＝基础；galgame＝Galgame。Galgame将全部正向增量及正向每日额度乘2，不改变扣分、模型、调用预算或衰减。基础参数不被覆盖，切换不重算历史；保存并重载后生效。",
+    "hint": "基础使用所填参数；Galgame 将加分及每日加分上限各乘 2，其余不变。不覆盖基础值，不重算历史。",
     "invisible": true
   },
   "relation_daily_caps": {
     "type": "object",
-    "description": "基础每日分数额度；正负分别累计，Galgame仅正向额度乘2。自动时间衰减不占互动额度。",
+    "description": "基础每日分数额度：加分和扣分分别累计，互不抵消；时间衰减不占额度。Galgame 仅将加分额度乘 2。",
     "invisible": true,
     "items": {
       "familiarity_up": {
         "type": "float",
         "default": 5,
-        "description": "熟悉度基础每日正向额度"
+        "description": "熟悉度每日加分上限（基础）：每人每天最多增加多少熟悉度。Galgame 为此值的 2 倍；0 表示不增加。"
       },
       "familiarity_down": {
         "type": "float",
         "default": 0,
-        "description": "熟悉度基础每日负向额度（默认0）"
+        "description": "熟悉度每日扣分上限：每人每天最多扣多少熟悉度；0 禁止互动扣分，时间衰减另算。"
       },
       "affinity_up": {
         "type": "float",
         "default": 10,
-        "description": "亲近度基础每日正向额度"
+        "description": "亲近度每日加分上限（基础）：每人每天最多增加多少亲近度。Galgame 为此值的 2 倍；0 表示不增加。"
       },
       "affinity_down": {
         "type": "float",
         "default": 8,
-        "description": "亲近度基础每日负向额度（填写正数）"
+        "description": "亲近度每日扣分上限：每人每天最多扣多少亲近度；0 禁止扣分。加分不抵消已用额度，时间衰减另算。"
       },
       "trust_up": {
         "type": "float",
         "default": 2,
-        "description": "信任度基础每日正向额度；不代表普通聊天会增信"
+        "description": "信任度每日加分上限（基础）：每人每天正向增信的额度；默认事件不增信。Galgame 为 2 倍，0 禁止增加。"
       },
       "trust_down": {
         "type": "float",
         "default": 5,
-        "description": "信任度基础每日负向额度（填写正数）"
+        "description": "信任度每日扣分上限：每人每天最多扣多少信任度；0 禁止互动扣分，时间衰减另算。"
       }
     }
   },
   "familiarity_growth": {
     "type": "object",
-    "description": "按当前熟悉度自身选择的正向基础倍率；再叠加模式倍率。",
+    "description": "熟悉度分段基础倍率：按当前熟悉度选段，只作用于加分；Galgame 再乘 2。",
     "invisible": true,
     "items": {
       "under10": {
         "type": "float",
         "default": 1.5,
-        "description": "熟悉度0至不足10"
+        "description": "熟悉度 0～不足 10 加分倍率：此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
       },
       "under30": {
         "type": "float",
         "default": 1.2,
-        "description": "熟悉度10至不足30"
+        "description": "熟悉度 10～不足 30 加分倍率：此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
       },
       "under55": {
         "type": "float",
         "default": 0.8,
-        "description": "熟悉度30至不足55"
+        "description": "熟悉度 30～不足 55 加分倍率：此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
       },
       "under80": {
         "type": "float",
         "default": 0.5,
-        "description": "熟悉度55至不足80"
+        "description": "熟悉度 55～不足 80 加分倍率：此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
       },
       "under95": {
         "type": "float",
         "default": 0.3,
-        "description": "熟悉度80至不足95"
+        "description": "熟悉度 80～不足 95 加分倍率：此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
       },
       "at95": {
         "type": "float",
         "default": 0.15,
-        "description": "熟悉度95至100"
+        "description": "熟悉度 95～100 加分倍率：此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
       }
     }
   }

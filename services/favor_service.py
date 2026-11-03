@@ -105,7 +105,7 @@ class FavorService:
             from ..core.relation_lexicon import LEXICON_VERSION
 
             self._diagnostic_config = dict(
-                policy_version="0.3.8",
+                policy_version="0.3.9",
                 lexicon_version=LEXICON_VERSION,
                 config_hash=hashlib.sha256(
                     json.dumps(
@@ -345,12 +345,24 @@ class FavorService:
             rounded=False,
         )
 
-    def _day_end(self):
+    def _day_end(self, now=None):
         # 用本地日历的下一天，兼容夏令时的 23/25 小时日。
-        next_day = self._today() + timedelta(days=1)
+        next_day = self._today(now) + timedelta(days=1)
         return datetime(
             next_day.year, next_day.month, next_day.day, tzinfo=self._tz
         ).timestamp()
+
+    async def today_changes(self, *, now=None):
+        """当前空间当天实际长期变动人数；时间口径与关系额度一致。"""
+        now = time.time() if now is None else now
+        return dict(
+            day=self._today(now).isoformat(),
+            timezone=str(self._tz or datetime.fromtimestamp(now).astimezone().tzinfo),
+            reset_at=self._day_end(now),
+            changed_members=await self._storage.changed_members_count(
+                self._day_start(now), self._day_end(now)
+            ),
+        )
 
     async def get(self, group_id: str, user_id: str) -> FavorRecord:
         """读取记录；无记录时返回默认值（不落库）。返回的是有效好感度（含时间衰减）。"""

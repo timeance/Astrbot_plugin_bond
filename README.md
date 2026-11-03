@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <strong>v0.3.8</strong> · AstrBot ≥4.28 / &lt;5 · OneBot aiocqhttp · AGPL-3.0
+  <strong>v0.3.9</strong> · AstrBot ≥4.28 / &lt;5 · OneBot aiocqhttp · AGPL-3.0
 </p>
 
 ---
@@ -149,7 +149,9 @@ Galgame 将所有正向请求和正向每日额度统一乘 2；负向单次变�
 <a id="dashboard"></a>
 ## 🛠️ 在面板里管理关系
 
-Bond 使用 AstrBot 原生管理页面，写操作由宿主认证保护。页面默认深蓝，可在右上角切换浅色；选择保存在当前浏览器，不随宿主明暗主题变化。
+Bond 使用 AstrBot 原生管理页面，写操作由宿主认证保护。页面首次打开使用浅色，可在右上角切换深色；再次打开沿用当前浏览器上次的选择。设置默认折叠，字段旁的问号解释用途。
+
+当前总览的“今日概览”显示所选 Bot 的初评、复核次数与运行配额，以及当前数据空间中关系发生变动的人数。调用按 UTC 日期跨群合计，失败也计入；人数按关系设置的时区统计，三维任一实际改分或撤销均计入，同一成员只算一人，不含临时关系和自然衰减。翻页和搜索不改变统计范围，点击“刷新”可更新概览。
 
 | 入口 | 可以做什么 |
 | --- | --- |
@@ -360,3 +362,6 @@ Bond 基于 [yiwuerxin/astrbot_plugin_xinxian](https://github.com/yiwuerxin/astr
 <a id="ref-19"></a>
 
 19. Park, J. S., O'Brien, J. C., Cai, C. J., Morris, M. R., Liang, P., & Bernstein, M. S. (2023). **Generative Agents: Interactive Simulacra of Human Behavior.** *UIST 2023*. [作者预印本](https://arxiv.org/abs/2304.03442)。记忆、反思和生成行为的架构参照；不作为 Bond 群聊效果或 Token 节约的证据。
+
+
+注入位置的取舍见 [注入方式评估](docs/research/INJECTION_REVIEW.md)；大量成员的计算开销与实测范围见 [页面合成负载记录](docs/research/DASHBOARD_LOAD.md)。

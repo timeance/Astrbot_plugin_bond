@@ -511,14 +511,16 @@ test('rule and assessment controls keep a single entry and explain saved versus 
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
  assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
  assert.match(source,/UTC 00:00/);assert.match(source,/当前运行关系参数/);
- assert.match(source,/熟悉度衰减：{{ activeRuleSummary.familiarity }}/);
- assert.doesNotMatch(source,/熟悉度不随时间衰减/);
- assert.match(source,/两种模式使用相同衰减规则/);
- assert.match(source,/衰减基线：熟悉度 {{ activeRuleSummary.baselines.familiarity }}/);
- assert.match(source,/距对应基线的差值减半/);
- assert.match(source,/区间外向同号基线收敛/);
+ assert.match(source,/<table class="xx-table" aria-label="当前运行关系参数">/);
+ assert.match(source,/activeRuleSummary\[cap.key\]/);
+ assert.match(source,/activeRuleSummary.baselines\[cap.key\]/);
  assert.match(source,/:max="field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
- assert.match(source,/历史不重新计分/);assert.match(source,/不同实质互动可分别计分/);
+ assert.match(source,/历史不再计分/);assert.match(source,/不同互动可分别评分/);
+ assert.match(source,/保存并重载|保存后重载/);
+ assert.doesNotMatch(source,/<details open|:open="group.group/);
+ assert.match(source,/aria-describedby="'eval-hint-' \+ field.key"/);
+ const {ui}=harness();
+ assert.ok(ui.evaluationFields.every(field=>field.hint && field.hint.length<100));
 });
 
 test('settings can open and save without a Bot or scope',async()=>{
@@ -632,20 +634,20 @@ test('evaluation ignores older same-scope loads including their revisions',async
  assert.equal(ui.modelRevision.value,'current');assert.equal(ui.modelConfig.value.cooldown_sec,60);
 });
 
-test('theme bootstrap runs before CSS and restores only the independent light preference',()=>{
+test('theme bootstrap defaults to light and restores either saved theme before CSS',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../pages/dashboard/index.html'),'utf8');
  const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
  assert.ok(html.indexOf(script)<html.indexOf('rel="stylesheet"'));
- assert.match(html,/<html[^>]*data-bond-theme="dark"/);
+ assert.match(html,/<html[^>]*data-bond-theme="light"/);
  for(const stored of ['light','dark','invalid',null]){
-  const document={documentElement:{dataset:{bondTheme:'dark',theme:'light'}}};
+  const document={documentElement:{dataset:{bondTheme:'light',theme:'dark'}}};
   vm.runInNewContext(script,{document,window:{localStorage:{getItem:key=>{assert.equal(key,'bond-theme');return stored;}}}});
-  assert.equal(document.documentElement.dataset.bondTheme,stored==='light'?'light':'dark');
-  assert.equal(document.documentElement.dataset.theme,'light');
+  assert.equal(document.documentElement.dataset.bondTheme,stored==='dark'?'dark':'light');
+  assert.equal(document.documentElement.dataset.theme,'dark');
  }
- const document={documentElement:{dataset:{bondTheme:'dark'}}};
+ const document={documentElement:{dataset:{bondTheme:'light'}}};
  vm.runInNewContext(script,{document,window:{get localStorage(){throw new Error('storage blocked');}}});
- assert.equal(document.documentElement.dataset.bondTheme,'dark');
+ assert.equal(document.documentElement.dataset.bondTheme,'light');
 });
 
 test('manual theme switching survives unavailable storage and ignores the host theme',()=>{
@@ -671,13 +673,44 @@ test('quick start layout, section defaults and theme styling match the page cont
  assert.match(toolbar,/刷新设置/);assert.match(toolbar,/xx-btn-primary/);assert.doesNotMatch(toolbar,/填入/);
  assert.doesNotMatch(source,/fillRecommendedRules|recommendDialog|填入写实推荐|填入 Galgame 推荐/);
  assert.match(source,/restoreSectionDefaults\(group.group\)/);
- assert.match(source,/:open="group.group === 'basic'"/);
- assert.match(source,/基础设置（快速开始）/);
- assert.match(source,/模式不覆盖基础参数/);
+ assert.doesNotMatch(source,/:open="group.group === 'basic'"/);
+ assert.match(source,/详细设置 → 基础设置/);
+ assert.match(source,/下方预览不会立即改变运行值/);
  assert.doesNotMatch(source,/v-model="modelConfig.assessment_mode"|请在 AstrBot 的 Bond 插件配置中修改|亲近度基线固定为0/);
  assert.match(source,/暂无可用模型，请先在 AstrBot 配置文本模型。/);
  assert.match(css,/--xx-bg: #10172D/);assert.match(css,/--xx-card: #19233D/);assert.match(css,/--xx-ink: #E8EDFA/);
  assert.match(css,/:root\[data-bond-theme="light"\]/);assert.doesNotMatch(css,/\[data-theme/);
  assert.match(css,/color-scheme: dark/);assert.match(css,/color-scheme: light/);assert.match(css,/color-scheme: inherit/);
  assert.match(css,/\.xx-page select/);assert.match(css,/\.xx-recommend-dialog::backdrop/);
+});
+
+
+test('today summary uses selected Bot and space and ignores late scope responses',async()=>{
+ const {ui,pendingGets}=harness({},['today_summary']);
+ const first=ui.fetchTodaySummary();
+ ui.selectedMode.value='global';
+ const second=ui.fetchTodaySummary();
+ assert.equal(pendingGets[0].params.bot_id,'10001');
+ assert.equal(pendingGets[1].params.scope_mode,'global');
+ const current={initial:{used:4,limit:300},review:{used:1,limit:100},changed_members:2};
+ pendingGets[1].resolve({success:true,summary:current});await second;
+ pendingGets[0].resolve({success:true,summary:{changed_members:99}});await first;
+ assert.equal(ui.todaySummary.value,current);assert.equal(ui.todayLoading.value,false);
+});
+
+test('today summary fails visibly without inventing zero counts',async()=>{
+ const {ui,pendingGets}=harness({},['today_summary']);
+ ui.todaySummary.value={changed_members:5};
+ const call=ui.fetchTodaySummary();assert.equal(ui.todaySummary.value,null);
+ pendingGets[0].resolve({success:false,error:'synthetic failure'});await call;
+ assert.equal(ui.todaySummary.value,null);assert.match(ui.todayError.value,/刷新重试/);
+ assert.equal(ui.todayLoading.value,false);
+});
+
+test('overview refresh reads today summary but member pagination does not',async()=>{
+ const {ui,reads}=harness();
+ ui.userPages.value=3;await ui.changeUserPage(2);
+ assert.equal(reads.filter(read=>read.endpoint==='today_summary').length,0);
+ await ui.refresh();
+ assert.equal(reads.filter(read=>read.endpoint==='today_summary').length,1);
 });

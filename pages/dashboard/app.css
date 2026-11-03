@@ -711,3 +711,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .xx-member-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; font-size: 13px; color: var(--xx-ink-2); }
 .xx-member-pagination label { display: inline-flex; align-items: center; gap: 5px; }
 .xx-member-pagination select { padding: 5px; border: 1px solid var(--xx-line); border-radius: 5px; background: var(--xx-card); color: inherit; }
+
+/* 运行值集中展示，折叠设置不拉伸为空卡片。 */
+.xx-evaluation-grid { align-items: start; }
+.xx-rule-summary { margin: 0; }
+.xx-rule-summary th, .xx-rule-summary td { padding: 8px 12px; }
+.xx-rule-summary th[scope="row"] { text-transform: none; }
+
+.xx-today-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 12px 16px; margin-bottom: 12px; border: 1px solid var(--xx-line); border-radius: 8px; background: var(--xx-card); }
+.xx-today-summary b { font-variant-numeric: tabular-nums; }
