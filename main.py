@@ -32,7 +32,9 @@ from .core.level_economy import EconomyConfig
 from .core.levels import LevelTable
 from .core.naming import TIER_NAME_BY_KEY
 from .core.relationship import RelationshipTable
+from .core.relation_profiles import build_relation_profile
 from .core.taskregistry import TaskRegistry
+from .services.avatar_service import RankingAvatars
 from .services.diagnostics_service import DiagnosticRecorder
 from .services.favor_service import FavorService
 from .services.impression_service import ImpressionService
@@ -74,7 +76,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 三维关系与成员印象",
-    "0.3.4",
+    "0.3.5",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -131,6 +133,9 @@ class BondPlugin(Star):
         self._relationships = None
         cmd_cfg = config.get("command") or {}
         self._ranking_limit = int(cmd_cfg.get("ranking_limit", 10))
+        self._ranking_access = str(cmd_cfg.get("ranking_access", "all"))
+        self._ranking_image = bool(cmd_cfg.get("ranking_image", True))
+        self._ranking_avatars = RankingAvatars()
         self._text_wake_enabled = bool(cmd_cfg.get("text_wake_enabled", False))
         self._text_wake_ranking = _split_phrases(
             cmd_cfg.get("text_wake_ranking", "好感排行,好感榜单,好感排名")
@@ -167,6 +172,9 @@ class BondPlugin(Star):
         self._relationships = relationships
         # 防通胀经济学层（拼音配置键→中文等级名的映射在 from_config 内处理）
         eco = EconomyConfig.from_config(economy_cfg)
+        relation_policy, relation_caps = build_relation_profile(
+            config.get("relation_mode", "realistic")
+        )
         favor = FavorService(
             storage,
             levels,
@@ -180,10 +188,12 @@ class BondPlugin(Star):
             half_life_base=float(decay_cfg.get("half_life_base", 30)),
             half_life_growth=float(decay_cfg.get("half_life_growth", 1.0)),
             half_life_max=float(decay_cfg.get("half_life_max", 120)),
-            decay_baseline=float(decay_cfg.get("baseline", 0.0)),
+            decay_baseline=0.0,
             decay_floor_enabled=bool(decay_cfg.get("floor_enabled", True)),
             relationships=relationships,
             economy=eco,
+            relation_policy=relation_policy,
+            relation_caps=relation_caps,
             tz_name=str(config.get("timezone", "") or ""),
             scope_mode=scope_mode,
             diagnostics=self._diagnostics,
@@ -327,6 +337,9 @@ class BondPlugin(Star):
                     self._render_font,
                     self._render_rows,
                     text_limit=self._ranking_limit,
+                    ranking_access=self._ranking_access,
+                    image_enabled=self._ranking_image,
+                    avatar_service=self._ranking_avatars,
                 )
                 if reply is not None:
                     kind, payload = reply
@@ -335,7 +348,7 @@ class BondPlugin(Star):
                             yield event.image_result(payload)
                         finally:
                             self._schedule_tmp_cleanup(payload)
-                    else:  # 未安装 Pillow：降级文字排行
+                    else:  # 关闭图片或绘制失败时返回相同的公开资料
                         yield event.plain_result(payload)
         except Exception:
             logger.warning("[Bond] 文字查询失败，继续正常对话")
@@ -384,6 +397,9 @@ class BondPlugin(Star):
             font_path=self._render_font,
             rows_per_col=self._render_rows,
             text_limit=self._ranking_limit,
+            ranking_access=self._ranking_access,
+            image_enabled=self._ranking_image,
+            avatar_service=self._ranking_avatars,
         )
         if kind == "image":
             try:
@@ -505,5 +521,9 @@ class BondPlugin(Star):
                 status="unavailable", reason="本群未启用关系功能。"
             )
         return await tools.tool_query_ranking(
-            deps.favor, event, self._ranking_limit, for_llm=True
+            deps.favor,
+            event,
+            self._ranking_limit,
+            for_llm=True,
+            ranking_access=self._ranking_access,
         )

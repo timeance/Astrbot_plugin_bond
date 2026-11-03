@@ -49,6 +49,9 @@ def test_defaults_and_hidden_fields_preserve_schema():
         {"impression.interval": 0},
         {"timezone": "bad/timezone"},
         {"economy.preset": "unknown"},
+        {"relation_mode": "unknown"},
+        {"command.ranking_access": "admin"},
+        {"decay.baseline": 10},
     ],
 )
 def test_invalid_patch_rejected(values):
@@ -81,3 +84,14 @@ def test_save_preserves_unrelated_config_rejects_stale_revision_and_rolls_back()
         assert config == before
 
     asyncio.run(run())
+
+
+def test_user_settings_offer_two_profiles_and_scoped_ranking_permission():
+    data = snapshot({})
+    by_path = {f["path"]: f for f in data["fields"]}
+    assert by_path["relation_mode"]["options"] == ["realistic", "galgame"]
+    assert by_path["command.ranking_access"]["options"] == ["all", "master"]
+    assert data["values"]["command.ranking_access"] == "all"
+    assert data["values"]["command.ranking_image"] is True
+    assert "render.font_path" in by_path
+    assert "decay.baseline" not in by_path and "economy.preset" not in by_path

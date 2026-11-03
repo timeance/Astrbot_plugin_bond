@@ -12,16 +12,28 @@ SECTIONS = {
     "basic": ("基础设置", ["default_scope_mode", "master_ids", "group_whitelist"]),
     "rules": (
         "关系变化",
-        ["timezone", "decay", "economy"],
+        ["relation_mode", "timezone", "decay", "economy"],
     ),
     "memory": (
         "印象与近期事件",
         ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
     ),
-    "commands": ("查询与排行", ["command"]),
+    "commands": ("查询与排行", ["command", "render.font_path"]),
     "diagnostics": ("关系诊断", ["diagnostics"]),
 }
 LABELS = {
+    "relation_mode": (
+        "关系节奏模板",
+        "写实沿用当前节奏；Galgame略加快正向熟悉度和亲近度，并提高每日上限。信任、负向变化与防刷规则不变；重载后生效，不重置数据。",
+    ),
+    "ranking_access": (
+        "排行查询权限",
+        "所有人或仅主人；主人按上方主人QQ与可信发言者ID匹配，未配置主人时仅主人模式无人可查。命令、文字唤醒、模型工具统一检查，不授予管理权限。",
+    ),
+    "ranking_image": (
+        "图片排行",
+        "命令与文字唤醒使用月读空间风格图片，显示前10名的昵称、头像和称谓，不显示分值。向QQ头像服务请求榜内账号的头像；失败用占位，绘图失败退回文字。",
+    ),
     "diagnostics.enabled": (
         "关系诊断记录",
         "默认关闭；本机记录脱敏状态和耗时，不新增原文。按7天及20MB上限清理，可能提前轮转；重载后生效。",
@@ -32,7 +44,7 @@ LABELS = {
     ),
     "master_ids": (
         "主人 QQ",
-        "多个 QQ 号用英文逗号分隔。仅作为关系身份标记，不授予管理权限，不豁免评分；称呼服从当前人格。",
+        "多个 QQ 号用英文逗号分隔。用于关系身份标记；仅主人排行模式也按此名单核验。不授予管理权限、不豁免评分，称呼服从当前人格。",
     ),
     "group_whitelist": (
         "启用 Bond 的群（白名单）",
@@ -76,14 +88,13 @@ LABELS = {
     "text_wake_ranking": ("排行唤醒短语", "多个短语用英文逗号分隔，须与整条消息一致。"),
     "font_path": (
         "排行图片字体",
-        "填写 AstrBot 所在设备的字体路径。留空自动查找，缺少中文字体时文字可能无法显示。",
+        "可选。留空使用打包的开源中文字体；自定义字体不可用时回退到内置字体。",
     ),
     "rows_per_col": ("排行每列行数", "超过这个数量后换到下一列。"),
     "decay.enabled": (
         "启用时间衰减",
         "新安装默认开启；仅亲近度向基线靠近，熟悉度和信任度不变。临时关系期间暂停。",
     ),
-    "baseline": ("亲近度衰减基线", "亲近度随时间靠近的数值。"),
     "floor_enabled": (
         "限制衰减后的关系等级",
         "按旧亲近度数值档位托底，不等于三维称谓最多变化两级。",
@@ -146,7 +157,7 @@ def fields():
     result = []
 
     def visit(path, node, group, title):
-        if path == "inject.enabled":
+        if path in {"inject.enabled", "decay.baseline", "economy.preset"}:
             return
         if node["type"] == "object":
             for key, child in node["items"].items():
@@ -242,8 +253,6 @@ def validate_patch(values):
             )
             if path in {"decay.half_life_base", "decay.half_life_max"}:
                 minimum = 5
-            if path == "decay.baseline":
-                minimum = -100
             if path in {
                 "decay.half_life_growth",
                 "inject.memory_sig_window_mult",
@@ -251,7 +260,7 @@ def validate_patch(values):
                 "economy.repair_scale_low",
             }:
                 minimum = 1
-            maximum = 100 if path == "decay.baseline" else 1000000
+            maximum = 1000000
             if path == "inject.memory_count":
                 maximum = 10
             if path in {"economy.repair_factor", "economy.same_day_decay"}:

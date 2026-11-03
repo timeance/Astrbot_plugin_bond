@@ -1,7 +1,7 @@
 """心弦好感度 - 聊天指令 handler。
 
 由 main.py 中 @filter.command 装饰的 Star 方法薄壳调用。
-查询类指令所有成员可用；设置/重置类指令在 main.py 处以管理员权限注册。
+自身关系查询所有成员可用；排行统一检查可配置权限；设置/重置仍须宿主管理权限。
 """
 
 from __future__ import annotations
@@ -15,10 +15,16 @@ from . import llm_tools
 
 
 async def handle_ranking(
-    svc: FavorService, event: AstrMessageEvent, limit: int = 10
+    svc: FavorService,
+    event: AstrMessageEvent,
+    limit: int = 10,
+    *,
+    ranking_access: str = "all",
 ) -> str:
     """/好感排行 —— 查本群榜单。"""
-    return await llm_tools.tool_query_ranking(svc, event, limit)
+    return await llm_tools.tool_query_ranking(
+        svc, event, limit, ranking_access=ranking_access
+    )
 
 
 async def handle_set(
@@ -99,30 +105,6 @@ async def handle_refresh_impression(
     return msg
 
 
-async def build_rank_image(
-    svc: FavorService,
-    event: AstrMessageEvent,
-    font_path: str = "",
-    rows_per_col: int = 12,
-) -> str:
-    """渲染本群好感度排行为图片（查询人高亮），返回临时 PNG 路径。"""
-    rows = await svc.standings(
-        event.get_group_id(), limit=max(rows_per_col * 5, rows_per_col)
-    )
-    import asyncio
-
-    from .rank_image import render_ranking
-
-    # X8：同步 PIL 渲染放线程池，避免大图（几百 ms）阻塞事件循环
-    return await asyncio.to_thread(
-        render_ranking,
-        rows,
-        event.get_sender_id(),
-        font_path=font_path,
-        rows_per_col=rows_per_col,
-    )
-
-
 async def rank_reply(
     svc: FavorService,
     event: AstrMessageEvent,
@@ -130,9 +112,31 @@ async def rank_reply(
     font_path: str = "",
     rows_per_col: int = 12,
     text_limit: int = 10,
+    ranking_access: str = "all",
+    image_enabled: bool = True,
+    avatar_service=None,
 ) -> tuple[str, str]:
-    """公开排行统一输出不含分值的称谓，最多十人。"""
-    return "text", await handle_ranking(svc, event, min(10, text_limit))
+    """权限检查后查询一次；图片只接收公开资料，绘制失败回退同一份文字。"""
+    reason = llm_tools.ranking_denial(svc, event, ranking_access)
+    if reason:
+        return "text", reason
+    rows, self_rank, avatar_ids = await llm_tools.ranking_rows(svc, event, text_limit)
+    text = llm_tools.ranking_text(rows)
+    if image_enabled and rows:
+        import asyncio
+        from astrbot.api import logger
+
+        try:
+            from .rank_image import render_ranking
+
+            avatars = await avatar_service.load(avatar_ids) if avatar_service else []
+            path = await asyncio.to_thread(
+                render_ranking, rows, self_rank, font_path=font_path, avatars=avatars
+            )
+            return "image", path
+        except Exception:
+            logger.warning("[Bond] 排行图片生成失败，已回退文字")
+    return "text", text
 
 
 async def try_text_wake(
@@ -142,10 +146,12 @@ async def try_text_wake(
     font_path: str = "",
     rows_per_col: int = 12,
     text_limit: int = 10,
+    *,
+    ranking_access: str = "all",
+    image_enabled: bool = True,
+    avatar_service=None,
 ) -> tuple[str, str] | None:
-    """群聊文字唤醒：命中排行短语 → 返回 ("image",路径)/("text",正文)；否则 None。
-
-    带 / 的交由 / 指令。"""
+    """精确短语与命令共用权限、公开资料和图片失败降级。"""
     msg = (event.message_str or "").strip()
     if not msg or msg.startswith("/"):
         return None
@@ -156,5 +162,8 @@ async def try_text_wake(
             font_path=font_path,
             rows_per_col=rows_per_col,
             text_limit=text_limit,
+            ranking_access=ranking_access,
+            image_enabled=image_enabled,
+            avatar_service=avatar_service,
         )
     return None

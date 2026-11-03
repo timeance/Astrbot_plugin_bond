@@ -57,6 +57,8 @@ def package(tmp_path, *, missing=None, extra=None):
         "README.md",
         "requirements.txt",
         "logo.png",
+        "resources/fonts/BondSansSC-Regular.ttf",
+        "resources/fonts/OFL.txt",
         "metadata.yaml",
         "main.py",
         "_conf_schema.json",
@@ -101,7 +103,15 @@ def test_package_requires_behavior_prompt_resource(tmp_path):
         )
 
 
-@pytest.mark.parametrize("missing", ["requirements.txt", "logo.png"])
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "requirements.txt",
+        "logo.png",
+        "resources/fonts/BondSansSC-Regular.ttf",
+        "resources/fonts/OFL.txt",
+    ],
+)
 def test_package_requires_installation_assets(tmp_path, missing):
     with pytest.raises(ValueError, match="缺少文件"):
         validate_archive(package(tmp_path, missing=missing))

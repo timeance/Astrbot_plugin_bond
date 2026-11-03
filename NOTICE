@@ -20,3 +20,8 @@ No additional permission from the upstream author is asserted.
 The LICENSE document is the standard FSF license text, also distributed in
 astrbot_plugin_livingmemory at a1e9c20a8c5fab93d6143f51be26fb1bbf8143ec.
 No LivingMemory implementation code is incorporated into this baseline.
+
+Bundled ranking font: Bond Sans SC, derived from Noto Sans SC (Google Fonts),
+Copyright 2014-2021 Adobe, Reserved Font Name Source.
+The modified font retains the SIL Open Font License 1.1; see
+resources/fonts/OFL.txt and resources/fonts/README.md for source and changes.

@@ -1,6 +1,6 @@
 # Bond 插件商店提交准备
 
-核查日期：2026-11-03。插件版本：0.3.4。本文提供重新提交的资料与验收清单；上一轮因日志规范未获上架，本次修复仍待商店复审。
+核查日期：2026-11-03。插件版本：0.3.5。本文提供重新提交的资料与验收清单；上一轮因日志规范未获上架，本次修复仍待商店复审。
 
 ## 提交入口
 
@@ -17,7 +17,7 @@ name: astrbot_plugin_bond
 display_name: Bond 关系系统
 short_desc: 按 Bot 隔离的三维关系与成员印象
 desc: 保存熟悉度、亲近度、信任度与成员印象，支持分级评估、人格适配及管理面板。
-version: "0.3.4"
+version: "0.3.5"
 author: yiwuerxin, Timeance
 repo: https://github.com/timeance/Astrbot_plugin_bond
 tags:
@@ -41,13 +41,13 @@ astrbot_version: ">=4.28,<5"
 | --- | --- |
 | 使用说明 | [README](../README.md) 包含安装、配置、群聊查询、数据隔离、模型数据外发及已知限制。 |
 | 图文介绍 | [关系词典](RELATION_LEXICON.md) 和 [情感建模短论文](research/EMOTION_MODEL_PAPER.md) 说明状态含义、实现与合成实验结果。 |
-| 运行依赖 | [requirements.txt](../requirements.txt) 声明 Pillow、Quart，最低版本与 AstrBot 4.28.0 的宿主依赖一致；绘图、测试工具不列为插件运行依赖。 |
+| 运行依赖 | [requirements.txt](../requirements.txt) 声明 Pillow、Quart、aiohttp，最低版本与 AstrBot 4.28.0 的宿主依赖一致；字体制作、测试工具不列为插件运行依赖。 |
 | Logo | 根目录 [logo.png](../logo.png) 为 1254×1254 PNG，符合 1:1 要求；官方推荐 256×256，并未要求必须为该尺寸。 |
 | 许可与来源 | [LICENSE](../LICENSE)、[NOTICE](../NOTICE) 及 README 保留上游署名、来源与 AGPL v3 说明。 |
-| 代码格式 | 使用 Ruff 0.15.22 和 Black 26.5.1 检查，101 个 Python 文件通过。 |
+| 代码格式 | 使用 Ruff 0.15.22 和 Black 26.5.1 检查，106 个 Python 文件通过。 |
 | 可重复检查 | [开发指南](DEVELOPMENT.md) 提供元数据、测试、合成装配和打包命令；[验收记录](ACCEPTANCE.md) 区分已通过检查与真实运行缺口。 |
 
-公开压缩包须小于或等于 **16MB**。0.3.4 调整新用户默认节奏，修复已有成员的半衰期配置生效与诊断留存；schema仍为15，无数据迁移。推荐配置和验证范围见 [默认值与观察记录](research/RECOMMENDED_DEFAULTS.md)。提交前核对最终公开分支的 CI 和压缩包，不用旧结果代替新版本检查。
+公开压缩包须小于或等于 **16MB**。0.3.5 增加写实/Galgame模板、固定中性衰减基线及带头像的权限排行；schema仍为15，无数据迁移。推荐配置和验证范围见 [两套节奏与图片排行](research/RELATION_MODES_AND_RANKING.md) 及 [默认值与观察记录](research/RECOMMENDED_DEFAULTS.md)。提交前核对最终公开分支的 CI 和压缩包，不用旧结果代替新版本检查。
 
 ## 提交前待确认
 

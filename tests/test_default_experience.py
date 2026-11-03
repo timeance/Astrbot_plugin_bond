@@ -157,7 +157,8 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
 
 
 def test_settings_do_not_offer_unused_render_or_silently_clamped_values():
-    assert not any(key.startswith("render.") for key in snapshot({})["values"])
+    render_keys = {key for key in snapshot({})["values"] if key.startswith("render.")}
+    assert render_keys == {"render.font_path"}
     for values in [
         {"inject.memory_count": 11},
         {"economy.repair_scale_high": 0.5},

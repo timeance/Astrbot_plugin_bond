@@ -31,8 +31,8 @@ source .venv/bin/activate
 
 | 依赖文件 | 用途 |
 | --- | --- |
-| `requirements.txt` | 插件运行依赖：Pillow 生成排行图片，Quart 提供页面 API。AstrBot 由宿主提供。 |
-| `requirements-test.txt` | 离线测试使用的 pytest、PyYAML 和 Windows 时区数据。CI 与本地共用版本。 |
+| `requirements.txt` | 插件运行依赖：Pillow 生成排行图片，aiohttp 有界获取 QQ 头像，Quart 提供页面 API。AstrBot 由宿主提供。 |
+| `requirements-test.txt` | 离线测试使用的 pytest、PyYAML、图片/头像测试依赖和 Windows 时区数据。CI 与本地共用版本。 |
 | `requirements-dev.txt` | 引用测试依赖，再加入固定版本的 Black、Ruff。普通开发安装这一份即可。 |
 
 离线环境不安装 AstrBot，不连接平台或模型。真实框架检查使用另一个环境，避免测试桩掩盖导入错误。Python 3.10 只验证核心层兼容性，不代表宿主支持该版本。

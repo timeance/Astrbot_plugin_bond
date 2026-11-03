@@ -1,22 +1,31 @@
-/* 心弦好感度 dashboard —— 千咲配色（绯红 × 近黑紫）浅色版
+/* 心弦好感度 dashboard —— 浅蓝主题
    色温轴：厌恶(冷蓝紫) → 陌生(灰) → … → 挚爱(深绯)，数值涨跌同语义 */
 
 :root {
-  --xx-ink: #2a2530;          /* 正文墨色（带紫调的黑） */
-  --xx-ink-2: #6f6875;        /* 次级文字 */
-  --xx-ink-3: #98919e;        /* 弱化文字 */
-  --xx-bg: #fbf9fa;           /* 页面底：近白微紫 */
+  --xx-ink: #173a59;          /* 深蓝正文 */
+  --xx-ink-2: #365c7c;        /* 次级文字 */
+  --xx-ink-3: #4c6c89;        /* 弱化文字仍保持可读 */
+  --xx-bg: #edf6ff;           /* 浅蓝页面底 */
   --xx-card: #ffffff;
-  --xx-line: #ece5ea;         /* 细分隔线 */
-  --xx-line-2: #ddd4dc;       /* 控件边框 */
-  --xx-accent: #ac2432;       /* 千咲红：主交互色 */
-  --xx-accent-deep: #8e1626;
-  --xx-accent-soft: #f8ecee;  /* 绯红浅底 */
+  --xx-surface: #f4f9ff;      /* 表头与次级卡片 */
+  --xx-muted-bg: #e2edf7;
+  --xx-line: #d5e5f3;         /* 细分隔线 */
+  --xx-line-2: #afc9df;       /* 控件边框 */
+  --xx-line-hover: #7098ba;
+  --xx-accent: #2366a0;       /* 蓝色强调与焦点 */
+  --xx-accent-deep: #174f80;
+  --xx-accent-soft: #e2f1ff;
+  --xx-accent-fill: #cce6ff;  /* 浅蓝主按钮 */
+  --xx-accent-hover: #b5d9f8;
+  --xx-focus-ring: 0 0 0 3px rgba(35, 102, 160, 0.16);
+  --xx-danger: #a32135;       /* 危险与错误独立于主题色 */
+  --xx-danger-deep: #7e1929;
+  --xx-danger-soft: #fff0f2;
   --xx-cold: #5563b5;         /* 疏远冷色（负向） */
   --xx-cold-soft: #eef0fa;
   --xx-warm: #b02a3c;         /* 亲近暖色（正向） */
   --xx-radius: 10px;
-  --xx-shadow: 0 1px 2px rgba(42, 37, 48, 0.04), 0 4px 16px rgba(42, 37, 48, 0.06);
+  --xx-shadow: 0 1px 2px rgba(23, 58, 89, 0.04), 0 4px 16px rgba(23, 58, 89, 0.06);
 }
 
 .xx-page {
@@ -61,13 +70,13 @@
   font-size: 12px;
   color: var(--xx-ink-3);
 }
-/* 弦线：冷→暖渐变，呼应好感色温轴 */
+/* 弦线：浅蓝渐变，呼应页面主题 */
 .xx-string {
   height: 2px;
   border-radius: 2px;
   margin: 0 0 16px;
   background: linear-gradient(90deg,
-    #5563b5 0%, #8f8a96 30%, #c98a96 55%, #ac2432 80%, #7f1220 100%);
+    var(--xx-accent-soft) 0%, var(--xx-accent-hover) 45%, var(--xx-accent) 100%);
   opacity: 0.55;
 }
 
@@ -76,7 +85,7 @@
   display: flex;
   gap: 2px;
   padding: 3px;
-  background: #f0ebef;
+  background: var(--xx-muted-bg);
   border-radius: 9px;
 }
 .xx-tab {
@@ -91,10 +100,10 @@
 }
 .xx-tab:hover { color: var(--xx-ink); }
 .xx-tab.active {
-  background: #fff;
+  background: var(--xx-card);
   color: var(--xx-accent);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(42, 37, 48, 0.12);
+  box-shadow: 0 1px 3px rgba(23, 58, 89, 0.12);
 }
 
 /* ---------- 筛选栏 ---------- */
@@ -117,13 +126,13 @@
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.xx-filters select:hover, .xx-input:hover { border-color: #c9bcc6; }
+.xx-filters select:hover, .xx-input:hover { border-color: var(--xx-line-hover); }
 .xx-filters select:focus, .xx-input:focus {
   border-color: var(--xx-accent);
-  box-shadow: 0 0 0 3px rgba(172, 36, 50, 0.10);
+  box-shadow: var(--xx-focus-ring);
 }
 .xx-input { width: 160px; }
-.xx-input::placeholder { color: var(--xx-ink-3); }
+.xx-input::placeholder, .xx-textarea::placeholder { color: var(--xx-ink-3); }
 
 /* ---------- Bot 与数据空间 ---------- */
 .xx-scope-bar {
@@ -191,63 +200,62 @@
   padding: 0 16px;
   border: none;
   border-radius: 8px;
-  background: var(--xx-accent);
-  color: #fff;
+  background: var(--xx-accent-fill);
+  color: var(--xx-accent-deep);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
 }
-.xx-btn:hover:not(:disabled) { background: var(--xx-accent-deep); }
-.xx-btn:disabled { opacity: 0.55; cursor: default; }
+.xx-btn:hover:not(:disabled) { background: var(--xx-accent-hover); }
+.xx-btn:disabled { background: var(--xx-muted-bg); color: var(--xx-ink-3); border-color: var(--xx-line-2); cursor: default; }
 
 .xx-btn-mini {
   height: auto;
   padding: 3px 12px;
   font-size: 12px;
-  background: #fff;
+  background: var(--xx-card);
   color: var(--xx-ink-2);
   border: 1px solid var(--xx-line-2);
 }
 .xx-btn-mini:hover:not(:disabled) {
   background: var(--xx-bg);
   color: var(--xx-ink);
-  border-color: #c9bcc6;
+  border-color: var(--xx-line-hover);
 }
-/* 行内撤销：描边深色，hover 实心；弹窗确认撤销保持实心 */
+/* 行内撤销：浅蓝悬停；弹窗确认撤销使用危险色 */
 .xx-btn-undo {
   height: auto;
   padding: 3px 12px;
   font-size: 12px;
-  background: #fff;
+  background: var(--xx-card);
   color: var(--xx-ink);
   border: 1px solid var(--xx-line-2);
 }
 .xx-btn-undo:hover:not(:disabled) {
-  background: var(--xx-ink);
-  border-color: var(--xx-ink);
-  color: #fff;
+  background: var(--xx-accent-soft);
+  border-color: var(--xx-accent);
+  color: var(--xx-accent-deep);
 }
-.xx-btn-undo:disabled { color: #b7b0bc; background: #f5f2f5; }
-/* 危险确认：近黑紫实心（黑发色），与绯红主操作区分 */
+/* 危险确认：红底白字，与浅蓝主操作区分 */
 .xx-btn-danger {
   height: auto;
   padding: 3px 12px;
   font-size: 12px;
-  background: var(--xx-ink);
+  background: var(--xx-danger);
+  color: var(--xx-card);
 }
-.xx-btn-danger:hover:not(:disabled) { background: #453d4f; }
-.xx-btn-danger:disabled { background: #b7b0bc; }
+.xx-btn-danger:hover:not(:disabled) { background: var(--xx-danger-deep); color: var(--xx-card); }
 
-button:focus-visible, select:focus-visible, input:focus-visible {
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--xx-accent);
   outline-offset: 1px;
 }
 
 /* ---------- 错误提示 ---------- */
 .xx-error {
-  color: var(--xx-accent-deep);
-  background: var(--xx-accent-soft);
-  border-left: 3px solid var(--xx-accent);
+  color: var(--xx-danger-deep);
+  background: var(--xx-danger-soft);
+  border-left: 3px solid var(--xx-danger);
   padding: 9px 12px;
   border-radius: 8px;
   margin: 0 0 12px;
@@ -275,7 +283,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   white-space: nowrap;
 }
 .xx-table th {
-  background: #faf7f9;
+  background: var(--xx-surface);
   font-weight: 600;
   font-size: 12px;
   color: var(--xx-ink-2);
@@ -286,7 +294,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .xx-table tbody tr:last-child td { border-bottom: none; }
 .xx-table tbody tr { transition: background 0.12s; }
-.xx-table tbody tr:hover { background: #fbf5f6; }
+.xx-table tbody tr:hover { background: var(--xx-accent-soft); }
 
 .xx-mono {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
@@ -308,14 +316,14 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   width: 76px;
   height: 5px;
   border-radius: 3px;
-  background: #efe9ed;
+  background: var(--xx-muted-bg);
 }
 .xx-favor-bar::before {
   content: "";
   position: absolute;
   left: 50%; top: -1px; bottom: -1px;
   width: 1px;
-  background: #d5cbd2;
+  background: var(--xx-line-2);
 }
 .xx-favor-bar i {
   position: absolute;
@@ -345,11 +353,11 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 20px;
-  background: #f1ecf1;
+  background: var(--xx-muted-bg);
   color: var(--xx-ink-2);
   font-size: 12px;
 }
-.xx-muted { background: #f0f1f5; color: #909399; }
+.xx-muted { background: var(--xx-muted-bg); color: var(--xx-ink-3); }
 
 .xx-empty {
   text-align: center;
@@ -361,25 +369,25 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 /* 注意：td 上不可改 display（flex 会破坏 table-cell，行被撑高时该格
    下边框停在半空，与相邻列的行分隔线错位）——对齐交给默认 vertical-align。 */
 .xx-actions { white-space: nowrap; }
-.xx-reversed td { opacity: 0.45; }
+.xx-reversed td { background: var(--xx-surface); color: var(--xx-ink-2); }
 
 /* ---------- 弹窗 ---------- */
 .xx-modal {
   position: fixed; inset: 0;
-  background: rgba(42, 37, 48, 0.40);
+  background: rgba(23, 58, 89, 0.40);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   display: flex; align-items: center; justify-content: center;
   z-index: 100;
 }
 .xx-modal-box {
-  background: #fff;
+  background: var(--xx-card);
   border-radius: 14px;
   width: min(560px, 92vw);
   max-height: 80vh;
   overflow: auto;
   padding: 22px 24px;
-  box-shadow: 0 12px 48px rgba(42, 37, 48, 0.28);
+  box-shadow: 0 12px 48px rgba(23, 58, 89, 0.28);
 }
 .xx-modal-header {
   display: flex;
@@ -445,7 +453,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   font-size: 11px; line-height: 18px;
   color: var(--xx-accent-deep);
   background: var(--xx-accent-soft);
-  border: 1px solid #e7c6cc;
+  border: 1px solid var(--xx-line-2);
 }
 .xx-imp-text {
   margin: 0; font-size: 12px; line-height: 1.5;
@@ -511,7 +519,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .xx-form-card {
   min-width: 0;
   padding: 14px;
-  background: #fcfafb;
+  background: var(--xx-surface);
   border: 1px solid var(--xx-line);
   border-radius: 8px;
 }
@@ -541,7 +549,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   line-height: 1.55;
   outline: none;
 }
-.xx-textarea:focus { border-color: var(--xx-accent); box-shadow: 0 0 0 3px rgba(172, 36, 50, 0.10); }
+.xx-textarea:focus { border-color: var(--xx-accent); box-shadow: var(--xx-focus-ring); }
 .xx-prompt-editor { min-height: 260px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 12px; }
 .xx-preview {
   max-height: 430px;
@@ -552,7 +560,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   word-break: break-word;
   border: 1px solid var(--xx-line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--xx-card);
   color: var(--xx-ink);
   font: 12px/1.6 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
@@ -565,7 +573,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   font-size: 12px;
 }
 .xx-status-ok { color: #356b49; background: #edf8f0; border-color: #5aab74; }
-.xx-status-error { color: var(--xx-accent-deep); background: var(--xx-accent-soft); border-color: var(--xx-accent); }
+.xx-status-error { color: var(--xx-danger-deep); background: var(--xx-danger-soft); border-color: var(--xx-danger); }
 .xx-check-row { display: flex; align-items: center; gap: 7px; margin: 6px 0 12px; font-size: 13px; }
 .xx-check-row input { accent-color: var(--xx-accent); }
 .xx-config-list { margin: 0; }
@@ -576,7 +584,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .xx-stats-section { margin-top: 18px; }
 .xx-stats-section .xx-panel-head { align-items: center; margin-bottom: 10px; }
 .xx-stats-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
-.xx-stat-box { min-width: 130px; padding: 10px 12px; border: 1px solid var(--xx-line); border-radius: 8px; background: #fcfafb; }
+.xx-stat-box { min-width: 130px; padding: 10px 12px; border: 1px solid var(--xx-line); border-radius: 8px; background: var(--xx-surface); }
 .xx-stat-box span { display: block; color: var(--xx-ink-3); font-size: 11px; }
 .xx-stat-box b { display: block; margin-top: 3px; font-size: 17px; }
 .xx-event-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

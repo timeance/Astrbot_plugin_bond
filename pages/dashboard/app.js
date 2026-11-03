@@ -135,12 +135,14 @@ createApp({
     const updateListSetting = (path, raw) => { detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean); };
     const loadSettings = () => settingsRequest();
     const saveSettings = () => settingsRequest(true);
-    const fillRecommendedRules = () => {
+    const fillRecommendedRules = (mode = "realistic") => {
+      if (!["realistic", "galgame"].includes(mode)) return;
       if (detailLoading.value || !detailSettings.value) return;
       for (const field of detailSettings.value.fields) {
         if (field.path.startsWith("decay.") || field.path.startsWith("economy.")) detailValues.value[field.path] = field.default;
       }
-      detailNotice.value = "已填入推荐的增长与衰减设置。检查后点击保存并重载插件；刷新可撤回未保存的修改。";
+      if (detailSettings.value.fields.some(field => field.path === "relation_mode")) detailValues.value.relation_mode = mode;
+      detailNotice.value = `已填入${mode === "galgame" ? "Galgame" : "写实"}推荐设置。检查后点击保存并重载插件；刷新可撤回未保存的修改。`;
     };
 
     const DEFAULT_MODEL_CONFIG = {
@@ -1378,14 +1380,15 @@ createApp({
 
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
-        <p><strong>初次使用可保持默认。升级或重装后仍显示旧值，可填入推荐关系设置。</strong></p>
-        <p class="xx-help">填入操作只替换增长与衰减选项，保存前可检查或刷新撤回。半衰期等衰减设置重载后按当前参数重新计算已有关系，显示值可能变化。</p>
+        <p><strong>写实重视长期相处；Galgame让熟悉与亲近稍快建立。可只切换关系节奏，也可填入整套推荐值。</strong></p>
+        <p class="xx-help">填入操作只替换关系节奏、增长与衰减选项，保存前可检查或刷新撤回。亲近度基线固定为0，熟悉度与信任度不随沉默衰减。半衰期等衰减设置重载后按当前参数重新计算已有关系，显示值可能变化。</p>
         <p class="xx-help">对所有 Bot 和数据空间生效。保存后重载插件；已开始的任务继续使用原配置。</p>
         <p class="xx-help">自动评估、回复中的关系信息和模型选择，请在 AstrBot 的 Bond 插件配置中修改。</p>
         <p v-if="detailNotice" role="status">{{ detailNotice }}</p>
         <div class="xx-actions">
           <button class="xx-btn" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
-          <button class="xx-btn" @click="fillRecommendedRules()" :disabled="detailLoading || !detailSettings">填入推荐关系设置</button>
+          <button class="xx-btn" @click="fillRecommendedRules('realistic')" :disabled="detailLoading || !detailSettings">填入写实推荐</button>
+          <button class="xx-btn" @click="fillRecommendedRules('galgame')" :disabled="detailLoading || !detailSettings">填入 Galgame 推荐</button>
           <button class="xx-btn" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
         <details v-for="group in detailGroups" :key="group.group" :open="group.group === 'basic'" class="xx-form-card">
@@ -1395,7 +1398,7 @@ createApp({
               <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="field.label + '：说明'" :aria-describedby="'hint-' + field.path">?</button><span class="xx-help-tooltip" role="tooltip" :id="'hint-' + field.path">{{ field.hint }}</span></span>
             </span>
             <input :id="'setting-' + field.path" v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
-            <select :id="'setting-' + field.path" v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"增长较快",realistic:"增长较慢",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
+            <select :id="'setting-' + field.path" v-else-if="field.options.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 轻快",realistic:"写实 · 推荐",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
             <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" v-model.number="detailValues[field.path]" :disabled="detailLoading">
             <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="detailValues[field.path].join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" placeholder="留空对所有群生效；多个群号用逗号分隔">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading">
