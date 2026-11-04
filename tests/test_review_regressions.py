@@ -78,10 +78,13 @@ def test_write_uses_same_decay_baseline_as_read(
     assert logs[0]["delta"] == 1
 
 
-def test_ranking_retains_half_life_and_selects_effective_top(backend, monkeypatch):
+@pytest.mark.parametrize("grace_days,expected", [(0, 71.3), (5, 75.5)])
+def test_ranking_retains_half_life_and_selects_effective_top(
+    backend, monkeypatch, grace_days, expected
+):
     now = time.time()
     monkeypatch.setattr(time, "time", lambda: now)
-    svc = service(backend, decay_enabled=True)
+    svc = service(backend, decay_enabled=True, decay_grace_days=grace_days)
     for member, score, half_life in (("slow", 80, 60), ("fast", 90, 10)):
         asyncio.run(backend.set_value("group", member, score))
         backend._c().execute(
@@ -94,7 +97,7 @@ def test_ranking_retains_half_life_and_selects_effective_top(backend, monkeypatc
     ranking = asyncio.run(svc.ranking("group", 1))
     individual = asyncio.run(svc.get("group", "slow"))
     assert ranking[0].user_id == "slow"
-    assert ranking[0].favor == individual.favor == 71.3
+    assert ranking[0].favor == individual.favor == expected
 
 
 def test_admin_log_uses_effective_score_and_preserves_profile(backend, monkeypatch):
@@ -264,12 +267,13 @@ def test_new_and_merged_impression_points_keep_latest_timestamp():
     )
 
 
+@pytest.mark.parametrize("grace_days,expected", [(0, 40), (5, 56.6)])
 def test_exhausted_allowance_returns_effective_score_without_writes(
-    backend, monkeypatch
+    backend, monkeypatch, grace_days, expected
 ):
     now = time.time()
     monkeypatch.setattr(time, "time", lambda: now)
-    svc = service(backend, decay_enabled=True)
+    svc = service(backend, decay_enabled=True, decay_grace_days=grace_days)
     asyncio.run(backend.set_value("g", "u", 80))
     backend._c().execute("UPDATE favor SET updated_at=?", (now - 10 * 86400,))
     backend._c().commit()
@@ -279,7 +283,7 @@ def test_exhausted_allowance_returns_effective_score_without_writes(
     result = asyncio.run(svc.change("g", "u", 1))
     assert (
         result.delta == 0
-        and result.favor_after == result.favor_before == before.favor == 40
+        and result.favor_after == result.favor_before == before.favor == expected
     )
     assert (
         backend._c().execute("SELECT favor,updated_at FROM favor").fetchone() == stored

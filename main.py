@@ -76,7 +76,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.3.9",
+    "0.4.0",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -193,6 +193,7 @@ class BondPlugin(Star):
             daily_cap_down=float(config.get("daily_cap_down", 8)),
             master_ids=master_ids,
             decay_enabled=bool(decay_cfg.get("enabled", True)),
+            decay_grace_days=float(decay_cfg.get("grace_days", 5)),
             half_life_base=float(decay_cfg.get("half_life_base", 30)),
             half_life_growth=float(decay_cfg.get("half_life_growth", 1.0)),
             half_life_max=float(decay_cfg.get("half_life_max", 120)),

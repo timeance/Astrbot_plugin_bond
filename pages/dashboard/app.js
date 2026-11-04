@@ -13,6 +13,23 @@ createApp({
     const loading = ref(false);
     const errorMsg = ref("");
     const logs = ref([]);
+    const statusLabels = {
+      small: "初评", large: "复核", ok: "成功", failed: "失败", timeout: "超时",
+      cancelled: "已取消", invalid: "结果无效", accepted: "已更新关系", unchanged: "关系未变化",
+      abstained: "未作判断", disabled: "未启用", filtered: "已跳过", temporary: "临时关系中",
+      busy: "忙碌，已跳过", duplicate_or_cooldown: "重复或间隔过短", pending: "处理中",
+      reserved: "等待结果", budget: "次数已用完", builtin: "内置默认", global: "全局设置", group: "本群设置",
+    };
+    const displayStatus = status => Object.prototype.hasOwnProperty.call(statusLabels, status) ? statusLabels[status] : status;
+    const reasonLabels = {
+      normal_question: "日常问答", friendly: "表达友好", thanks: "表达感谢",
+      joke: "友善玩笑", criticism: "提出批评", insult: "辱骂冒犯",
+      manipulation: "操纵诱导", apology: "表达歉意", uncertain: "无法确定",
+    };
+    const displayReason = reason => {
+      const text = String(reason || "");
+      return Object.prototype.hasOwnProperty.call(reasonLabels, text) ? reasonLabels[text] : text || "-";
+    };
     const users = ref([]);
     const todaySummary = ref(null);
     const todayLoading = ref(false);
@@ -34,9 +51,9 @@ createApp({
     const logDimension = ref("all");
     const logSource = ref("");
     const logDimensions = [
-      {key: "familiarity", label: "F 熟悉度"},
-      {key: "affinity", label: "A 亲近度"},
-      {key: "trust", label: "T 信任度"},
+      {key: "familiarity", label: "熟悉度"},
+      {key: "affinity", label: "亲近度"},
+      {key: "trust", label: "信任度"},
     ];
     let logRequestId = 0;
     const bots = ref([]);
@@ -71,6 +88,17 @@ createApp({
     const promptRequestTarget = ref(null);
     const memberRequestTarget = ref(null);
     let memberSession = 0;
+    let lastTriggerEl = null;
+    const rememberTrigger = () => {
+      const active = typeof document !== "undefined" ? document.activeElement : null;
+      if (active && typeof active.focus === "function") lastTriggerEl = active;
+    };
+    const restoreTriggerFocus = () => {
+      if (lastTriggerEl && typeof lastTriggerEl.focus === "function") {
+        try { lastTriggerEl.focus(); } catch { /* 忽略不可聚焦节点 */ }
+      }
+      lastTriggerEl = null;
+    };
     const evaluationLoading = ref(false);
     const modelSaving = ref(false);
     const modelConfig = ref({});
@@ -106,7 +134,7 @@ createApp({
         if (action === "export") {
           diagnosticDownload.value = URL.createObjectURL(new Blob(
             [JSON.stringify(data.diagnostics, null, 2)], {type:"application/json"}));
-          diagnosticNotice.value = "已准备当前 Bot 和数据空间的脱敏记录。请下载后在本地检查。";
+          diagnosticNotice.value = "诊断记录已准备好，可以下载查看。";
         } else {
           diagnosticStats.value = data.diagnostics;
           diagnosticNotice.value = action === "clear" ? "当前 Bot 和数据空间的诊断记录已清除，关系数据保留。" : "";
@@ -178,20 +206,10 @@ createApp({
           detailValues.value[field.path] = Array.isArray(field.default) ? [...field.default] : field.default;
         }
       }
-      detailNotice.value = "已填入本区默认值，保存并重载后生效。刷新可撤回；模型选择不变。";
+      detailNotice.value = "已填入默认设置。保存并重载后生效，刷新可撤回；模型选择保持不变。";
       detailNoticeError.value = false;
     };
     const modeMultiplier = values => values.relation_mode === "galgame" ? 2 : 1;
-    const effectiveSetting = field => {
-      const path = field.path;
-      if (!(path.startsWith("relation_daily_caps.") || path.startsWith("familiarity_growth.") || path.startsWith("economy.level_mult."))) return null;
-      if (path.startsWith("economy.level_mult.") && detailValues.value["economy.enabled"] === false) return "亲近度增长规则已关闭，此阶段倍率不生效。";
-      const raw = detailValues.value[path];
-      const base = Number(raw);
-      if (raw === "" || raw == null || !Number.isFinite(base)) return "请输入有效数值";
-      const actual = path.endsWith("_down") ? base : base * modeMultiplier(detailValues.value);
-      return `基础值 ${base}，当前模式实际 ${Number(actual.toFixed(6))}${path.includes("growth.") || path.includes("level_mult.") ? " 倍" : ""}（预览）`;
-    };
     const activeRuleSummary = computed(() => {
       const values = detailSettings.value?.active_values;
       if (!values) return null;
@@ -235,16 +253,16 @@ createApp({
     const evaluationFields = [
       {key:"small_timeout_sec", label:"初评超时（秒）", hint:"等待日常模型的最长时间。超时后本次不评分，已发起的调用仍计入用量。", min:0.1, step:0.1},
       {key:"large_timeout_sec", label:"复核超时（秒）", hint:"等待复核模型的最长时间。必须复核的互动若超时，本次不评分。", min:0.1, step:0.1},
-      {key:"window_sec", label:"初评窗口（秒）", hint:"向前回看这段时间，限制同一成员的初评次数。同一 Bot 下跨群合计。", min:1, step:1},
-      {key:"window_max_calls", label:"窗口内初评上限", hint:"每名成员在窗口内最多初评多少次。不同互动可分别评分；0 表示暂停初评。", min:0, step:1},
+      {key:"window_sec", label:"初评统计时段（秒）", hint:"向前回看这段时间，限制同一成员的初评次数。同一 Bot 下跨群合计。", min:1, step:1},
+      {key:"window_max_calls", label:"时段内初评次数", hint:"每名成员在窗口内最多初评多少次。不同互动可分别评分；0 表示暂停初评。", min:0, step:1},
       {key:"per_user_daily_small_cap", label:"每人每日初评上限", hint:"同一 Bot 每天为每名成员初评的次数，跨群合计。UTC 00:00 重置；0 表示暂停初评。", min:0, step:1},
       {key:"per_user_daily_large_cap", label:"每人每日复核上限", hint:"每名成员每天最多复核多少次。复核来自已初评的互动；0 表示不复核。UTC 00:00 重置。", min:0, step:1},
       {key:"per_bot_daily_small_cap", label:"每 Bot 每日初评上限", hint:"这个 Bot 每天的初评总次数，跨群和数据空间合计。UTC 00:00 重置；0 表示暂停初评。", min:0, step:1},
       {key:"per_bot_daily_large_cap", label:"每 Bot 每日复核上限", hint:"这个 Bot 每天的复核总次数，跨群和数据空间合计。UTC 00:00 重置；0 表示不复核。", min:0, step:1},
       {key:"context_turns", label:"近期发言条数", hint:"给模型参考的近期发言与 Bot 回复条数，仅限同群、同成员。0 表示不带近期发言。", min:0, max:20, step:1},
-      {key:"context_chars", label:"上下文总字数上限", hint:"限制引用、近期发言和已计分摘要的总长度。0 表示不带这些内容，当前消息仍会送评。", min:0, max:20000, step:1},
+      {key:"context_chars", label:"参考内容字数上限", hint:"限制引用、近期发言和已计分摘要的总长度。0 表示不带这些内容，当前消息仍会送评。", min:0, max:20000, step:1},
       {key:"context_days", label:"历史回顾天数", hint:"只参考这些天内的发言和已计分摘要，帮助模型理解上下文。0 表示不回顾历史。", min:0, max:90, step:1},
-      {key:"context_events", label:"已计分摘要条数", hint:"最多参考多少条本群已计分事件，帮助识别重复表达。历史不再计分；0 表示不带摘要。", min:0, max:20, step:1},
+      {key:"context_events", label:"已评估互动条数", hint:"最多参考多少条本群已计分事件，帮助识别重复表达。历史不再计分；0 表示不带摘要。", min:0, max:20, step:1},
     ];
     const restoreEvaluationDefaults = () => {
       if (evaluationLoading.value || modelSaving.value) return;
@@ -346,6 +364,29 @@ createApp({
       return Number.isInteger(n) ? String(n) : n.toFixed(1);
     };
     const fmtOptionalNum = (v) => (v == null || v === "" ? "-" : fmtNum(v));
+    const fmtSignedNum = (v) => {
+      if (v == null || v === "") return "-";
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "-";
+      const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
+      return n > 0 ? `+${s}` : s;
+    };
+    const dimBarStyle = (dim, val) => {
+      const n = Number(val);
+      if (val == null || val === "" || !Number.isFinite(n)) {
+        return { left: dim === "familiarity" ? "0%" : "50%", width: "0%" };
+      }
+      if (dim === "familiarity") {
+        const pct = Math.max(0, Math.min(100, n));
+        return { left: "0%", width: `${pct}%` };
+      }
+      const clamped = Math.max(-100, Math.min(100, n));
+      const width = Math.abs(clamped) / 2;
+      return {
+        left: clamped >= 0 ? "50%" : `${50 - width}%`,
+        width: `${width}%`,
+      };
+    };
     const logDeltaParts = (row, dimension = logDimension.value) => logDimensions
       .filter(item => dimension === "all" || item.key === dimension)
       .map(item => {
@@ -397,7 +438,7 @@ createApp({
     const promptRequest = () => {
       const params = { kind: promptKind.value, level: promptLevel.value };
       if (promptLevel.value === "group") {
-        if (!promptGroupIsValid()) throw new Error("群级覆盖请选择真实数字群");
+        if (!promptGroupIsValid()) throw new Error("指定群请选择真实数字群");
         params.group_id = String(promptGroupId.value);
       }
       return params;
@@ -445,6 +486,7 @@ createApp({
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
+      rememberTrigger();
       errorMsg.value = "";
       try {
         const data = await scopedPost("undo", { id: r.id, dry: "1" }, snapshot);
@@ -458,10 +500,11 @@ createApp({
         if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
       }
     };
-    const closeUndo = () => { undoPreview.value = null; };
+    const closeUndo = () => { undoPreview.value = null; restoreTriggerFocus(); };
     const confirmUndo = async () => {
       const preview = undoPreview.value;
       undoPreview.value = null;
+      restoreTriggerFocus();
       if (!preview || !isCurrentScope(preview.snapshot, preview.revision)) return;
       errorMsg.value = "";
       try {
@@ -478,8 +521,8 @@ createApp({
     };
 
     const selectedLog = ref(null);
-    const showDetail = (r) => { selectedLog.value = r; };
-    const closeDetail = () => { selectedLog.value = null; };
+    const showDetail = (r) => { rememberTrigger(); selectedLog.value = r; };
+    const closeDetail = () => { selectedLog.value = null; restoreTriggerFocus(); };
 
     // 成员详情弹窗（印象/标签/近期评审）
     const memberDetail = ref(null);
@@ -538,13 +581,14 @@ createApp({
       const candidate = selectedMode.value === "global" ? filterGroup.value : u.group_id;
       const groupId = String(candidate || "");
       if (selectedMode.value !== "global" && !isRealAccount(groupId)) {
-        errorMsg.value = "全局空间请先选择真实群，再查看成员详情";
+        errorMsg.value = "全局空间请先选择群，再查看成员详情";
         return;
       }
       if (selectedMode.value === "global" && groupId && !groups.value.some((g) => g.group_id === groupId)) {
-        errorMsg.value = "请选择当前空间中的真实群";
+        errorMsg.value = "请选择当前空间中的群";
         return;
       }
+      rememberTrigger();
       errorMsg.value = "";
       clearExpiryTimer();
       memberDetail.value = null;
@@ -569,6 +613,7 @@ createApp({
       memberLoading.value = false;
       memberSaveLoading.value = false;
       setMemberNotice("");
+      restoreTriggerFocus();
     };
     const refreshNames = async (row = null) => {
       const member = row || memberDetail.value, snapshot = scopeSnapshot(), revision = scopeRevision.value;
@@ -857,7 +902,7 @@ createApp({
         modelConfig.value = normalizeModelConfig({...modelConfig.value, ...body.config});
         maxConcurrentAssessments.value = body.max_concurrent_assessments;
         setModelNotice(data && data.restart_required
-          ? "配置已保存，重载插件后生效。当前运行配置仍显示在右侧。"
+          ? "配置已保存，重载插件后生效。当前生效设置仍显示在右侧。"
           : "评估配置已保存");
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) setModelNotice(String(e), true);
@@ -991,12 +1036,14 @@ createApp({
         errorMsg.value = "请输入备份文件名";
         return;
       }
+      rememberTrigger();
       restorePreview.value = { backup_name: name, snapshot, revision: scopeRevision.value };
     };
-    const closeRestore = () => { restorePreview.value = null; };
+    const closeRestore = () => { restorePreview.value = null; restoreTriggerFocus(); };
     const confirmRestore = async () => {
       const preview = restorePreview.value;
       restorePreview.value = null;
+      restoreTriggerFocus();
       if (!preview || !isCurrentScope(preview.snapshot, preview.revision)) return;
       backupLoading.value = true;
       errorMsg.value = "";
@@ -1148,13 +1195,29 @@ createApp({
       if (t === "settings" && !detailSettings.value && !detailLoading.value) loadSettings();
     };
 
+    const handleKeydown = (e) => {
+      if (!e || e.key !== "Escape") return;
+      if (undoPreview.value) { closeUndo(); return; }
+      if (restorePreview.value) { closeRestore(); return; }
+      if (selectedLog.value) { closeDetail(); return; }
+      if (memberDetail.value) { closeMember(); }
+    };
+
     onMounted(async () => {
+      if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+        window.addEventListener("keydown", handleKeydown);
+      }
       try {
         await bridge?.ready?.();
       } catch (e) {
         /* ignore */
       }
       await fetchBots();
+    });
+    onUnmounted(() => {
+      if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+        window.removeEventListener("keydown", handleKeydown);
+      }
     });
 
     return {
@@ -1168,7 +1231,7 @@ createApp({
       resetUserPage, changeUserPage, changeListFilter,
       bots, selectedBot, selectedMode, selectedBotInfo, scopeLabel,
       scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
-      fmtTime, fmtNum, fmtOptionalNum, fmtDelta, fmtIdle, fmtUser, sourceLabel,
+      fmtTime, fmtNum, fmtOptionalNum, fmtSignedNum, dimBarStyle, fmtDelta, fmtIdle, fmtUser, sourceLabel,
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, showDetail, closeDetail,
       memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
@@ -1182,8 +1245,8 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels, modelRevision,
-      detailSettings, detailValues, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
-      restoreSectionDefaults, effectiveSetting, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions,
+      displayReason, displayStatus, detailSettings, detailValues, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
+      restoreSectionDefaults, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions,
       evaluationFields, restoreEvaluationDefaults,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
     };
@@ -1192,66 +1255,106 @@ createApp({
     <div class="xx-page">
       <header class="xx-header">
         <div class="xx-title">
-          <h2>Bond 关系好感系统</h2>
-          <p class="xx-sub">成员关系、提示词与评估设置</p>
+          <span class="xx-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/><circle cx="18" cy="6" r="1.5" fill="currentColor" stroke="none"/></svg>
+          </span>
+          <div class="xx-title-text">
+            <h2>Bond 关系好感系统</h2>
+            <p class="xx-sub">成员羁绊、提示词与互动评估管理</p>
+          </div>
         </div>
         <div class="xx-header-actions">
-        <nav class="xx-tabs" aria-label="页面导航">
-          <button class="xx-tab" :class="{ active: tab === 'users' }" @click="switchTab('users')">当前总览</button>
-          <button class="xx-tab" :class="{ active: tab === 'logs' }" @click="switchTab('logs')">变动流水</button>
-          <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
-          <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
-          <button class="xx-tab" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">详细设置</button>
-        </nav>
-        <button class="xx-btn xx-btn-mini xx-theme-toggle" @click="toggleTheme" :aria-label="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">{{ theme === 'dark' ? '浅色模式' : '深色模式' }}</button>
+          <nav class="xx-tabs" aria-label="页面导航">
+            <button class="xx-tab" :class="{ active: tab === 'users' }" @click="switchTab('users')">当前总览</button>
+            <button class="xx-tab" :class="{ active: tab === 'logs' }" @click="switchTab('logs')">变动流水</button>
+            <button class="xx-tab" :class="{ active: tab === 'prompts' }" @click="switchTab('prompts')">提示词</button>
+            <button class="xx-tab" :class="{ active: tab === 'evaluation' }" @click="switchTab('evaluation')">评估</button>
+            <button class="xx-tab" :class="{ active: tab === 'settings' }" @click="switchTab('settings')">详细设置</button>
+          </nav>
+          <button class="xx-btn xx-btn-mini xx-theme-toggle" @click="toggleTheme" :aria-label="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">{{ theme === 'dark' ? '☀ 浅色模式' : '☾ 深色模式' }}</button>
         </div>
       </header>
-      <div class="xx-string"></div>
 
-      <section class="xx-scope-bar">
-        <div class="xx-scope-field">
-          <label for="xx-bot-select">Bot</label>
-          <select id="xx-bot-select" v-model="selectedBot" @change="selectBot" :disabled="scopeLoading || modeLoading">
-            <option value="">选择 Bot</option>
-            <option v-for="b in bots" :key="b.bot_id" :value="b.bot_id">{{ b.bot_id }}</option>
-          </select>
+      <section class="xx-scope-bar" aria-label="Bot 与数据空间">
+        <div class="xx-scope-main">
+          <div class="xx-scope-field">
+            <label for="xx-bot-select">当前 Bot</label>
+            <select id="xx-bot-select" v-model="selectedBot" @change="selectBot" :disabled="scopeLoading || modeLoading">
+              <option value="">选择 Bot</option>
+              <option v-for="b in bots" :key="b.bot_id" :value="b.bot_id">{{ b.bot_id }}</option>
+            </select>
+          </div>
+          <div class="xx-scope-field">
+            <label for="xx-mode-select">数据空间</label>
+            <select id="xx-mode-select" v-model="selectedMode" @change="applyMode" :disabled="!selectedBot || scopeLoading || modeLoading">
+              <option value="per_group">按群空间</option>
+              <option value="global">全局空间</option>
+            </select>
+          </div>
+          <div class="xx-scope-current">
+            <span>当前生效空间</span>
+            <strong class="xx-scope-badge" :class="{ 'is-empty': !selectedBot }">{{ selectedBot ? (selectedBot + ' · ' + scopeLabel) : "未选择 Bot" }}</strong>
+          </div>
+          <div class="xx-scope-actions">
+            <button class="xx-btn xx-btn-mini" @click="fetchBots()" :disabled="scopeLoading || modeLoading">刷新 Bot 列表</button>
+          </div>
         </div>
-        <div class="xx-scope-field">
-          <label for="xx-mode-select">数据空间</label>
-          <select id="xx-mode-select" v-model="selectedMode" @change="applyMode" :disabled="!selectedBot || scopeLoading || modeLoading">
-            <option value="per_group">按群空间</option>
-            <option value="global">全局空间</option>
-          </select>
+        <div v-if="!selectedBot" class="xx-scope-empty-callout">
+          <span>尚未发现已连接 Bot，你仍可先配置全局规则与评估模型。</span>
+          <button class="xx-btn xx-btn-mini" @click="switchTab('settings')">完成基础设置</button>
         </div>
-        <div class="xx-scope-current">
-          <span>当前模式</span>
-          <strong>{{ selectedBot ? scopeLabel : "未选择" }}</strong>
+        <details class="xx-backup-drawer">
+          <summary>备份与恢复 <span v-if="latestBackup" class="xx-scope-note">（最近备份：<code>{{ latestBackup }}</code>）</span></summary>
+          <div class="xx-backup-body">
+            <button class="xx-btn xx-btn-mini" @click="backupScope" :disabled="!selectedBot || backupLoading || scopeLoading">
+              {{ backupLoading ? "处理中…" : "备份当前空间" }}
+            </button>
+            <span v-if="latestBackup" class="xx-scope-note">最近备份：<code>{{ latestBackup }}</code></span>
+            <input class="xx-input xx-backup-name" v-model="restoreName" aria-label="备份文件名" placeholder="输入备份文件名以恢复">
+            <button class="xx-btn xx-btn-danger xx-btn-mini" @click="prepareRestore" :disabled="!selectedBot || backupLoading || !restoreName.trim()">
+              恢复至当前空间
+            </button>
+          </div>
+        </details>
+      </section>
+
+      <p v-if="errorMsg" class="xx-error" role="alert">{{ errorMsg }}</p>
+
+      <section v-if="tab === 'users'" class="xx-today-summary" aria-label="今日概览" :aria-busy="todayLoading">
+        <div class="xx-today-head">
+          <div class="xx-today-title">
+            <strong>今日概览</strong>
+            <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="今日概览：统计范围" aria-describedby="today-summary-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="today-summary-hint">初评、复核按所选 Bot 跨群合计，失败调用也计入；UTC 日期 {{ todaySummary ? todaySummary.call_day : '-' }}。变动人数按当前空间的 {{ todaySummary ? todaySummary.relation_timezone : '-' }} 日期 {{ todaySummary ? todaySummary.relation_day : '-' }} 统计，包含实际改分和撤销，不含临时关系与时间衰减；同一成员只算一人，不受列表筛选影响。</span></span>
+          </div>
         </div>
-        <div class="xx-scope-actions">
-          <button class="xx-btn xx-btn-mini" @click="fetchBots()" :disabled="scopeLoading || modeLoading">刷新 Bot 列表</button>
-          <button class="xx-btn xx-btn-mini" @click="backupScope" :disabled="!selectedBot || backupLoading || scopeLoading">
-            {{ backupLoading ? "处理中…" : "备份当前空间" }}
-          </button>
-          <input class="xx-input xx-backup-name" v-model="restoreName" placeholder="备份文件名">
-          <button class="xx-btn xx-btn-danger xx-btn-mini" @click="prepareRestore" :disabled="!selectedBot || backupLoading || !restoreName.trim()">
-            恢复
-          </button>
+        <div v-if="todaySummary" class="xx-today-cards">
+          <div class="xx-today-unit">
+            <span class="xx-today-unit-label">初评已用 / 限额</span>
+            <b class="xx-today-unit-value">{{ todaySummary.initial.used }} <small>/ {{ todaySummary.initial.limit }}</small></b>
+          </div>
+          <div class="xx-today-unit">
+            <span class="xx-today-unit-label">复核已用 / 限额</span>
+            <b class="xx-today-unit-value">{{ todaySummary.review.used }} <small>/ {{ todaySummary.review.limit }}</small></b>
+          </div>
+          <div class="xx-today-unit">
+            <span class="xx-today-unit-label">关系变动成员</span>
+            <b class="xx-today-unit-value">{{ todaySummary.changed_members }} <small>人</small></b>
+          </div>
         </div>
-        <span v-if="latestBackup" class="xx-scope-note">最近备份：<code>{{ latestBackup }}</code></span>
-        <span v-if="!selectedBot" class="xx-scope-note">尚未发现 Bot，可先<button class="xx-btn xx-btn-mini" @click="switchTab('settings')">完成基础设置</button></span>
+        <div v-else class="xx-today-empty" role="status">{{ !selectedBot ? '选择 Bot 后查看今日统计' : todayLoading ? '加载中…' : todayError || '尚未加载' }}</div>
       </section>
 
       <div v-if="tab === 'users' || tab === 'logs'" class="xx-filters">
-        <select v-model="filterGroup" @change="changeListFilter">
+        <select v-model="filterGroup" @change="changeListFilter" aria-label="按群筛选">
           <option value="">全部群</option>
           <option v-for="g in groups" :key="g.group_id" :value="g.group_id">
             {{ g.group_id }}（{{ g.count }}）
           </option>
         </select>
-        <input class="xx-input" v-model="filterUser" placeholder="按 QQ 号筛选（模糊）" @input="tab === 'users' && resetUserPage()" @keyup.enter="changeListFilter">
+        <input class="xx-input" v-model="filterUser" aria-label="按 QQ 号筛选" placeholder="输入完整或部分 QQ 号" @input="tab === 'users' && resetUserPage()" @keyup.enter="changeListFilter">
         <select v-if="tab === 'logs'" v-model="logDimension" @change="fetchLogs" aria-label="流水维度"><option value="all">全部维度</option><option v-for="item in logDimensions" :key="item.key" :value="item.key">{{ item.label }}</option></select>
         <select v-if="tab === 'logs'" v-model="logSource" @change="fetchLogs" aria-label="流水来源"><option value="">全部来源</option><option value="judge">仅自动评估</option></select>
-        <select v-if="tab === 'logs'" v-model="filterLimit" @change="fetchLogs">
+        <select v-if="tab === 'logs'" v-model="filterLimit" @change="fetchLogs" aria-label="流水条数上限">
           <option :value="100">最近 100</option>
           <option :value="300">最近 300</option>
           <option :value="1000">最近 1000</option>
@@ -1261,29 +1364,17 @@ createApp({
         </button>
       </div>
 
-      <p v-if="errorMsg" class="xx-error">{{ errorMsg }}</p>
-
-      <section v-if="tab === 'users'" class="xx-today-summary" aria-label="今日概览" :aria-busy="todayLoading">
-        <strong>今日概览</strong>
-        <template v-if="todaySummary">
-          <span>初评 <b>{{ todaySummary.initial.used }} / {{ todaySummary.initial.limit }}</b></span>
-          <span>复核 <b>{{ todaySummary.review.used }} / {{ todaySummary.review.limit }}</b></span>
-          <span>关系变动成员 <b>{{ todaySummary.changed_members }}</b> 人</span>
-          <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="今日概览：统计范围" aria-describedby="today-summary-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="today-summary-hint">初评、复核按所选 Bot 跨群合计，失败调用也计入；UTC 日期 {{ todaySummary.call_day }}。变动人数按当前空间的 {{ todaySummary.relation_timezone }} 日期 {{ todaySummary.relation_day }} 统计，包含实际改分和撤销，不含临时关系与时间衰减；同一成员只算一人，不受列表筛选影响。</span></span>
-        </template>
-        <span v-else role="status">{{ !selectedBot ? '选择 Bot 后查看' : todayLoading ? '加载中…' : todayError || '尚未加载' }}</span>
-        <span v-if="todaySummary" class="xx-help">所选 Bot 用量 · 当前空间人数</span>
-      </section>
-
       <div v-if="tab === 'users'" class="xx-member-pagination" aria-label="成员列表分页">
-        <span role="status" aria-live="polite">共 {{ userMatchedCount }} 条成员记录，当前显示范围 {{ userTotal }} 条</span>
-        <button v-if="userCollapsedCount" class="xx-btn xx-btn-mini" @click="includeZeroUsers = true; resetUserPage()" :disabled="loading">展开 {{ userCollapsedCount }} 条已观察的零值记录</button>
-        <button v-else-if="includeZeroUsers && !filterUser.trim()" class="xx-btn xx-btn-mini" @click="includeZeroUsers = false; resetUserPage()" :disabled="loading">折叠已观察的零值记录（{{ userZeroCount }}）</button>
-        <span v-if="filterUser.trim()" class="xx-help">搜索包含已折叠的零值成员</span>
-        <label>每页 <select v-model.number="userPageSize" @change="resetUserPage()" :disabled="loading"><option v-for="size in [30, 50, 100, 200]" :key="size" :value="size">{{ size }}</option></select> 条</label>
-        <button class="xx-btn xx-btn-mini" @click="changeUserPage(userPage - 1)" :disabled="loading || userPage <= 1">上一页</button>
-        <span>第 {{ userPage }} / {{ userPages }} 页</span>
-        <button class="xx-btn xx-btn-mini" @click="changeUserPage(userPage + 1)" :disabled="loading || userPage >= userPages">下一页</button>
+        <span role="status" aria-live="polite">共 {{ userMatchedCount }} 条成员记录，当前显示 {{ userTotal }} 条</span>
+        <button v-if="userCollapsedCount" class="xx-btn xx-btn-mini" @click="includeZeroUsers = true; resetUserPage()" :disabled="loading">展开 {{ userCollapsedCount }} 位尚无关系变化的成员</button>
+        <button v-else-if="includeZeroUsers && !filterUser.trim()" class="xx-btn xx-btn-mini" @click="includeZeroUsers = false; resetUserPage()" :disabled="loading">折叠尚无关系变化的成员（{{ userZeroCount }}）</button>
+        <span v-if="filterUser.trim()" class="xx-help">搜索会包含已折叠的成员</span>
+        <div class="xx-pagination-nav">
+          <label>每页 <select v-model.number="userPageSize" @change="resetUserPage()" :disabled="loading"><option v-for="size in [30, 50, 100, 200]" :key="size" :value="size">{{ size }}</option></select> 条</label>
+          <button class="xx-btn xx-btn-mini" @click="changeUserPage(userPage - 1)" :disabled="loading || userPage <= 1">上一页</button>
+          <span>第 {{ userPage }} / {{ userPages }} 页</span>
+          <button class="xx-btn xx-btn-mini" @click="changeUserPage(userPage + 1)" :disabled="loading || userPage >= userPages">下一页</button>
+        </div>
       </div>
 
       <!-- 当前总览 -->
@@ -1291,33 +1382,62 @@ createApp({
         <table class="xx-table">
           <thead>
             <tr>
-              <th>群</th><th>QQ</th><th>熟悉度</th><th>亲近度</th><th>信任度</th><th>关系称谓</th><th>最近互动</th><th>状态</th><th>印象/标签</th><th></th>
+              <th>成员 / QQ</th><th>所属群</th><th>关系称谓</th><th>熟悉度</th><th>亲近度</th><th>信任度</th><th>最近互动</th><th>状态</th><th>印象与标签</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!visibleUsers.length">
-              <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "已折叠零值成员，可点击上方展开" : "暂无匹配成员") }}</td>
+              <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "尚无关系变化的成员已折叠，可在上方展开" : "暂无匹配成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
+              <td :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">
+                <div class="xx-user-cell">
+                  <span class="xx-user-nick" :class="{ 'is-unknown': !u.nickname }">{{ u.nickname || "昵称未知" }}</span>
+                  <span class="xx-user-id xx-mono">QQ {{ u.user_id }}</span>
+                </div>
+              </td>
               <td class="xx-mono">{{ selectedMode === 'global' ? '全局共享' : u.group_id }}</td>
-              <td class="xx-mono" :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">{{ fmtUser(u) }}</td>
-              <td>{{ fmtOptionalNum(u.familiarity) }}</td>
-              <td>{{ fmtOptionalNum(u.affinity) }}</td>
-              <td>{{ fmtOptionalNum(u.trust) }}</td>
-              <td>{{ u.relation_title || "-" }}</td>
+              <td><span class="xx-title-badge">{{ u.relation_title || "-" }}</span></td>
+              <td>
+                <div class="xx-dim-cell">
+                  <div class="xx-dim-head">
+                    <span class="xx-dim-badge xx-dim-f">F</span>
+                    <span class="xx-dim-val">{{ fmtOptionalNum(u.familiarity) }}</span>
+                  </div>
+                  <div class="xx-dim-track" aria-hidden="true"><i class="xx-dim-fill is-f" :style="dimBarStyle('familiarity', u.familiarity)"></i></div>
+                </div>
+              </td>
+              <td>
+                <div class="xx-dim-cell">
+                  <div class="xx-dim-head">
+                    <span class="xx-dim-badge xx-dim-a">A</span>
+                    <span class="xx-dim-val" :class="u.affinity > 0 ? 'xx-up' : (u.affinity < 0 ? 'xx-down' : 'xx-zero')">{{ fmtSignedNum(u.affinity) }}</span>
+                  </div>
+                  <div class="xx-dim-track is-signed" aria-hidden="true"><i class="xx-dim-fill" :class="u.affinity < 0 ? 'is-neg' : 'is-a-pos'" :style="dimBarStyle('affinity', u.affinity)"></i></div>
+                </div>
+              </td>
+              <td>
+                <div class="xx-dim-cell">
+                  <div class="xx-dim-head">
+                    <span class="xx-dim-badge xx-dim-t">T</span>
+                    <span class="xx-dim-val" :class="u.trust > 0 ? 'xx-up' : (u.trust < 0 ? 'xx-down' : 'xx-zero')">{{ fmtSignedNum(u.trust) }}</span>
+                  </div>
+                  <div class="xx-dim-track is-signed" aria-hidden="true"><i class="xx-dim-fill" :class="u.trust < 0 ? 'is-neg' : 'is-t-pos'" :style="dimBarStyle('trust', u.trust)"></i></div>
+                </div>
+              </td>
               <td class="xx-mono">{{ fmtIdle(u.idle_days) }}</td>
               <td>
                 <span v-if="u.decayed" class="xx-tag">衰减中</span>
                 <span v-else-if="u.idle_days != null && u.idle_days >= 3" class="xx-tag">{{ u.idle_days }}天未动</span>
-                <span v-else>-</span>
+                <span v-else class="xx-muted-text">正常</span>
               </td>
               <td class="xx-imp-cell">
                 <div class="xx-imp">
                   <div v-if="u.tags && u.tags.length" class="xx-chips">
                     <span v-for="t in u.tags" :key="t" class="xx-chip">{{ t }}</span>
                   </div>
-                  <p v-if="u.impression" class="xx-imp-text" :title="u.impression">{{ u.impression.length > 12 ? u.impression.slice(0, 12) + '…' : u.impression }}</p>
-                  <span v-if="!u.impression && !(u.tags && u.tags.length)" class="xx-muted">-</span>
+                  <p v-if="u.impression" class="xx-imp-text" :title="u.impression">{{ u.impression.length > 18 ? u.impression.slice(0, 18) + '…' : u.impression }}</p>
+                  <span v-if="!u.impression && !(u.tags && u.tags.length)" class="xx-muted-text">-</span>
                 </div>
               </td>
               <td class="xx-actions">
@@ -1329,13 +1449,13 @@ createApp({
         </table>
       </div>
 
-      <p v-if="tab === 'logs'" class="xx-help">维度筛选只显示该维度有已知非零增量的事件，不影响评分。旧流水的 F/T 未知；仅保留 A 的历史前后值。撤销始终撤销整个事件的全部维度。</p>
+      <p v-if="tab === 'logs'" class="xx-help" style="margin: 0 0 12px;">筛选后只显示该维度发生变化的记录。旧记录缺失的数值显示为未知；撤销会恢复整条记录涉及的所有维度。</p>
       <!-- 变动流水 -->
       <div v-if="tab === 'logs'" class="xx-table-wrap">
         <table class="xx-table">
           <thead>
             <tr>
-              <th>时间</th><th>群</th><th>QQ</th><th>维度增量</th><th>A 亲近度前后</th><th>原因</th><th>来源</th><th>操作</th>
+              <th>时间</th><th>群</th><th>QQ</th><th>关系变化</th><th>亲近度前后</th><th>原因</th><th>来源</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1348,7 +1468,7 @@ createApp({
               <td class="xx-mono">{{ r.user_id }}</td>
               <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" :class="change.value > 0 ? 'xx-up' : (change.value < 0 ? 'xx-down' : 'xx-zero')">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
               <td class="xx-mono">{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</td>
-              <td>{{ r.reason || "-" }}</td>
+              <td class="xx-reason-cell" :title="displayReason(r.reason)">{{ displayReason(r.reason) }}</td>
               <td><span class="xx-tag">{{ sourceLabel(r.source) }}</span></td>
               <td class="xx-actions">
                 <button class="xx-btn xx-btn-mini" @click="showDetail(r)">详情</button>
@@ -1366,7 +1486,7 @@ createApp({
         <div class="xx-panel-head">
           <div>
             <h3>提示词设置</h3>
-            <p class="xx-help">全局设置对所有 Bot 生效；群级覆盖按当前 Bot 和所选群保存。</p>
+            <p class="xx-help">全局设置对所有 Bot 生效；指定群按当前 Bot 和所选群保存，保存后即时生效。</p>
           </div>
           <button class="xx-btn xx-btn-mini" @click="loadPrompts()" :disabled="promptLoading || promptSaving">
             {{ promptLoading ? "加载中…" : "刷新" }}
@@ -1381,14 +1501,14 @@ createApp({
             </select>
           </label>
           <label class="xx-scope-field">
-            <span>作用层级</span>
+            <span>适用范围</span>
             <select v-model="promptLevel" @change="loadPrompts()" :disabled="promptLoading || promptSaving">
               <option value="global">全局</option>
-              <option value="group">群级覆盖</option>
+              <option value="group">指定群</option>
             </select>
           </label>
           <label v-if="promptLevel === 'group'" class="xx-scope-field">
-            <span>真实群</span>
+            <span>选择群</span>
             <select v-model="promptGroupId" @change="loadPrompts()" :disabled="promptLoading || promptSaving || !groups.length">
               <option value="">选择群</option>
               <option v-for="g in groups" :key="g.group_id" :value="g.group_id">{{ g.group_id }}</option>
@@ -1399,7 +1519,7 @@ createApp({
         <div class="xx-settings-grid">
           <section class="xx-form-card">
             <h4>编辑模板</h4>
-            <p class="xx-muted-text">评估结果的格式由程序补充，这里只编辑判断要求。</p>
+            <p class="xx-muted-text">填写你希望模型如何判断互动即可。</p>
             <label class="xx-form-row">
               <span>模式</span>
               <select v-model="promptMode" :disabled="promptLoading || promptSaving">
@@ -1408,24 +1528,24 @@ createApp({
               </select>
             </label>
             <label class="xx-form-row xx-form-row-block">
-              <span>模板</span>
+              <span>模板内容</span>
               <textarea class="xx-textarea xx-prompt-editor" v-model="promptTemplate" :disabled="promptMode === 'default' || promptLoading || promptSaving" placeholder="自定义模式下填写模板"></textarea>
             </label>
-            <p v-if="promptKind === 'behavior'" class="xx-muted-text">行为模板可用：{relationship}、{impression}、{events}</p>
+            <p v-if="promptKind === 'behavior'" class="xx-muted-text">行为模板可用占位符：<code>{relationship}</code>、<code>{impression}</code>、<code>{events}</code></p>
             <div class="xx-modal-actions">
               <button class="xx-btn xx-btn-mini" @click="savePrompt('reset')" :disabled="promptLoading || promptSaving">恢复默认</button>
               <button class="xx-btn xx-btn-mini" @click="savePrompt('preview')" :disabled="promptLoading || promptSaving">预览未保存内容</button>
-              <button class="xx-btn" @click="savePrompt('save')" :disabled="promptLoading || promptSaving">
+              <button class="xx-btn xx-btn-primary" @click="savePrompt('save')" :disabled="promptLoading || promptSaving">
                 {{ promptSaving ? "保存中…" : "保存模板" }}
               </button>
             </div>
           </section>
           <section class="xx-form-card">
             <h4>当前生效内容</h4>
-            <p class="xx-muted-text">{{ promptSettings && promptSettings.effective ? ('来源：' + promptSettings.effective.source) : '全局设置' }}</p>
+            <p class="xx-muted-text"><span class="xx-tag">{{ promptSettings && promptSettings.effective ? ('来源：' + displayStatus(promptSettings.effective.source)) : '全局设置' }}</span></p>
             <pre class="xx-preview">{{ promptResolved || "暂无内容" }}</pre>
             <div v-if="promptPreview" class="xx-preview-block">
-              <h4>未保存预览</h4>
+              <h4>草稿预览</h4>
               <pre class="xx-preview">{{ promptPreview }}</pre>
             </div>
           </section>
@@ -1447,11 +1567,11 @@ createApp({
         <div class="xx-member-pagination">
           <label>按维度查看评估变动 <select v-model="logDimension"><option value="all">全部维度</option><option v-for="item in logDimensions" :key="item.key" :value="item.key">{{ item.label }}</option></select></label>
           <button class="xx-btn xx-btn-mini" @click="showEvaluationChanges()">查看评估流水</button>
-          <span class="xx-help">只筛选流水。</span>
+
         </div>
         <div class="xx-settings-grid xx-evaluation-grid">
           <details class="xx-form-card xx-evaluation-settings">
-            <summary>评估设置</summary>
+            <summary>评估高级设置</summary>
             <p class="xx-help">开关和模型在“详细设置 → 基础设置”中选择。</p>
             <div v-for="field in evaluationFields" :key="field.key" class="xx-form-row">
               <span class="xx-field-label"><label :for="'evaluation-' + field.key">{{ field.label }}</label>
@@ -1466,24 +1586,24 @@ createApp({
               <input id="evaluation-concurrent" class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments" :disabled="evaluationLoading || modelSaving">
             </div>
             <div class="xx-modal-actions">
-              <button class="xx-btn" @click="restoreEvaluationDefaults()" :disabled="evaluationLoading || modelSaving">恢复此区默认设置</button>
+              <button class="xx-btn xx-btn-mini" @click="restoreEvaluationDefaults()" :disabled="evaluationLoading || modelSaving">恢复此区默认设置</button>
               <button class="xx-btn xx-btn-primary" @click="saveModels" :disabled="evaluationLoading || modelSaving || !modelRevision">
                 {{ modelSaving ? "保存中…" : "保存配置" }}
               </button>
             </div>
           </details>
           <section class="xx-form-card">
-            <h4>当前运行配置</h4>
+            <h4>当前生效设置</h4>
             <dl class="xx-config-list">
               <div><dt>状态</dt><dd>{{ activeModelConfig.enabled ? "已启用" : "未启用" }}</dd></div>
               <div><dt>日常模型</dt><dd class="xx-mono">{{ activeModelConfig.small_provider_id || "未设置" }}</dd></div>
               <div><dt>复核模型</dt><dd class="xx-mono">{{ activeModelConfig.large_provider_id || "未设置" }}</dd></div>
               <div><dt>模式</dt><dd>{{ activeModelConfig.assessment_mode === 'single' ? "单模型" : "分级复核" }}</dd></div>
               <div><dt>超时</dt><dd>{{ activeModelConfig.small_timeout_sec || "-" }} / {{ activeModelConfig.large_timeout_sec || "-" }} 秒</dd></div>
-              <div><dt>滚动初评窗口</dt><dd>{{ activeModelConfig.window_sec }} 秒 / {{ activeModelConfig.window_max_calls }} 次</dd></div>
+              <div><dt>初评频率限制</dt><dd>{{ activeModelConfig.window_sec }} 秒 / {{ activeModelConfig.window_max_calls }} 次</dd></div>
               <div><dt>每日初评 / 复核（UTC）</dt><dd>个人 {{ activeModelConfig.per_user_daily_small_cap }} / {{ activeModelConfig.per_user_daily_large_cap }}；Bot {{ activeModelConfig.per_bot_daily_small_cap }} / {{ activeModelConfig.per_bot_daily_large_cap }}</dd></div>
               <div><dt>参考上下文</dt><dd>{{ activeModelConfig.context_turns }} 条 / {{ activeModelConfig.context_chars }} 字符；摘要 {{ activeModelConfig.context_days }} 天 / {{ activeModelConfig.context_events }} 条</dd></div>
-              <div><dt>运行并发上限</dt><dd>{{ activeMaxConcurrentAssessments ?? "未知" }}</dd></div>
+              <div><dt>同时评估人数</dt><dd>{{ activeMaxConcurrentAssessments ?? "未知" }}</dd></div>
             </dl>
           </section>
         </div>
@@ -1499,29 +1619,29 @@ createApp({
               <tbody>
                 <tr v-if="!assessmentStats.calls.length"><td colspan="6" class="xx-empty">暂无调用记录</td></tr>
                 <tr v-for="call in assessmentStats.calls" :key="call.day + call.group_id + call.tier + call.status">
-                  <td class="xx-mono">{{ call.day }}</td><td class="xx-mono">{{ call.group_id }}</td><td>{{ call.tier }}</td><td>{{ call.status }}</td><td>{{ call.count }}</td><td>{{ call.tokens == null ? "未提供" : call.tokens }}</td>
+                  <td class="xx-mono">{{ call.day }}</td><td class="xx-mono">{{ call.group_id }}</td><td>{{ displayStatus(call.tier) }}</td><td>{{ displayStatus(call.status) }}</td><td>{{ call.count }}</td><td>{{ call.tokens == null ? "未提供" : call.tokens }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div class="xx-event-list">
-            <span v-for="(count, status) in assessmentStats.events" :key="status" class="xx-tag">{{ status }}：{{ count }}</span>
+            <span v-for="(count, status) in assessmentStats.events" :key="status" class="xx-tag">{{ displayStatus(status) }}：{{ count }}</span>
           </div>
         </section>
       </section>
 
       <section v-if="tab === 'settings'" class="xx-panel">
         <h3>详细设置</h3>
-        <p class="xx-help">对所有 Bot 生效。修改后保存并重载插件；下方预览不会立即改变运行值。</p>
+        <p class="xx-help">设置适用于所有 Bot，保存并重载插件后生效。</p>
         <p v-if="detailNotice" role="status" :class="['xx-status', detailNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ detailNotice }}</p>
         <div class="xx-settings-toolbar xx-detail-toolbar">
           <button class="xx-btn xx-btn-mini" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
           <button class="xx-btn xx-btn-primary" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
         <div class="xx-form-card" v-if="activeRuleSummary">
-          <h4>当前运行关系参数 · {{ activeRuleSummary.mode }}</h4>
+          <h4>当前关系设置 · {{ activeRuleSummary.mode }}</h4>
           <div class="xx-table-wrap xx-rule-summary">
-            <table class="xx-table" aria-label="当前运行关系参数">
+            <table class="xx-table" aria-label="当前关系设置">
               <thead><tr><th scope="col">维度</th><th scope="col">每日加分 / 扣分上限</th><th scope="col">衰减速度</th><th scope="col">基线</th></tr></thead>
               <tbody><tr v-for="cap in activeRuleSummary.caps" :key="cap.key">
                 <th scope="row">{{ cap.label }}</th><td>+{{ cap.up }} / −{{ cap.down }}</td><td>{{ activeRuleSummary[cap.key] }}</td>
@@ -1532,10 +1652,10 @@ createApp({
         </div>
         <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
           <summary>{{ group.title }}</summary>
-          <p v-if="group.group === 'rules'" class="xx-help">只填写基础值，右侧显示当前模式的计算结果。
+          <p v-if="group.group === 'rules'" class="xx-help">
             <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="关系变化：额度与区间说明" aria-describedby="rules-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="rules-hint">加分和扣分分别累计，时间衰减不占额度。倍率区间按默认分界标注；修改过分界时，以自定义分界为准。</span></span>
           </p>
-          <button v-if="group.group !== 'basic'" class="xx-btn xx-btn-mini" @click="restoreSectionDefaults(group.group)" :disabled="detailLoading">恢复此区默认设置</button>
+          <button v-if="group.group !== 'basic'" class="xx-btn xx-btn-mini" style="margin-top: 8px;" @click="restoreSectionDefaults(group.group)" :disabled="detailLoading">恢复此区默认设置</button>
           <div v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
             <span class="xx-field-label"><label :for="'setting-' + field.path">{{ field.label }}</label>
               <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="field.label + '：说明'" :aria-describedby="'hint-' + field.path">?</button><span class="xx-help-tooltip" role="tooltip" :id="'hint-' + field.path">{{ field.hint }}</span></span>
@@ -1552,114 +1672,123 @@ createApp({
             <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
             <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="(detailValues[field.path] || []).join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :placeholder="field.path === 'master_ids' ? listPlaceholder(field.path) : ''">
-            <span v-if="effectiveSetting(field) !== null" class="xx-help">{{ effectiveSetting(field) }}</span>
           </div>
         </details>
         <div class="xx-form-card">
           <h4>当前空间的诊断记录</h4>
           <p class="xx-help">开启“关系诊断记录”后可导出本空间的运行记录。最多保留7天、合计20MB，不保存聊天原文，不自动上传。</p>
-          <div class="xx-actions">
-            <button class="xx-btn" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
-            <button class="xx-btn" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
-            <button class="xx-btn" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
-            <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn">下载脱敏记录</a>
+          <div class="xx-actions" style="margin-top: 12px;">
+            <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
+            <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
+            <button class="xx-btn" :class="diagnosticConfirm ? 'xx-btn-danger' : 'xx-btn-mini'" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
+            <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn xx-btn-primary">下载脱敏记录</a>
           </div>
-          <p v-if="diagnosticNotice" role="status">{{ diagnosticNotice }}</p>
-          <dl v-if="diagnosticStats" class="xx-runtime-list">
+          <p v-if="diagnosticNotice" class="xx-help" role="status">{{ diagnosticNotice }}</p>
+          <dl v-if="diagnosticStats" class="xx-runtime-list" style="margin-top: 12px;">
             <div><dt>当前记录开关</dt><dd>{{ diagnosticStats.enabled ? "已开启" : "已关闭" }}</dd></div>
-            <div><dt>本次加载已写入</dt><dd>{{ diagnosticStats.counters?.written || 0 }} 条</dd></div>
+            <div><dt>本次运行已记录</dt><dd>{{ diagnosticStats.counters?.written || 0 }} 条</dd></div>
             <div><dt>等待写入</dt><dd>{{ diagnosticStats.queued || 0 }} 条</dd></div>
             <div><dt>丢弃或写入失败</dt><dd>{{ diagnosticStats.counters?.dropped || 0 }} / {{ diagnosticStats.counters?.write_errors || 0 }}</dd></div>
-            <div><dt>记录完整性</dt><dd>{{ diagnosticStats.gap ? "存在记录缺口，请查看导出说明" : "本次加载尚未报告缺口；历史完整性未知" }}</dd></div>
+            <div><dt>记录完整性</dt><dd>{{ diagnosticStats.gap ? "存在记录缺口，请查看导出说明" : "本次运行未发现缺失，历史记录完整性未知" }}</dd></div>
           </dl>
         </div>
       </section>
 
       <!-- 变动详情弹窗：完整发言 + AI 原因 -->
-      <div v-if="selectedLog" class="xx-modal" @click.self="closeDetail">
+      <div v-if="selectedLog" class="xx-modal" role="dialog" aria-modal="true" aria-labelledby="xx-log-modal-title" @click.self="closeDetail">
         <div class="xx-modal-box">
           <header class="xx-modal-header">
-            <span>变动详情</span>
-            <button class="xx-modal-close" @click="closeDetail">×</button>
+            <span id="xx-log-modal-title">变动详情</span>
+            <button type="button" class="xx-modal-close" aria-label="关闭变动详情" @click="closeDetail">×</button>
           </header>
           <div class="xx-modal-meta xx-mono">
-            {{ fmtTime(selectedLog.ts) }} · 群 {{ selectedLog.group_id }} · QQ {{ selectedLog.user_id }}
-            <span v-for="change in logDeltaParts(selectedLog, 'all')" :key="change.key"> · {{ change.label }} {{ fmtKnownDelta(change.value) }}</span>
-            · A 亲近度 {{ fmtOptionalNum(selectedLog.favor_before) }} → {{ fmtOptionalNum(selectedLog.favor_after) }}
-            · <span class="xx-tag">{{ sourceLabel(selectedLog.source) }}</span>
+            <span>{{ fmtTime(selectedLog.ts) }} · 群 {{ selectedLog.group_id }} · QQ {{ selectedLog.user_id }}
+              <span v-for="change in logDeltaParts(selectedLog, 'all')" :key="change.key"> · {{ change.label }} {{ fmtKnownDelta(change.value) }}</span>
+              · 亲近度 {{ fmtOptionalNum(selectedLog.favor_before) }} → {{ fmtOptionalNum(selectedLog.favor_after) }}
+            </span>
+            <span class="xx-tag">{{ sourceLabel(selectedLog.source) }}</span>
           </div>
           <section class="xx-modal-section">
             <h4>用户发言</h4>
-            <p class="xx-modal-text">{{ selectedLog.message || "（本次变动非评估触发，无发言记录）" }}</p>
+            <p class="xx-modal-text">{{ selectedLog.message || "（没有相关发言）" }}</p>
           </section>
           <section class="xx-modal-section">
-            <h4>AI 原因</h4>
-            <p class="xx-modal-text">{{ selectedLog.reason || "-" }}</p>
+            <h4>变动原因</h4>
+            <p class="xx-modal-text">{{ displayReason(selectedLog.reason) }}</p>
           </section>
+          <div class="xx-modal-actions">
+            <button type="button" class="xx-btn xx-btn-mini" @click="closeDetail">关闭</button>
+          </div>
         </div>
       </div>
 
       <!-- 成员详情弹窗：三维关系 + profile 编辑 + 可展开历史 -->
-      <div v-if="memberDetail" class="xx-modal" @click.self="closeMember">
-        <div class="xx-modal-box">
+      <div v-if="memberDetail" class="xx-modal" role="dialog" aria-modal="true" aria-labelledby="xx-member-modal-title" @click.self="closeMember">
+        <div class="xx-modal-box xx-modal-box-wide">
           <header class="xx-modal-header">
-            <span>成员详情</span>
-            <button class="xx-modal-close" @click="closeMember">×</button>
+            <span id="xx-member-modal-title">成员详情</span>
+            <button type="button" class="xx-modal-close" aria-label="关闭成员详情" @click="closeMember">×</button>
           </header>
-          <div class="xx-modal-meta xx-mono">
-            QQ {{ memberDetail.user_id }}
-            <span v-if="memberDetail.nickname">（{{ memberDetail.nickname }}）</span>
-            · 群 {{ memberDetail.group_id }}
+          <div class="xx-modal-meta">
+            <div class="xx-member-identity">
+              <span class="xx-member-identity-name">{{ memberDetail.nickname || "昵称未知" }}</span>
+              <span class="xx-member-identity-sub xx-mono">QQ {{ memberDetail.user_id }} · 群 {{ memberDetail.group_id || "全局共享" }}</span>
+            </div>
+            <button class="xx-btn xx-btn-mini" @click="refreshNames()" :disabled="memberSaveLoading">刷新昵称</button>
           </div>
           <div class="xx-member-stats">
             <div class="xx-member-stat">
-              <label>熟悉度</label>
+              <label><span class="xx-dim-badge xx-dim-f">F</span> 熟悉度</label>
               <b>{{ fmtOptionalNum(memberDetail.familiarity) }}</b>
+              <div class="xx-dim-track" style="width:100%" aria-hidden="true"><i class="xx-dim-fill is-f" :style="dimBarStyle('familiarity', memberDetail.familiarity)"></i></div>
             </div>
             <div class="xx-member-stat">
-              <label>亲近度</label>
-              <b>{{ fmtOptionalNum(memberDetail.affinity) }}</b>
+              <label><span class="xx-dim-badge xx-dim-a">A</span> 亲近度</label>
+              <b :class="memberDetail.affinity > 0 ? 'xx-up' : (memberDetail.affinity < 0 ? 'xx-down' : 'xx-zero')">{{ fmtSignedNum(memberDetail.affinity) }}</b>
+              <div class="xx-dim-track is-signed" style="width:100%" aria-hidden="true"><i class="xx-dim-fill" :class="memberDetail.affinity < 0 ? 'is-neg' : 'is-a-pos'" :style="dimBarStyle('affinity', memberDetail.affinity)"></i></div>
             </div>
             <div class="xx-member-stat">
-              <label>信任度</label>
-              <b>{{ fmtOptionalNum(memberDetail.trust) }}</b>
+              <label><span class="xx-dim-badge xx-dim-t">T</span> 信任度</label>
+              <b :class="memberDetail.trust > 0 ? 'xx-up' : (memberDetail.trust < 0 ? 'xx-down' : 'xx-zero')">{{ fmtSignedNum(memberDetail.trust) }}</b>
+              <div class="xx-dim-track is-signed" style="width:100%" aria-hidden="true"><i class="xx-dim-fill" :class="memberDetail.trust < 0 ? 'is-neg' : 'is-t-pos'" :style="dimBarStyle('trust', memberDetail.trust)"></i></div>
             </div>
             <div class="xx-member-stat">
               <label>关系称谓</label>
-              <span>{{ memberDetail.relation_title || "-" }}</span>
+              <div><span class="xx-title-badge">{{ memberDetail.relation_title || "-" }}</span></div>
             </div>
           </div>
-          <p v-if="memberNotice" :class="['xx-status', memberNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ memberNotice }}</p>
+          <div v-if="memberDetail.temporary && memberDetail.temporary.active" class="xx-temp-banner" role="status">
+            <p><strong>临时关系生效中</strong> · 截至 {{ fmtTime(memberDetail.temporary.expires_at) }}。评估、印象更新和正式关系衰减已暂停。</p>
+            <div class="xx-temp-formal-pill">正式值保留：熟悉度 {{ memberDetail.formal_relation.familiarity }} · 亲近度 {{ memberDetail.formal_relation.affinity }} · 信任度 {{ memberDetail.formal_relation.trust }}</div>
+            <div><button class="xx-btn xx-btn-mini" @click="endTemporary" :disabled="memberSaveLoading">立即结束临时关系</button></div>
+          </div>
+          <p v-if="memberNotice" role="status" :class="['xx-status', memberNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ memberNotice }}</p>
+          <div class="xx-modal-edit-grid">
           <section class="xx-modal-section xx-edit-section">
-            <button class="xx-btn xx-btn-mini" @click="refreshNames()" :disabled="memberSaveLoading">刷新昵称</button>
             <h4>编辑三维关系</h4>
-            <div v-if="memberDetail.temporary && memberDetail.temporary.active" role="status">
-              <p><strong>临时关系生效中</strong>，截至 {{ fmtTime(memberDetail.temporary.expires_at) }}。评估、印象更新和正式关系衰减已暂停。</p>
-              <p>正式值：熟悉度 {{ memberDetail.formal_relation.familiarity }}，亲近度 {{ memberDetail.formal_relation.affinity }}，信任度 {{ memberDetail.formal_relation.trust }}</p>
-              <button class="xx-btn xx-btn-mini" @click="endTemporary" :disabled="memberSaveLoading">立即结束临时关系</button>
-            </div>
             <label class="xx-form-row"><span>调整方式</span><select v-model="relationEditMode"><option value="permanent" :disabled="memberDetail.temporary && memberDetail.temporary.active">正式调整</option><option value="temporary">临时调整</option></select></label>
-            <label v-if="relationEditMode === 'temporary'" class="xx-form-row"><span>持续时间（分钟，1～43200）</span><input type="number" min="1" max="43200" v-model.number="temporaryMinutes"></label>
+            <label v-if="relationEditMode === 'temporary'" class="xx-form-row"><span>持续时间（分钟，1～43200）</span><input class="xx-input" type="number" min="1" max="43200" v-model.number="temporaryMinutes"></label>
             <p v-if="relationEditMode === 'temporary'" class="xx-help">临时覆盖三个维度，称谓和排行随之变化；到期恢复正式关系，不补评期间消息。修改临时值会重新计算截止时间。</p>
             <div class="xx-edit-grid">
-              <label><span>熟悉度</span><input class="xx-input" type="number" min="0" max="100" step="0.1" v-model.number="relationForm.familiarity"></label>
-              <label><span>亲近度</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.affinity"></label>
-              <label><span>信任度</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.trust"></label>
+              <label><span>熟悉度 (0~100)</span><input class="xx-input" type="number" min="0" max="100" step="0.1" v-model.number="relationForm.familiarity"></label>
+              <label><span>亲近度 (±100)</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.affinity"></label>
+              <label><span>信任度 (±100)</span><input class="xx-input" type="number" min="-100" max="100" step="0.1" v-model.number="relationForm.trust"></label>
             </div>
-            <label class="xx-form-row xx-form-row-block"><span>变更原因</span><input class="xx-input" v-model="relationForm.reason" placeholder="管理员调整"></label>
-            <div class="xx-modal-actions"><button class="xx-btn" @click="saveRelation" :disabled="memberSaveLoading">{{ relationEditMode === 'temporary' ? '保存临时关系' : '保存正式关系' }}</button></div>
+            <label class="xx-form-row xx-form-row-block"><span>变更原因</span><input class="xx-input" style="width: 100%;" v-model="relationForm.reason" placeholder="管理员调整"></label>
+            <div class="xx-modal-actions"><button class="xx-btn xx-btn-primary" @click="saveRelation" :disabled="memberSaveLoading">{{ relationEditMode === 'temporary' ? '保存临时关系' : '保存正式关系' }}</button></div>
           </section>
           <section class="xx-modal-section xx-edit-section">
             <h4>编辑印象与标签</h4>
-            <p v-if="!memberDetail.group_id">请先选择真实群再修改群资料。</p>
+            <p v-if="!memberDetail.group_id" class="xx-help">请先选择群再修改群资料。</p>
             <label class="xx-form-row xx-form-row-block"><span>印象</span><textarea class="xx-textarea" v-model="profileForm.impression" placeholder="成员印象"></textarea></label>
-            <label class="xx-form-row xx-form-row-block"><span>标签</span><input class="xx-input" v-model="profileForm.tagsText" placeholder="用逗号分隔多个标签"></label>
+            <label class="xx-form-row xx-form-row-block"><span>标签</span><input class="xx-input" style="width: 100%;" v-model="profileForm.tagsText" placeholder="用逗号分隔多个标签"></label>
             <div class="xx-modal-actions">
               <button class="xx-btn xx-btn-mini" @click="refreshImpression" :disabled="memberLoading || memberSaveLoading || !memberDetail.group_id || memberDetail.temporary?.active">{{ memberLoading ? "处理中…" : "刷新印象" }}</button>
-              <button class="xx-btn" @click="saveProfile" :disabled="memberSaveLoading || !memberDetail.group_id">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
+              <button class="xx-btn xx-btn-primary" @click="saveProfile" :disabled="memberSaveLoading || !memberDetail.group_id">{{ memberSaveLoading ? "保存中…" : "保存印象" }}</button>
             </div>
           </section>
-          <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length"><summary>临时关系操作记录</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }}<span v-if="item.details.values"> · 熟悉度 {{ item.details.values.familiarity }}，亲近度 {{ item.details.values.affinity }}，信任度 {{ item.details.values.trust }} · 截至 {{ fmtTime(item.details.expires_at) }} · {{ item.details.reason }}</span></p></details>
+          </div>
+          <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length" class="xx-member-history"><summary>临时关系操作记录（{{ memberDetail.temporary_audit.length }}）</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i" class="xx-help">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }}<span v-if="item.details.values"> · 熟悉度 {{ item.details.values.familiarity }}，亲近度 {{ item.details.values.affinity }}，信任度 {{ item.details.values.trust }} · 截至 {{ fmtTime(item.details.expires_at) }} · {{ item.details.reason }}</span></p></details>
           <details class="xx-member-history">
             <summary>近期评审（{{ memberDetail.recent_judges ? memberDetail.recent_judges.length : 0 }}）</summary>
             <p v-if="!memberDetail.recent_judges || !memberDetail.recent_judges.length" class="xx-modal-text xx-muted-text">暂无评估记录</p>
@@ -1667,56 +1796,56 @@ createApp({
               <li v-for="(j, i) in memberDetail.recent_judges" :key="i">
                 <span class="xx-mono">{{ fmtTime(j.ts) }}</span>
                 <span :class="j.delta > 0 ? 'xx-up' : (j.delta < 0 ? 'xx-down' : 'xx-zero')">{{ fmtDelta(j.delta) }}</span>
-                <span class="xx-judge-reason">{{ j.reason || "-" }}</span>
+                <span class="xx-judge-reason">{{ displayReason(j.reason) }}</span>
               </li>
             </ul>
           </details>
           <div class="xx-modal-actions">
-            <button class="xx-btn xx-btn-mini" @click="closeMember">关闭</button>
+            <button type="button" class="xx-btn xx-btn-mini" @click="closeMember">关闭</button>
           </div>
         </div>
       </div>
 
       <!-- 撤销确认弹窗：预览撤销后的旧亲近度 -->
-      <div v-if="undoPreview" class="xx-modal" @click.self="closeUndo">
+      <div v-if="undoPreview" class="xx-modal" role="dialog" aria-modal="true" aria-labelledby="xx-undo-modal-title" @click.self="closeUndo">
         <div class="xx-modal-box">
           <header class="xx-modal-header">
-            <span>撤销这条变动？</span>
-            <button class="xx-modal-close" @click="closeUndo">×</button>
+            <span id="xx-undo-modal-title">撤销这条变动？</span>
+            <button type="button" class="xx-modal-close" aria-label="关闭撤销确认" @click="closeUndo">×</button>
           </header>
           <section class="xx-modal-section">
             <p class="xx-modal-text">
-              撤销后 A 亲近度：<b class="xx-up" style="font-size:16px">{{ fmtNum(undoPreview.after) }}</b>
+              撤销后 亲近度：<b class="xx-up" style="font-size:17px">{{ fmtNum(undoPreview.after) }}</b>
               <span class="xx-muted-text">（当前 {{ fmtNum(undoPreview.current) }}，本次 {{ fmtDelta(undoPreview.delta) }}）</span>
             </p>
             <p class="xx-help">将撤销此事件的全部维度，与当前查看筛选无关。</p>
-            <p class="xx-modal-text xx-muted-text">原因：{{ undoPreview.reason || "-" }}</p>
+            <p class="xx-modal-text xx-muted-text" style="margin-top:8px;">原因：{{ displayReason(undoPreview.reason) }}</p>
           </section>
           <div class="xx-modal-actions">
-            <button class="xx-btn xx-btn-mini" @click="closeUndo">取消</button>
-            <button class="xx-btn xx-btn-danger" @click="confirmUndo">确认撤销</button>
+            <button type="button" class="xx-btn xx-btn-mini" @click="closeUndo">取消</button>
+            <button type="button" class="xx-btn xx-btn-danger" @click="confirmUndo">确认撤销</button>
           </div>
         </div>
       </div>
 
       <!-- 恢复确认弹窗：恢复前要求确认当前 Bot/空间与备份名 -->
-      <div v-if="restorePreview" class="xx-modal" @click.self="closeRestore">
+      <div v-if="restorePreview" class="xx-modal" role="dialog" aria-modal="true" aria-labelledby="xx-restore-modal-title" @click.self="closeRestore">
         <div class="xx-modal-box">
           <header class="xx-modal-header">
-            <span>确认恢复数据空间？</span>
-            <button class="xx-modal-close" @click="closeRestore">×</button>
+            <span id="xx-restore-modal-title">确认恢复数据空间？</span>
+            <button type="button" class="xx-modal-close" aria-label="关闭恢复确认" @click="closeRestore">×</button>
           </header>
           <section class="xx-modal-section">
             <p class="xx-modal-text">
               将恢复 Bot <b class="xx-mono">{{ restorePreview.snapshot.bot_id }}</b> 的
               <b>{{ restorePreview.snapshot.scope_mode === 'global' ? '全局空间' : '按群空间' }}</b>。
             </p>
-            <p class="xx-modal-text xx-muted-text">备份：{{ restorePreview.backup_name }}</p>
-            <p class="xx-modal-text xx-muted-text">当前空间会被备份后替换，确认后再读取。</p>
+            <p class="xx-modal-text xx-muted-text" style="margin-top:6px;">备份文件：<code>{{ restorePreview.backup_name }}</code></p>
+            <p class="xx-modal-text xx-muted-text" style="margin-top:6px;">当前空间会被备份后替换，确认后再读取。</p>
           </section>
           <div class="xx-modal-actions">
-            <button class="xx-btn xx-btn-mini" @click="closeRestore">取消</button>
-            <button class="xx-btn xx-btn-danger" @click="confirmRestore">确认恢复</button>
+            <button type="button" class="xx-btn xx-btn-mini" @click="closeRestore">取消</button>
+            <button type="button" class="xx-btn xx-btn-danger" @click="confirmRestore">确认恢复</button>
           </div>
         </div>
       </div>

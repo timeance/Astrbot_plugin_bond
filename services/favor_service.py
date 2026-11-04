@@ -63,6 +63,7 @@ class FavorService:
         familiarity_half_life=60.0,
         familiarity_baseline=0.0,
         trust_baseline=0.0,
+        decay_grace_days: float = 5.0,
     ) -> None:
         from ..core.relation_policy import RelationPolicy, RelationResolver
 
@@ -82,6 +83,14 @@ class FavorService:
                 for x in pair
             ):
                 raise ValueError("每日限幅必须是有限非负数")
+        if (
+            isinstance(decay_grace_days, bool)
+            or not isinstance(decay_grace_days, (int, float))
+            or not math.isfinite(decay_grace_days)
+            or decay_grace_days < 0
+        ):
+            raise ValueError("关系保温期须为有限非负天数")
+        self._decay_grace_days = float(decay_grace_days)
         self.diagnostics = diagnostics
         self._familiarity_growth = FamiliarityConfig.from_config(familiarity_growth)
         self._familiarity_half_life = (
@@ -124,6 +133,7 @@ class FavorService:
                                 familiarity_baseline,
                             ],
                             economy=asdict(economy) if economy is not None else None,
+                            decay_grace_days=self._decay_grace_days,
                             timezone=tz_name,
                             floor=decay_floor_enabled,
                             initial=[min_favor, max_favor, default_favor],
@@ -316,6 +326,7 @@ class FavorService:
             baseline=baseline,
             floor=self._decay_floor(stored, baseline),
             rounded=rounded,
+            grace_days=self._decay_grace_days,
         )
 
     def _effective_affinity_raw(self, stored, updated_at, half_life=10.0):
@@ -331,6 +342,7 @@ class FavorService:
             half_life=self._familiarity_half_life,
             baseline=decay_target(stored, self._familiarity_baseline),
             rounded=False,
+            grace_days=self._decay_grace_days,
         )
 
     def _effective_trust(self, stored, updated_at):
@@ -343,6 +355,7 @@ class FavorService:
             half_life=self._trust_half_life,
             baseline=decay_target(stored, self._trust_baseline),
             rounded=False,
+            grace_days=self._decay_grace_days,
         )
 
     def _day_end(self, now=None):

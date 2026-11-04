@@ -121,13 +121,22 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
         assert values["decay.half_life_base"] == 30
         assert values["decay.half_life_growth"] == 1.0
         assert values["decay.half_life_max"] == 120
+        assert values["decay.grace_days"] == 5
         old = snapshot(
-            {"decay": {"enabled": False, "half_life_base": 10, "half_life_max": 60}}
+            {
+                "decay": {
+                    "enabled": False,
+                    "half_life_base": 10,
+                    "half_life_max": 60,
+                    "grace_days": 0,
+                }
+            }
         )["values"]
         assert (
             old["decay.enabled"] is False
             and old["decay.half_life_base"] == 10
             and old["decay.half_life_max"] == 60
+            and old["decay.grace_days"] == 0
         )
         store = SQLiteBackend(tmp_path / "relations.db")
         await store.init()
@@ -138,6 +147,7 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
             half_life_base=values["decay.half_life_base"],
             half_life_growth=values["decay.half_life_growth"],
             half_life_max=values["decay.half_life_max"],
+            decay_grace_days=values["decay.grace_days"],
             decay_floor_enabled=True,
         )
         start = 1767225600.0
@@ -147,12 +157,14 @@ def test_recommended_decay_and_explicit_old_configuration(tmp_path):
                     "g", "u", familiarity=40, affinity=20, trust=-20, event_id="seed"
                 )
                 before = await favor.query_logs("g", "u")
-            with patch("time.time", return_value=start + 60 * 86400):
-                assert (await favor.get_relation("g", "u")).as_dict() == dict(
-                    familiarity=40, affinity=5, trust=-20
-                )
-                assert await favor.query_logs("g", "u") == before
-                assert (await store.get("g", "u")).favor == 20
+            for days, affinity in ((5, 20), (35, 10), (60, 5.6), (65, 5)):
+                with patch("time.time", return_value=start + days * 86400):
+                    assert (await favor.get_relation("g", "u")).as_dict() == dict(
+                        familiarity=40, affinity=affinity, trust=-20
+                    )
+                    assert await favor.query_logs("g", "u") == before
+                    stored = await store.get("g", "u")
+                    assert stored.favor == 20 and stored.updated_at == start
         finally:
             await store.close()
 

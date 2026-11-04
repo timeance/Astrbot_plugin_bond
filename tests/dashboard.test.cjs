@@ -381,7 +381,7 @@ test('saving configured concurrency keeps the actual running limit unchanged unt
  const reload=ui.loadEvaluation();pendingGets[1].resolve({success:true,revision:'models-v2',configured:config,active:config,max_concurrent_assessments:5,active_max_concurrent_assessments:2});await reload;
  assert.equal(ui.maxConcurrentAssessments.value,5);assert.equal(ui.activeMaxConcurrentAssessments.value,2);
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
- assert.match(source,/运行并发上限<\/dt><dd>{{ activeMaxConcurrentAssessments/);
+ assert.match(source,/同时评估人数<\/dt><dd>{{ activeMaxConcurrentAssessments/);
 });
 
 
@@ -442,7 +442,7 @@ test('section defaults are staged and preserve other sections, identity and mode
  assert.equal(ui.detailValues.value['inject.memory_days'],7);
 });
 
-test('mode previews multiply only positive base values and keep loaded runtime unchanged',()=>{
+test('editing mode settings keeps the loaded runtime summary unchanged',()=>{
  const {ui}=harness();
  const values={relation_mode:'realistic','relation_daily_caps.affinity_up':12,'relation_daily_caps.affinity_down':8,
  'relation_daily_caps.familiarity_up':5,'relation_daily_caps.familiarity_down':0,
@@ -453,13 +453,7 @@ test('mode previews multiply only positive base values and keep loaded runtime u
  'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20};
  ui.detailSettings.value={values:{...values},active_values:{...values},fields:[]};ui.detailValues.value={...values};
  ui.detailValues.value.relation_mode='galgame';
- assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/基础值 12，当前模式实际 24/);
- assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_down'}),/实际 8/);
- assert.match(ui.effectiveSetting({path:'familiarity_growth.under10'}),/实际 3 倍/);
- assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/实际 1.5 倍/);
- assert.equal(ui.effectiveSetting({path:'decay.half_life_base'}),null);
  ui.detailValues.value['economy.enabled']=false;
- assert.match(ui.effectiveSetting({path:'economy.level_mult.youhao'}),/不生效/);
  assert.equal(ui.activeRuleSummary.value.mode,'基础 ×1');
  assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
  assert.equal(ui.activeRuleSummary.value.affinity,'30 天基础半衰期');
@@ -471,14 +465,12 @@ test('mode previews multiply only positive base values and keep loaded runtime u
  ui.detailValues.value['decay.familiarity_half_life']=90;
  ui.detailValues.value['decay.familiarity_enabled']=false;
  assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
- assert.equal(ui.effectiveSetting({path:'decay.familiarity_half_life'}),null);
  ui.detailSettings.value.active_values['decay.familiarity_enabled']=false;
  assert.equal(ui.activeRuleSummary.value.familiarity,'关闭');
  assert.equal(ui.activeRuleSummary.value.caps[1].up,12);
  assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
  assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],12);
  ui.detailValues.value.relation_mode='realistic';
- assert.match(ui.effectiveSetting({path:'relation_daily_caps.affinity_up'}),/实际 12/);
 });
 
 test('evaluation defaults preserve selected models and mode and save only allowed parameters',async()=>{
@@ -510,8 +502,8 @@ for(const [key,value] of [['window_sec',0],['window_max_calls',1.5],['per_user_d
 test('rule and assessment controls keep a single entry and explain saved versus runtime',()=>{
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
  assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
- assert.match(source,/UTC 00:00/);assert.match(source,/当前运行关系参数/);
- assert.match(source,/<table class="xx-table" aria-label="当前运行关系参数">/);
+ assert.match(source,/UTC 00:00/);assert.match(source,/当前关系设置/);
+ assert.match(source,/<table class="xx-table" aria-label="当前关系设置">/);
  assert.match(source,/activeRuleSummary\[cap.key\]/);
  assert.match(source,/activeRuleSummary.baselines\[cap.key\]/);
  assert.match(source,/:max="field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
@@ -675,13 +667,19 @@ test('quick start layout, section defaults and theme styling match the page cont
  assert.match(source,/restoreSectionDefaults\(group.group\)/);
  assert.doesNotMatch(source,/:open="group.group === 'basic'"/);
  assert.match(source,/详细设置 → 基础设置/);
- assert.match(source,/下方预览不会立即改变运行值/);
+ assert.match(source,/保存并重载插件后生效/);
  assert.doesNotMatch(source,/v-model="modelConfig.assessment_mode"|请在 AstrBot 的 Bond 插件配置中修改|亲近度基线固定为0/);
  assert.match(source,/暂无可用模型，请先在 AstrBot 配置文本模型。/);
- assert.match(css,/--xx-bg: #10172D/);assert.match(css,/--xx-card: #19233D/);assert.match(css,/--xx-ink: #E8EDFA/);
+ assert.match(css,/--xx-bg: #0B1120/);assert.match(css,/--xx-card: #121B30/);assert.match(css,/--xx-ink: #ECF2FF/);
+ assert.match(css,/--xx-bg: #EFF3FA/);assert.match(css,/--xx-card: #FAFCFF/);assert.match(css,/--xx-ink: #10213A/);
  assert.match(css,/:root\[data-bond-theme="light"\]/);assert.doesNotMatch(css,/\[data-theme/);
  assert.match(css,/color-scheme: dark/);assert.match(css,/color-scheme: light/);assert.match(css,/color-scheme: inherit/);
- assert.match(css,/\.xx-page select/);assert.match(css,/\.xx-recommend-dialog::backdrop/);
+ assert.match(css,/\.xx-page select/);
+ const {ui}=harness();
+ assert.equal(ui.fmtSignedNum(35),'+35');assert.equal(ui.fmtSignedNum(-20),'-20');assert.equal(ui.fmtSignedNum(0),'0');assert.equal(ui.fmtSignedNum(null),'-');
+ assert.equal(JSON.stringify(ui.dimBarStyle('familiarity',65)),JSON.stringify({left:'0%',width:'65%'}));
+ assert.equal(JSON.stringify(ui.dimBarStyle('affinity',60)),JSON.stringify({left:'50%',width:'30%'}));
+ assert.equal(JSON.stringify(ui.dimBarStyle('trust',-40)),JSON.stringify({left:'30%',width:'20%'}));
 });
 
 
@@ -713,4 +711,14 @@ test('overview refresh reads today summary but member pagination does not',async
  assert.equal(reads.filter(read=>read.endpoint==='today_summary').length,0);
  await ui.refresh();
  assert.equal(reads.filter(read=>read.endpoint==='today_summary').length,1);
+});
+
+
+test('event reasons use Chinese without rewriting custom descriptions',()=>{
+ const {ui}=harness();
+ assert.equal(ui.displayReason('normal_question'),'日常问答');
+ assert.equal(ui.displayReason('friendly'),'表达友好');
+ assert.equal(ui.displayReason('管理员调整'),'管理员调整');
+ assert.equal(ui.displayReason('unknown_event'),'unknown_event');
+ assert.equal(ui.displayReason('__proto__'),'__proto__');
 });

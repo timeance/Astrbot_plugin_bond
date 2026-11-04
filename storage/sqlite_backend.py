@@ -560,39 +560,35 @@ class SQLiteBackend(StorageBackend):
                             else value
                         )
                     real[key] = round(after[key] - before[key], 8)
-                if values is not None or any(real.values()):
-                    new_h = h
-                    if decay is not None and values is None:
-                        base, growth, h_max, _ = decay
-                        new_h = consolidate_half_life(
-                            h,
-                            base=base,
-                            growth=growth,
-                            h_max=h_max,
-                            positive=real["affinity"] > 0,
-                        )
-                    # 仅结算发生事件变化的维度；无变化保留原值与独立锚。
-                    change_f = values is not None or bool(real["familiarity"])
-                    trust_write = (
-                        after["trust"] if values is not None or real["trust"] else t
+                new_h = h
+                if decay is not None and values is None:
+                    base, growth, h_max, _ = decay
+                    new_h = consolidate_half_life(
+                        h,
+                        base=base,
+                        growth=growth,
+                        h_max=h_max,
+                        positive=real["affinity"] > 0,
                     )
-                    trust_ts = now if values is not None or real["trust"] else t_ts
-                    conn.execute(
-                        "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
-                        "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
-                        "half_life=excluded.half_life,familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at,familiarity_updated_at=excluded.familiarity_updated_at",
-                        (
-                            group_id,
-                            user_id,
-                            after["affinity"],
-                            now,
-                            new_h,
-                            after["familiarity"] if change_f else f,
-                            trust_write,
-                            trust_ts,
-                            now if change_f else f_ts,
-                        ),
-                    )
+                # 成功接纳的关系事件统一结算三维并重新起算保温期；额度为零也算。
+                # 先存当前有效值，避免新互动恢复旧值或补算保温期内的衰减。
+                # 流水、额度仍只记录事件增量；去重、冷却和失败均不推进时间锚。
+                conn.execute(
+                    "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
+                    "half_life=excluded.half_life,familiarity=excluded.familiarity,trust=excluded.trust,trust_updated_at=excluded.trust_updated_at,familiarity_updated_at=excluded.familiarity_updated_at",
+                    (
+                        group_id,
+                        user_id,
+                        after["affinity"],
+                        now,
+                        new_h,
+                        after["familiarity"],
+                        after["trust"],
+                        now,
+                        now,
+                    ),
+                )
                 if values is None:
                     add_usage(
                         conn, group_id, user_id, day, real, judge=source == "judge"
@@ -1472,8 +1468,8 @@ class SQLiteBackend(StorageBackend):
                     (
                         group_id,
                         user_id,
-                        target,
-                        now,
+                        target if real else stored,
+                        now if real else ts,
                         h,
                         next_f if change_f else f,
                         next_t if change_t else t,

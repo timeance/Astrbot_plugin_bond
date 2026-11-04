@@ -73,7 +73,7 @@ def test_expiry_update_freezes_decay_without_replaying(tmp_path, monkeypatch):
     async def run():
         router = BotScopeStorageRouter(tmp_path)
         db = await router.get("10001", "per_group")
-        favor = service(db, decay_enabled=True, half_life_base=1)
+        favor = service(db, decay_enabled=True, half_life_base=1, decay_grace_days=0)
         await favor.set_relation(
             "123", "456", familiarity=30, affinity=80, trust=10, event_id="seed"
         )
