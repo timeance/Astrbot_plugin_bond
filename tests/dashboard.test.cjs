@@ -626,36 +626,39 @@ test('evaluation ignores older same-scope loads including their revisions',async
  assert.equal(ui.modelRevision.value,'current');assert.equal(ui.modelConfig.value.cooldown_sec,60);
 });
 
-test('theme bootstrap defaults to light and restores either saved theme before CSS',()=>{
+test('theme bootstrap follows the host before CSS and ignores saved Bond choices',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../pages/dashboard/index.html'),'utf8');
  const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
  assert.ok(html.indexOf(script)<html.indexOf('rel="stylesheet"'));
- assert.match(html,/<html[^>]*data-bond-theme="light"/);
- for(const stored of ['light','dark','invalid',null]){
-  const document={documentElement:{dataset:{bondTheme:'light',theme:'dark'}}};
-  vm.runInNewContext(script,{document,window:{localStorage:{getItem:key=>{assert.equal(key,'bond-theme');return stored;}}}});
-  assert.equal(document.documentElement.dataset.bondTheme,stored==='dark'?'dark':'light');
-  assert.equal(document.documentElement.dataset.theme,'dark');
+ for(const isDark of [true,false]){
+  const document={documentElement:{dataset:{bondTheme:'light',theme:isDark?'dark':'light'}}};
+  vm.runInNewContext(script,{document,window:{AstrBotPluginPage:{getContext:()=>({isDark})},get localStorage(){throw new Error('must not read saved choice');}}});
+  assert.equal(document.documentElement.dataset.bondTheme,isDark?'dark':'light');
  }
+ for(const host of ['dark','light',undefined]){
+  const document={documentElement:{dataset:{theme:host}}};
+  vm.runInNewContext(script,{document,window:{}});
+  assert.equal(document.documentElement.dataset.bondTheme,host==='dark'?'dark':'light');
+ }
+});
+
+test('late host context updates the theme until a manual choice in this visit',()=>{
+ let notify;
  const document={documentElement:{dataset:{bondTheme:'light'}}};
- vm.runInNewContext(script,{document,window:{get localStorage(){throw new Error('storage blocked');}}});
- assert.equal(document.documentElement.dataset.bondTheme,'light');
+ const {ui}=harness({document,window:{AstrBotPluginPage:{onContext:handler=>{notify=handler;return ()=>{};}},get localStorage(){throw new Error('must not persist choice');}}});
+ notify({isDark:true});assert.equal(ui.theme.value,'dark');assert.equal(document.documentElement.dataset.bondTheme,'dark');
+ notify({locale:'zh-CN'});assert.equal(ui.theme.value,'dark');
+ notify({isDark:false});assert.equal(ui.theme.value,'light');
+ ui.toggleTheme();assert.equal(ui.theme.value,'dark');
+ notify({isDark:false});assert.equal(ui.theme.value,'dark');
+ ui.toggleTheme();assert.equal(ui.theme.value,'light');
 });
 
-test('manual theme switching survives unavailable storage and ignores the host theme',()=>{
- const document={documentElement:{dataset:{bondTheme:'dark',theme:'light'}}};
- const {ui}=harness({document});
- ui.toggleTheme();assert.equal(ui.theme.value,'light');assert.equal(document.documentElement.dataset.bondTheme,'light');
- document.documentElement.dataset.theme='dark';
- assert.equal(ui.theme.value,'light');
- ui.toggleTheme();assert.equal(ui.theme.value,'dark');assert.equal(document.documentElement.dataset.bondTheme,'dark');
-});
-
-test('manual theme choice is persisted independently of the host',()=>{
- const writes=[];
- const {ui}=harness({window:{localStorage:{setItem:(...args)=>writes.push(args)}}});
- ui.toggleTheme();ui.toggleTheme();
- assert.deepEqual(writes,[['bond-theme','light'],['bond-theme','dark']]);
+test('each new visit uses the host context instead of the previous manual choice',()=>{
+ const window={AstrBotPluginPage:{getContext:()=>({isDark:true})},get localStorage(){throw new Error('must not use storage');}};
+ const first=harness({window});
+ assert.equal(first.ui.theme.value,'dark');first.ui.toggleTheme();assert.equal(first.ui.theme.value,'light');
+ const next=harness({window});assert.equal(next.ui.theme.value,'dark');
 });
 
 test('quick start layout, section defaults and theme styling match the page contract',()=>{

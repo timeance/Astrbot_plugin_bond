@@ -454,6 +454,11 @@ class PageApi:
                         "impression": rec.impression or "",
                         "tags": rec.parsed_tags(),
                         "impression_at": rec.impression_at,
+                        "idle_days": (
+                            int((time.time() - rec.updated_at) // 86400)
+                            if rec.updated_at > 0
+                            else None
+                        ),
                         "recent_judges": [
                             {
                                 "ts": row.get("ts"),
