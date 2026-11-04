@@ -88,7 +88,7 @@ async def check(root, runtime):
                 )
         for method, action in (("GET", "export"), ("POST", "clear")):
             status, body = await call(bots[0], "per_group", action, method, False)
-            assert status == 401 and body["error"] == "未授权"
+            assert status == 401 and body["error"] == "请先登录管理面板"
         status, _ = await call("99999999", "per_group", "export")
         assert status == 400
         status, _ = await call(bots[0], "per_group", "clear", "GET")
