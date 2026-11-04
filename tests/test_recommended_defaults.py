@@ -34,13 +34,24 @@ def test_new_defaults_and_explicit_custom_settings():
     assert values["economy.repair_threshold"] == eco.repair_threshold == 0
     assert values["decay.half_life_growth"] == 1
     assert values["decay.familiarity_enabled"] is True
-    assert values["decay.familiarity_half_life"] == 60
+    assert values["decay.familiarity_half_life"] == 30
     assert values["decay.half_life_base"] == 30
-    assert values["decay.trust_half_life"] == 90
-    for dimension in ("familiarity", "affinity", "trust"):
+    assert values["decay.trust_half_life"] == 60
+    baselines = {"familiarity": 10, "affinity": 0, "trust": 20}
+    for dimension, baseline in baselines.items():
         key = "decay." + dimension + "_baseline"
-        assert values[key] == 0
-        assert snapshot({"decay": {dimension + "_baseline": 10}})["values"][key] == 10
+        assert values[key] == baseline
+        for custom in (0, 7):
+            assert (
+                snapshot({"decay": {dimension + "_baseline": custom}})["values"][key]
+                == custom
+            )
+    for dimension, old_default in (("familiarity", 60), ("trust", 90)):
+        key = dimension + "_half_life"
+        assert (
+            snapshot({"decay": {key: old_default}})["values"]["decay." + key]
+            == old_default
+        )
     legacy = snapshot({"decay": {"baseline": 42}})["values"]
     assert "decay.baseline" not in legacy
     assert legacy["decay.affinity_baseline"] == 0
@@ -68,11 +79,11 @@ def test_new_defaults_and_explicit_custom_settings():
     for name in ("assessment", "inject", "diagnostics", "coupling"):
         assert schema[name]["items"]["enabled"]["default"] is False
     assert schema["decay"]["items"]["familiarity_enabled"]["default"] is True
-    assert schema["decay"]["items"]["familiarity_half_life"]["default"] == 60
+    assert schema["decay"]["items"]["familiarity_half_life"]["default"] == 30
     assert schema["decay"]["items"]["half_life_base"]["default"] == 30
-    assert schema["decay"]["items"]["trust_half_life"]["default"] == 90
-    for dimension in ("familiarity", "affinity", "trust"):
-        assert schema["decay"]["items"][dimension + "_baseline"]["default"] == 0
+    assert schema["decay"]["items"]["trust_half_life"]["default"] == 60
+    for dimension, baseline in baselines.items():
+        assert schema["decay"]["items"][dimension + "_baseline"]["default"] == baseline
     for name in (
         "decay.half_life_base",
         "decay.half_life_max",

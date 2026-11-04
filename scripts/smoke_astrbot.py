@@ -209,12 +209,18 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert old_deps.favor._relation_policy.positive_multiplier == 2.0
         assert old_deps.favor._relation_policy.deltas("friendly")["affinity"] == 1.6
         assert old_deps.favor._decay == (30.0, 1.0, 120.0, 0.0)
-        assert old_deps.favor._trust_half_life == 90.0
+        assert old_deps.favor._trust_half_life == 60.0
         assert config["decay"]["familiarity_enabled"] is True
-        assert config["decay"]["familiarity_half_life"] == 60
-        assert old_deps.favor._familiarity_half_life == 60.0
-        for dimension in ("familiarity", "affinity", "trust"):
-            assert config["decay"][dimension + "_baseline"] == 0
+        assert config["decay"]["familiarity_half_life"] == 30
+        assert old_deps.favor._familiarity_half_life == 30.0
+        for dimension, baseline in (
+            ("familiarity", 10),
+            ("affinity", 0),
+            ("trust", 20),
+        ):
+            assert config["decay"][dimension + "_baseline"] == baseline
+        assert old_deps.favor._familiarity_baseline == 10.0
+        assert old_deps.favor._trust_baseline == 20.0
         # 宿主剔除废弃的 baseline 键；旧值42不能激活新亲近度基线。
         assert "baseline" not in config["decay"]
         assembled = old_deps.assessment.config
@@ -974,6 +980,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     # 新维度的自定义半衰期独立生效，不影响上述旧亲近度配置。
     config2["decay"].update(
         familiarity_half_life=90,
+        trust_half_life=90,
         familiarity_baseline=10,
         affinity_baseline=5,
         trust_baseline=3,
@@ -1050,7 +1057,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
 
     print(
         f"PASS AstrBot {astrbot.__version__}: 2 Bot/4 SQLite、无 bond.db、"
-        "Galgame×2额度、F60/A30/T90衰减、三维独立基线、新旧配置、窗口预算、回复钩子、scope 持久化、冻结 listener、18 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
+        "Galgame×2额度、F30/A30/T60衰减、三维独立基线、新旧配置、窗口预算、回复钩子、scope 持久化、冻结 listener、18 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
         "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"
