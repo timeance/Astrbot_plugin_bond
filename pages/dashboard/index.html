@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bond 关系好感系统</title>
   <script>
-    try {
-      const saved = window.localStorage.getItem("bond-theme");
-      if (saved === "light" || saved === "dark") document.documentElement.dataset.bondTheme = saved;
-    } catch { /* 存储不可用时使用默认浅色。 */ }
+    const host = window.AstrBotPluginPage?.getContext?.();
+    const dark = typeof host?.isDark === "boolean" ? host.isDark : document.documentElement.dataset.theme === "dark";
+    document.documentElement.dataset.bondTheme = dark ? "dark" : "light";
   </script>
   <link rel="stylesheet" href="./app.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.js"></script>

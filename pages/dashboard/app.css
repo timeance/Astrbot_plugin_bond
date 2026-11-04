@@ -1,4 +1,4 @@
-/* Bond 独立主题，不读取宿主的 data-theme。
+/* Bond 配色；每次进入跟随宿主主题，手动切换仅对当前页面生效。
    视觉风格：月见八千代（月读空间）· 深蓝、科技、扁平、简洁、月光感
    深色模式：方案一（月读深穹 · 弦月金辉）
    浅色模式：候选 A（月读晨星 · 深蓝金弦） */
@@ -818,6 +818,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .xx-dim-fill.is-t-pos { background: var(--xx-plum); }
 .xx-dim-fill.is-neg { background: var(--xx-cold); }
 
+/* 流水按维度沿用总览色值，增减仍由正负号区分。 */
+.xx-log-delta { font-weight: 600; }
+.xx-log-delta-familiarity { color: var(--xx-sage); }
+.xx-log-delta-affinity { color: var(--xx-warm); }
+.xx-log-delta-trust { color: var(--xx-plum); }
+
 /* ---------- 涨跌：语义色温 + 符号 ---------- */
 .xx-up { color: var(--xx-warm); font-weight: 700; }
 .xx-down { color: var(--xx-cold); font-weight: 700; }
@@ -974,6 +980,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
   border: 1px solid var(--xx-line);
   border-radius: var(--xx-radius-sm);
 }
+.xx-member-meta-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-left: auto;
+}
+.xx-member-last-interaction { white-space: nowrap; }
 .xx-member-identity {
   display: flex;
   flex-direction: column;

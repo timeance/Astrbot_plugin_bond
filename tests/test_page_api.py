@@ -671,3 +671,31 @@ def test_today_summary_invalid_json_reports_failure_not_zero(today_api):
         assert status == 500 and payload == dict(success=False, error="操作失败")
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("updated_at, expected", [(0, None), (864000, 0), (691200, 2)])
+def test_member_detail_exposes_overview_interaction_age(
+    page_module, monkeypatch, updated_at, expected
+):
+    from astrbot_plugin_bond.core.models import FavorRecord
+
+    monkeypatch.setattr(page_module.time, "time", lambda: 864000)
+    monkeypatch.setattr(page_module, "request", SimpleNamespace(method="GET"))
+    record = FavorRecord("300", "201", updated_at=updated_at)
+    favor = SimpleNamespace(
+        get=AsyncMock(return_value=record),
+        query_logs=AsyncMock(return_value=[]),
+        member_name=AsyncMock(return_value="合成成员"),
+        temporary_state=AsyncMock(return_value={}),
+        formal_relation=AsyncMock(return_value={}),
+        temporary_audit=AsyncMock(return_value=[]),
+        relation_title=AsyncMock(return_value="陌生"),
+        level_of=lambda _: SimpleNamespace(name="陌生"),
+        is_master=lambda _: False,
+    )
+    page, _ = make_api(
+        page_module, monkeypatch, {"group_id": "300", "user_id": "201"}, favor
+    )
+    payload, status = asyncio.run(page.handle_member())
+    assert status == 200
+    assert payload["member"]["idle_days"] == expected

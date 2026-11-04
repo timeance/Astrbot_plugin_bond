@@ -3,11 +3,20 @@ const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
   setup() {
     const bridge = window.AstrBotPluginPage;
-    const theme = ref(document.documentElement.dataset.bondTheme === "dark" ? "dark" : "light");
+    const theme = ref(document.documentElement.dataset.theme || document.documentElement.dataset.bondTheme || "light");
+    let manualTheme = false;
+    const applyHostTheme = (context) => {
+      if (manualTheme || typeof context?.isDark !== "boolean") return;
+      theme.value = context.isDark ? "dark" : "light";
+      document.documentElement.dataset.bondTheme = theme.value;
+    };
+    applyHostTheme(bridge?.getContext?.());
+    const unsubscribeTheme = bridge?.onContext?.(applyHostTheme);
+    onUnmounted(() => unsubscribeTheme?.());
     const toggleTheme = () => {
+      manualTheme = true;
       theme.value = theme.value === "dark" ? "light" : "dark";
       document.documentElement.dataset.bondTheme = theme.value;
-      try { window.localStorage.setItem("bond-theme", theme.value); } catch { /* 当前页仍可切换。 */ }
     };
     const tab = ref("users");
     const loading = ref(false);
@@ -1208,7 +1217,7 @@ createApp({
         window.addEventListener("keydown", handleKeydown);
       }
       try {
-        await bridge?.ready?.();
+        applyHostTheme(await bridge?.ready?.());
       } catch (e) {
         /* ignore */
       }
@@ -1382,12 +1391,12 @@ createApp({
         <table class="xx-table">
           <thead>
             <tr>
-              <th>成员 / QQ</th><th>所属群</th><th>关系称谓</th><th>熟悉度</th><th>亲近度</th><th>信任度</th><th>最近互动</th><th>状态</th><th>印象与标签</th><th>操作</th>
+              <th>成员 / QQ</th><th>关系称谓</th><th>熟悉度</th><th>亲近度</th><th>信任度</th><th>状态</th><th>标签</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!visibleUsers.length">
-              <td colspan="10" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "尚无关系变化的成员已折叠，可在上方展开" : "暂无匹配成员") }}</td>
+              <td colspan="8" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "尚无关系变化的成员已折叠，可在上方展开" : "暂无匹配成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
               <td :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">
@@ -1396,7 +1405,6 @@ createApp({
                   <span class="xx-user-id xx-mono">QQ {{ u.user_id }}</span>
                 </div>
               </td>
-              <td class="xx-mono">{{ selectedMode === 'global' ? '全局共享' : u.group_id }}</td>
               <td><span class="xx-title-badge">{{ u.relation_title || "-" }}</span></td>
               <td>
                 <div class="xx-dim-cell">
@@ -1425,19 +1433,17 @@ createApp({
                   <div class="xx-dim-track is-signed" aria-hidden="true"><i class="xx-dim-fill" :class="u.trust < 0 ? 'is-neg' : 'is-t-pos'" :style="dimBarStyle('trust', u.trust)"></i></div>
                 </div>
               </td>
-              <td class="xx-mono">{{ fmtIdle(u.idle_days) }}</td>
               <td>
                 <span v-if="u.decayed" class="xx-tag">衰减中</span>
                 <span v-else-if="u.idle_days != null && u.idle_days >= 3" class="xx-tag">{{ u.idle_days }}天未动</span>
-                <span v-else class="xx-muted-text">正常</span>
+                <span v-else class="xx-muted-text">-</span>
               </td>
               <td class="xx-imp-cell">
                 <div class="xx-imp">
                   <div v-if="u.tags && u.tags.length" class="xx-chips">
                     <span v-for="t in u.tags" :key="t" class="xx-chip">{{ t }}</span>
                   </div>
-                  <p v-if="u.impression" class="xx-imp-text" :title="u.impression">{{ u.impression.length > 18 ? u.impression.slice(0, 18) + '…' : u.impression }}</p>
-                  <span v-if="!u.impression && !(u.tags && u.tags.length)" class="xx-muted-text">-</span>
+                  <span v-if="!(u.tags && u.tags.length)" class="xx-muted-text">-</span>
                 </div>
               </td>
               <td class="xx-actions">
@@ -1466,7 +1472,7 @@ createApp({
               <td class="xx-mono">{{ fmtTime(r.ts) }}</td>
               <td class="xx-mono">{{ r.group_id }}</td>
               <td class="xx-mono">{{ r.user_id }}</td>
-              <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" :class="change.value > 0 ? 'xx-up' : (change.value < 0 ? 'xx-down' : 'xx-zero')">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
+              <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" class="xx-log-delta" :class="'xx-log-delta-' + change.key">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
               <td class="xx-mono">{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</td>
               <td class="xx-reason-cell" :title="displayReason(r.reason)">{{ displayReason(r.reason) }}</td>
               <td><span class="xx-tag">{{ sourceLabel(r.source) }}</span></td>
@@ -1734,7 +1740,10 @@ createApp({
               <span class="xx-member-identity-name">{{ memberDetail.nickname || "昵称未知" }}</span>
               <span class="xx-member-identity-sub xx-mono">QQ {{ memberDetail.user_id }} · 群 {{ memberDetail.group_id || "全局共享" }}</span>
             </div>
-            <button class="xx-btn xx-btn-mini" @click="refreshNames()" :disabled="memberSaveLoading">刷新昵称</button>
+            <div class="xx-member-meta-actions">
+              <span class="xx-member-last-interaction">最近互动：{{ fmtIdle(memberDetail.idle_days) }}</span>
+              <button class="xx-btn xx-btn-mini" @click="refreshNames()" :disabled="memberSaveLoading">刷新昵称</button>
+            </div>
           </div>
           <div class="xx-member-stats">
             <div class="xx-member-stat">
