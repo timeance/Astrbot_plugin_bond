@@ -230,11 +230,6 @@ LivingMemory 集成已移除，不再探测、读取或写入其记忆。本地�
 
 </details>
 
-### 已验证到哪里
-
-已完成离线 Python 3.10／3.12 测试、页面状态测试和 AstrBot 4.28.0 合成装配。**真实 QQ 多 Bot、Angel Heart 同装聊天链路、真实 Provider 的语义效果与成本、真人盲评、完整 Dashboard 浏览器体验仍待验收。** 合成测试通过不等于这些场景已通过。
-
-完整证据见 [验收记录](docs/ACCEPTANCE.md)，各版本变化见 [CHANGELOG](CHANGELOG.md)。
 
 ## 升级、备份与回滚
 
@@ -257,19 +252,11 @@ LivingMemory 集成已移除，不再探测、读取或写入其记忆。本地�
 
 欢迎在 [Issues](https://github.com/timeance/Astrbot_plugin_bond/issues) 提交脱敏复现，或通过 PR 改进代码与文档。
 
-## 已有配置与新默认
-
-已有明确保存的模式、自定义增长、额度和衰减参数继续保留；重装时保留插件配置也不会自动采用新默认。旧 `economy.preset` 仍为缺失的基础参数提供对应预设值，显式具体参数优先；它与关系节奏模式分别处理，不恢复旧的 Galgame 1.25 倍加成。
-
-熟悉度到 1 / 5 时分别进入眼熟 / 相识档，后期熟悉、熟络门槛保持不变；称谓只解释已有三维状态，不重算历史奖励。当前新安装的模式、额度、60/180 天衰减及调用预算见上方「一套基础参数，两种关系节奏」。需要采用新默认时，在对应设置区点击「恢复此区默认设置」，检查草稿后保存并重载，无需清空成员或流水。
-
-首次开启亲近度衰减可能按原时间锚计算当前值；新的亲近度基线使用 `decay.affinity_baseline`，旧版已失效的 `decay.baseline` 不重新启用；schema 16 为旧非零信任、schema 17 为旧非零熟悉度从相应升级时开始计时，不追扣各自升级前的空闲时长，跨升级临时覆盖不会重复计算暂停时长。升级前请先备份代码、配置与数据。自动评估、关系注入和诊断仍默认关闭，Provider 由管理员选择；当前规则与迁移限制见 [关系评估框架](docs/ASSESSMENT_FRAMEWORK.md)，早期设置审阅保留在 [历史记录](docs/research/DEFAULT_EXPERIENCE.md)。
 
 ## 许可与来源
 
-Bond 基于 [yiwuerxin/astrbot_plugin_xinxian](https://github.com/yiwuerxin/astrbot_plugin_xinxian)（心弦好感度）开发，保留原作者署名，并沿用 **GNU AGPL v3** 许可证。许可证全文见 [LICENSE](LICENSE)，上游基线与修改说明见 [NOTICE](NOTICE)。如果你修改了 Bond 并通过网络向他人提供服务，请依照许可证向使用者提供所运行版本的对应源码。
-
-项目 Logo 与九款排行角色插图是以《超时空辉夜姬！》角色八千代为灵感、由 AI 辅助绘制的非官方同人素材，非官方联名。排行插图包含六款 Q 版与三款正常比例半身图，均不含文字。Bot 在群聊中的实际人格由你在 AstrBot 中的配置决定。内置中文字体的来源和独立许可证见 [字体说明](resources/fonts/README.md)。
+Bond 基于 [yiwuerxin/astrbot_plugin_xinxian](https://github.com/yiwuerxin/astrbot_plugin_xinxian)（心弦好感度）开发，保留原作者署名，并沿用 **GNU AGPL v3** 许可证。
+项目 Logo 与九款排行角色插图是以《超时空辉夜姬！》角色八千代为灵感、由 AI 辅助绘制的非官方同人素材，非官方联名。
 
 <a id="references"></a>
 
