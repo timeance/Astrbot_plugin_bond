@@ -240,50 +240,86 @@ def decaying(db, **kwargs):
     )
 
 
+@pytest.mark.parametrize("grace_days", [0, 5])
 @pytest.mark.parametrize("trust", [40, -40])
-def test_separate_decay_halflives_and_f_does_not_decay(db, trust):
+def test_separate_decay_halflives_and_f_does_not_decay(db, trust, grace_days):
     with patch("time.time", return_value=START):
-        svc = decaying(db)
+        svc = decaying(db, decay_grace_days=grace_days)
         seed(svc, a=40, t=trust)
     with patch("time.time", return_value=START + 60 * DAY):
         state = run(svc.get_relation("g", "u"))
-        assert (state.familiarity, state.affinity) == (95, 20)
-        assert state.trust == pytest.approx(round(trust * 0.5 ** (1 / 3), 1))
+        assert state.familiarity == 95
+        assert state.affinity == round(40 * 0.5 ** ((60 - grace_days) / 60), 1)
+        assert state.trust == pytest.approx(
+            round(trust * 0.5 ** ((60 - grace_days) / 180), 1)
+        )
     with patch("time.time", return_value=START + 180 * DAY):
         state = run(svc.get_relation("g", "u"))
-        assert (state.familiarity, state.affinity, state.trust) == (95, 5, trust / 2)
+        assert state.familiarity == 95
+        assert state.affinity == round(40 * 0.5 ** ((180 - grace_days) / 60), 1)
+        assert state.trust == round(trust * 0.5 ** ((180 - grace_days) / 180), 1)
         assert raw(db).trust == trust
         assert raw(db).trust_updated_at == START
 
 
+@pytest.mark.parametrize("grace_days", [0, 5])
+@pytest.mark.parametrize("trust", [40, -40])
 @pytest.mark.parametrize("kind", ["normal_question", "friendly"])
-def test_f_or_a_writes_and_undo_do_not_freeze_or_repeat_trust_decay(db, kind):
+def test_f_or_a_writes_and_undo_do_not_freeze_or_repeat_trust_decay(
+    db, kind, trust, grace_days
+):
     with patch("time.time", return_value=START):
-        svc = decaying(db)
-        seed(svc, a=40, t=40)
-    for days in (30, 60, 90):
+        svc = decaying(db, decay_grace_days=grace_days)
+        seed(svc, a=40, t=trust)
+    previous = trust
+    for index, days in enumerate((30, 60, 90), start=1):
+        # 每次有效互动只结算距上次互动超过保温期的部分。
+        expected = trust * 0.5 ** (index * (30 - grace_days) / 180)
         with patch("time.time", return_value=START + days * DAY):
-            event(svc, f"event-{days}", kind)
-            assert raw(db).trust == 40
-            assert raw(db).trust_updated_at == START
+            assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
+            result = event(svc, f"event-{days}", kind)
+            assert result["delta"]["trust"] == 0
+            assert result["before"]["trust"] == pytest.approx(expected)
+            assert result["after"]["trust"] == pytest.approx(expected)
+            assert raw(db).trust == pytest.approx(expected)
+            assert raw(db).trust_updated_at == START + days * DAY
+            assert abs(raw(db).trust) < abs(previous)
+            assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
+            assert usage(db, svc)[4:6] == (0, 0)
+            previous = raw(db).trust
+    settled = raw(db).trust
+    anchor = START + 90 * DAY
     with patch("time.time", return_value=START + 120 * DAY):
+        expected = settled * 0.5 ** ((30 - grace_days) / 180)
+        assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
         run(svc.undo_log(log_for(db, "event-90")["id"]))
-        assert raw(db).trust_updated_at == START
+        # 撤销 F/A 增量不动已结算的 T，也不能让 T 再获得保温期。
+        assert raw(db).trust == settled
+        assert raw(db).trust_updated_at == anchor
+        assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
+        assert run(db.query_logs("g", "u"))[0]["relation_delta"]["trust"] == 0
     with patch("time.time", return_value=START + 180 * DAY):
-        assert run(svc.get_relation("g", "u")).trust == 20
+        expected = settled * 0.5 ** ((90 - grace_days) / 180)
+        assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
+        assert abs(expected) < abs(settled) < abs(trust)
+        assert raw(db).trust == settled
+        assert raw(db).trust_updated_at == anchor
         assert usage(db, svc) is None  # 读取衰减不消费互动扣分额度。
 
 
-def test_reload_half_life_changes_readout_without_rewriting_anchor(db):
+@pytest.mark.parametrize("grace_days", [0, 5])
+def test_reload_half_life_changes_readout_without_rewriting_anchor(db, grace_days):
     with patch("time.time", return_value=START):
-        old = decaying(db)
+        old = decaying(db, decay_grace_days=grace_days)
         seed(old, a=40, t=-40)
     with patch("time.time", return_value=START + 60 * DAY):
-        assert run(old.get_relation("g", "u")).affinity == 20
-        slower = decaying(db, a_half=120, t_half=360)
+        assert run(old.get_relation("g", "u")).affinity == round(
+            40 * 0.5 ** ((60 - grace_days) / 60), 1
+        )
+        slower = decaying(db, a_half=120, t_half=360, decay_grace_days=grace_days)
         state = run(slower.get_relation("g", "u"))
-        assert state.affinity == round(40 * 0.5**0.5, 1)
-        assert state.trust == round(-40 * 0.5 ** (1 / 6), 1)
+        assert state.affinity == round(40 * 0.5 ** ((60 - grace_days) / 120), 1)
+        assert state.trust == round(-40 * 0.5 ** ((60 - grace_days) / 360), 1)
         assert raw(db).updated_at == raw(db).trust_updated_at == START
         assert len(run(db.query_logs("g", "u"))) == 1
 
@@ -303,9 +339,10 @@ def test_admin_set_resets_both_decay_anchors_and_undo_remains_symmetric(db):
         assert (raw(db).familiarity, raw(db).favor, raw(db).trust) == (96, 30, -10)
 
 
-def test_temporary_pauses_both_clocks_and_expiry_rejects_old_work(db):
+@pytest.mark.parametrize("grace_days", [0, 5])
+def test_temporary_pauses_both_clocks_and_expiry_rejects_old_work(db, grace_days):
     with patch("time.time", return_value=START):
-        svc = decaying(db)
+        svc = decaying(db, decay_grace_days=grace_days)
         seed(svc, a=40, t=-40)
     with patch("time.time", return_value=START + 30 * DAY):
         before = run(svc.formal_relation("g", "u"))
@@ -334,8 +371,8 @@ def test_temporary_pauses_both_clocks_and_expiry_rejects_old_work(db):
             event(svc, "old-after-expiry", expected_revision=revision)
     with patch("time.time", return_value=START + 90 * DAY):
         state = run(svc.get_relation("g", "u"))
-        assert state.affinity == 20
-        assert state.trust == round(-40 * 0.5 ** (1 / 3), 1)
+        assert state.affinity == round(40 * 0.5 ** ((60 - grace_days) / 60), 1)
+        assert state.trust == round(-40 * 0.5 ** ((60 - grace_days) / 180), 1)
 
 
 def v15(path):
@@ -563,12 +600,13 @@ def test_v15_missing_history_keeps_net_proven_minimum_usage(tmp_path):
         run(db.close())
 
 
+@pytest.mark.parametrize("grace_days", [0, 5])
 @pytest.mark.parametrize("trust", [40, -40])
 def test_trust_change_settles_own_clock_and_undo_redo_does_not_duplicate_decay(
-    db, trust
+    db, trust, grace_days
 ):
     with patch("time.time", return_value=START):
-        svc = decaying(db)
+        svc = decaying(db, decay_grace_days=grace_days)
         seed(svc, a=40, t=trust)
     with patch("time.time", return_value=START + 90 * DAY):
         before = svc._effective_trust(raw(db).trust, raw(db).trust_updated_at)
@@ -584,11 +622,16 @@ def test_trust_change_settles_own_clock_and_undo_redo_does_not_duplicate_decay(
         assert raw(db).trust == pytest.approx(before - 1.5)
         assert usage(db, svc) == used
     with patch("time.time", return_value=START + 270 * DAY):
-        assert run(svc.get_relation("g", "u")).trust == round((before - 1.5) / 2, 1)
+        assert run(svc.get_relation("g", "u")).trust == round(
+            (before - 1.5) * 0.5 ** ((180 - grace_days) / 180), 1
+        )
 
 
+@pytest.mark.parametrize("grace_days", [0, 5])
 @pytest.mark.parametrize("trust", [40, -40])
-def test_v15_override_started_before_upgrade_and_ended_after_upgrade(tmp_path, trust):
+def test_v15_override_started_before_upgrade_and_ended_after_upgrade(
+    tmp_path, trust, grace_days
+):
     path = tmp_path / "active-at-upgrade.db"
     conn = v15(path)
     started, expires = START - 10 * DAY, START + 10 * DAY
@@ -606,7 +649,7 @@ def test_v15_override_started_before_upgrade_and_ended_after_upgrade(tmp_path, t
     db = SQLiteBackend(path)
     run(db.init())
     try:
-        svc = decaying(db)
+        svc = decaying(db, decay_grace_days=grace_days)
         with patch("time.time", return_value=START + 5 * DAY):
             assert run(svc.formal_relation("g", "u"))["trust"] == trust
             assert raw(db).trust == trust
@@ -617,13 +660,18 @@ def test_v15_override_started_before_upgrade_and_ended_after_upgrade(tmp_path, t
         run(db.close())
         run(db.init())
         with patch("time.time", return_value=ended + 180 * DAY):
-            assert run(svc.get_relation("g", "u")).trust == trust / 2
+            assert run(svc.get_relation("g", "u")).trust == round(
+                trust * 0.5 ** ((180 - grace_days) / 180), 1
+            )
     finally:
         run(db.close())
 
 
+@pytest.mark.parametrize("grace_days", [0, 5])
 @pytest.mark.parametrize("trust", [40, -40])
-def test_v15_override_expired_before_upgrade_but_not_settled(tmp_path, trust):
+def test_v15_override_expired_before_upgrade_but_not_settled(
+    tmp_path, trust, grace_days
+):
     path = tmp_path / "expired-at-upgrade.db"
     conn = v15(path)
     started, expires = START - 20 * DAY, START - 5 * DAY
@@ -639,14 +687,16 @@ def test_v15_override_expired_before_upgrade_but_not_settled(tmp_path, trust):
     db = SQLiteBackend(path)
     run(db.init())
     try:
-        svc = decaying(db)
+        svc = decaying(db, decay_grace_days=grace_days)
         with patch("time.time", return_value=START):
             assert run(svc.get_relation("g", "u")).trust == trust
             assert not run(svc.temporary_state("g", "u"))["active"]
             assert raw(db).trust_updated_at == START
             assert run(svc.temporary_audit("g", "u"))[0]["action"] == "expired"
         with patch("time.time", return_value=START + 180 * DAY):
-            assert run(svc.get_relation("g", "u")).trust == trust / 2
+            assert run(svc.get_relation("g", "u")).trust == round(
+                trust * 0.5 ** ((180 - grace_days) / 180), 1
+            )
             assert raw(db).trust_updated_at == START  # 再读不重复补暂停时长。
     finally:
         run(db.close())

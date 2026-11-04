@@ -146,7 +146,10 @@ class ImpressionService:
                 expected_revision is not None
                 and temporary["revision"] != expected_revision
             ):
-                return False, "临时关系已使该任务失效，保留原印象"
+                return (
+                    False,
+                    "临时关系已生效或发生变更，本次刷新已取消，原有印象已保留。",
+                )
             rec = await self._storage.get(group_id, user_id)
             names = await self._storage.member_names()
             nickname = (
@@ -160,12 +163,12 @@ class ImpressionService:
                 evidence_ids is not None
                 and tuple(r["id"] for r in logs) != evidence_ids
             ):
-                return False, "调度批次已失效，保留原印象"
+                return False, "本次刷新的评估记录已发生变化，已保留原来的印象。"
             judged = [
                 r for r in logs if r.get("source") == "judge" and not r.get("reversed")
             ]
             if not judged:
-                return False, "暂无评估记录，无法生成印象"
+                return False, "暂无可用的评估记录，暂时无法生成印象。"
             samples = [
                 f"{float(r.get('delta') or 0):+} {r.get('message') or ''} —— {r.get('reason') or ''}"
                 for r in reversed(judged)  # 时间正序（query_logs 是倒序）
@@ -175,7 +178,7 @@ class ImpressionService:
             persona_name = await self._summarizer.resolve_display_name(umo)
             provider = await self._summarizer.resolve_summary_provider()
             if provider is None:
-                return False, "模型不可用，稍后再试"
+                return False, "模型不可用，请检查模型配置后重试。"
             if self._points_mode:
                 return await self._refresh_points(
                     group_id,
@@ -196,7 +199,7 @@ class ImpressionService:
             content = (getattr(resp, "completion_text", "") or "").strip()
             parsed = parse_summary(content)
             if parsed is None:
-                return False, "模型输出无法解析，保留原印象"
+                return False, "这次没能生成有效的印象，已保留原来的内容。"
             impression, llm_tags = parsed
             # LLM 标签优先，确定性统计标签补充（去重、上限内）
             extra = [t for t in stats_tags(logs) if t not in llm_tags]
@@ -209,7 +212,7 @@ class ImpressionService:
                 [r["id"] for r in judged],
                 expected_revision=temporary["revision"],
             ):
-                return False, "评审已撤销，保留原印象"
+                return False, "本次评估记录已不可用，已保留原来的印象。"
             logger.info(f"[八千代] {group_id}/{user_id} 印象已刷新: {impression}")
             msg = f"已生成印象：{impression}" + (
                 f"（标签：{'、'.join(tags)}）" if tags else ""
@@ -218,7 +221,7 @@ class ImpressionService:
 
         except Exception as e:
             logger.warning(f"[八千代] 印象刷新失败（静默）: {e}")
-            return False, f"刷新失败: {e}"
+            return False, f"印象刷新失败：{e}"
 
     async def _refresh_points(
         self,
@@ -285,7 +288,7 @@ class ImpressionService:
             content = (getattr(resp, "completion_text", "") or "").strip()
             new_pts = parse_points(content)
             if not new_pts:
-                return False, "模型输出无法解析，保留原印象点"
+                return False, "这次没能生成有效的印象点，已保留原来的内容。"
             mult = loss_aversion_multiplier(recent_delta)
             for p in new_pts:
                 p["weight"] = max(1, min(15, int(round(p["weight"] * mult))))
@@ -309,7 +312,7 @@ class ImpressionService:
                 kept,
                 expected_revision=expected_revision,
             ):
-                return False, "评审已撤销，保留原印象"
+                return False, "本次评估记录已不可用，已保留原来的印象。"
             logger.info(
                 f"[八千代] {group_id}/{user_id} 印象点已刷新: "
                 f"{len(kept)} 点（挤出 {len(dropped)}）"
@@ -317,7 +320,7 @@ class ImpressionService:
             return True, f"已生成印象：{impression}"
         except Exception as e:
             logger.warning(f"[八千代] 印象点刷新失败（静默）: {e}")
-            return False, f"刷新失败: {e}"
+            return False, f"印象刷新失败：{e}"
 
     async def set_tags(self, group_id: str, user_id: str, tags: list[str]) -> None:
         """手动设置标签（指令入口）；印象本体由 AI 维护，这里只改标签。"""

@@ -17,6 +17,7 @@ from astrbot_plugin_bond.scripts.replay_recommended_defaults import replay, STAR
 
 def favor(store, **options):
     config = dict(
+        decay_grace_days=0,
         decay_enabled=True,
         half_life_base=30,
         half_life_growth=1,

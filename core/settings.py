@@ -21,25 +21,47 @@ SECTIONS = {
         "基础设置",
         [
             "assessment.enabled",
-            "assessment.assessment_mode",
             "assessment.small_provider_id",
             "assessment.large_provider_id",
-            "inject.enabled",
-            "default_scope_mode",
+            "assessment.assessment_mode",
             "group_whitelist",
-            "ignored_bot_ids",
+            "default_scope_mode",
             "master_ids",
+            "inject.enabled",
             "relation_mode",
+            "ignored_bot_ids",
+            "command.ranking_access",
+            "command.ranking_image",
+            "command.ranking_limit",
+            "command.text_wake_enabled",
+            "command.text_wake_ranking",
         ],
     ),
     "rules": (
         "关系变化",
         [
+            "decay.grace_days",
             "timezone",
-            "relation_daily_caps",
+            "relation_daily_caps.familiarity_up",
+            "relation_daily_caps.familiarity_down",
             "familiarity_growth",
-            "decay",
+            "decay.familiarity_enabled",
+            "decay.familiarity_half_life",
+            "decay.familiarity_baseline",
+            "relation_daily_caps.affinity_up",
+            "relation_daily_caps.affinity_down",
             "economy",
+            "decay.enabled",
+            "decay.half_life_base",
+            "decay.half_life_growth",
+            "decay.half_life_max",
+            "decay.affinity_baseline",
+            "decay.floor_enabled",
+            "relation_daily_caps.trust_up",
+            "relation_daily_caps.trust_down",
+            "decay.trust_enabled",
+            "decay.trust_half_life",
+            "decay.trust_baseline",
         ],
     ),
     "memory": (
@@ -51,8 +73,8 @@ SECTIONS = {
 }
 LABELS = {
     "assessment.enabled": (
-        "自动评估互动",
-        "用所选模型判断互动，再由本地规则计分。关闭后停止自动评分，仍记录成员资料。",
+        "自动评估",
+        "根据你与 Bot 的互动，更新熟悉度、亲近度和信任度。关闭后仅停止自动评估。",
     ),
     "assessment.assessment_mode": (
         "评估模式",
@@ -67,8 +89,8 @@ LABELS = {
         "用于复核难判互动。留空不调用；需要复核而无法完成时不评分。",
     ),
     "inject.enabled": (
-        "回复体现关系",
-        "补充关系和成员印象，沿用当前人格与接话策略。全局空间不带入其他群的印象和流水。",
+        "在回复中体现关系",
+        "让 Bot 参考彼此的关系和对你的印象来回复。全局空间不带入其他群的印象和流水。",
     ),
     "ignored_bot_ids": (
         "忽略的机器人账号",
@@ -76,7 +98,7 @@ LABELS = {
     ),
     "relation_mode": (
         "关系模式",
-        "基础使用所填参数；Galgame 将加分及每日加分上限各乘 2，其余不变。不覆盖基础值，不重算历史。",
+        "基础模式使用所填参数；Galgame 将加分及每日加分上限各乘 2，其余不变。不改写设置，不重算历史。",
     ),
     "ranking_access": (
         "排行查询权限",
@@ -84,7 +106,7 @@ LABELS = {
     ),
     "ranking_image": (
         "图片排行",
-        "图片显示最多 10 人的昵称、头像和关系，不显示分值。头像向 QQ 头像服务请求；失败用占位图，绘图失败改发文字。模型工具仍返回文字。",
+        "图片最多展示 10 人的昵称、头像和关系，不显示分值。头像由 QQ 提供，生成图片失败时改用文字。",
     ),
     "diagnostics.enabled": (
         "记录关系诊断",
@@ -96,7 +118,7 @@ LABELS = {
     ),
     "master_ids": (
         "主人 QQ",
-        "多个 QQ 用英文逗号分隔，用于主人标记和“仅主人”排行权限。不授予管理权限或免除评分，称呼服从人格。",
+        "用于主人标记和仅主人查榜，不授予管理权限，也不免除评估。多个 QQ 用英文逗号分隔。",
     ),
     "group_whitelist": (
         "启用 Bond 的群",
@@ -123,12 +145,12 @@ LABELS = {
         "重要事件的回顾天数乘以此数；1 表示与普通事件相同。",
     ),
     "interval": (
-        "印象更新间隔",
-        "每积累此数量的有效评估记录，调用模型汇总印象，会发送记录中的原文和理由；失败保留原印象。",
+        "印象更新频率",
+        "每积累设定条数的未汇总评估流水（默认 8 条），在关系变化后尝试更新。撤销记录不计，零变化流水计入；原文会发给模型，失败保留原印象。",
     ),
     "points_mode": (
         "分点记录印象",
-        "开启后分点记录、合并相近要点；关闭时汇总成一句话。不清除分值和流水。",
+        "开启后分点记录、合并相近要点，保留现有标签；关闭时汇总成一句话并更新标签。不清除分值和流水。",
     ),
     "judge.provider_id": (
         "印象汇总模型（可选）",
@@ -143,8 +165,8 @@ LABELS = {
         "公开排行最多显示 10 人，超出 10 的设置不生效。",
     ),
     "text_wake_enabled": (
-        "文字唤醒排行",
-        "用指定短语查询本群排行，无需斜杠，仍遵守排行权限。",
+        "文字查榜",
+        "开启后可用指定短语查询本群排行，无需斜杠，仍遵守排行权限。关闭仅停用文字查榜。",
     ),
     "text_wake_ranking": (
         "排行唤醒短语",
@@ -195,7 +217,7 @@ LABELS = {
         "至少 5 天。每经过此天数，信任度距同号基线的差值约减半，不越过基线或变号。",
     ),
     "half_life_base": (
-        "亲近度基础半衰期（天）",
+        "亲近度半衰期（天）",
         "至少 5 天。距同号基线的差值按此速度减半，托底可提前止跌；巩固倍数大于 1 时，此值为个人半衰期下限。",
     ),
     "half_life_growth": (
@@ -204,7 +226,7 @@ LABELS = {
     ),
     "half_life_max": (
         "亲近度最长半衰期（天）",
-        "仅巩固倍数大于 1 时使用，也限制已有成员；不应低于基础半衰期。",
+        "仅巩固倍数大于 1 时使用，也限制已有成员；不应低于所设的亲近度半衰期。",
     ),
     "economy.enabled": (
         "启用亲近度增长规则",
@@ -216,7 +238,7 @@ LABELS = {
     ),
     "noise_floor": (
         "亲近度微小变化阈值",
-        "基础亲近度增减小于此绝对值时不计分，先过滤再算倍率；0 关闭过滤。",
+        "亲近度增减的绝对值小于此数时不计入亲近度，先过滤再算倍率；0 关闭过滤。",
     ),
     "negative_weight": (
         "亲近度扣分倍率",
@@ -247,7 +269,7 @@ LABELS = {
         "友好及以下的抑制时间乘以此数，1 不延长；亲密系数为 1 时也使用此值。",
     ),
     "relation_daily_caps.familiarity_up": (
-        "熟悉度每日加分上限（基础）",
+        "熟悉度每日加分上限",
         "每人每天最多增加多少熟悉度。Galgame 为此值的 2 倍；0 表示不增加。",
     ),
     "relation_daily_caps.familiarity_down": (
@@ -255,7 +277,7 @@ LABELS = {
         "每人每天最多扣多少熟悉度；0 禁止互动扣分，时间衰减另算。",
     ),
     "relation_daily_caps.affinity_up": (
-        "亲近度每日加分上限（基础）",
+        "亲近度每日加分上限",
         "每人每天最多增加多少亲近度。Galgame 为此值的 2 倍；0 表示不增加。",
     ),
     "relation_daily_caps.affinity_down": (
@@ -263,7 +285,7 @@ LABELS = {
         "每人每天最多扣多少亲近度；0 禁止扣分。加分不抵消已用额度，时间衰减另算。",
     ),
     "relation_daily_caps.trust_up": (
-        "信任度每日加分上限（基础）",
+        "信任度每日加分上限",
         "每人每天正向增信的额度；默认事件不增信。Galgame 为 2 倍，0 禁止增加。",
     ),
     "relation_daily_caps.trust_down": (
@@ -298,14 +320,18 @@ LABELS = {
         "亲近度 95～100 加分倍率",
         "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。",
     ),
+    "decay.grace_days": (
+        "关系保温期（天）",
+        "即使一段时间没有互动，彼此的熟悉感也不会马上消失。超过这段时间后，关系才会逐渐淡化。0 表示不设保温期。",
+    ),
 }
 
 for _key, _range in (
-    ("under10", "0～不足10"),
-    ("under30", "10～不足30"),
-    ("under55", "30～不足55"),
-    ("under80", "55～不足80"),
-    ("under95", "80～不足95"),
+    ("under10", "0～不足 10"),
+    ("under30", "10～不足 30"),
+    ("under55", "30～不足 55"),
+    ("under80", "55～不足 80"),
+    ("under95", "80～不足 95"),
     ("at95", "95～100"),
 ):
     LABELS[f"familiarity_growth.{_key}"] = (
@@ -336,7 +362,7 @@ def fields():
             path,
             LABELS.get(
                 key,
-                (node.get("description", key), "该等级的正向亲近度变化乘以这个数。"),
+                (node.get("description", key), node.get("hint", "")),
             ),
         )
         result.append(

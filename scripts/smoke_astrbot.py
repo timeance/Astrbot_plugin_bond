@@ -401,7 +401,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
                     assert len(denied_replies) == 1
                     assert (
                         denied_replies[0].chain[0].text
-                        == "本群排行仅允许配置的主人查询。"
+                        == "本群排行仅限已配置的主人查询。"
                     )
                 queried.assert_not_called()
                 fetched.assert_not_called()
@@ -856,7 +856,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             page.handle_users,
             f"/astrbot_plugin_bond/users?bot_id={BOT_IDS[0]}&scope_mode=global",
         )
-        assert status == 401 and body == {"error": "未授权", "success": False}
+        assert status == 401 and body == {"error": "请先登录管理面板", "success": False}
         status, body = await call(
             page.handle_users,
             f"/astrbot_plugin_bond/users?bot_id={BOT_IDS[0]}&scope_mode=global",
@@ -869,7 +869,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             method="POST",
             body={"bot_id": BOT_IDS[1], "scope_mode": "global"},
         )
-        assert status == 401 and body["error"] == "未授权"
+        assert status == 401 and body["error"] == "请先登录管理面板"
         status, body = await call(
             page.handle_undo,
             "/astrbot_plugin_bond/undo",

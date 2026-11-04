@@ -72,7 +72,7 @@ def ranking_denial(svc: FavorService, event: AstrMessageEvent, access: str) -> s
     if access == "master":
         if svc.is_master(str(event.get_sender_id())):
             return ""
-        return "本群排行仅允许配置的主人查询。"
+        return "本群排行仅限已配置的主人查询。"
     return "排行查询权限配置无效，请联系维护者。"
 
 

@@ -221,11 +221,7 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                     directed=has_at_bot or is_reply_bot,
                     admission_state=admission_state,
                 )
-                if (
-                    status == "accepted"
-                    and deps.impressions is not None
-                    and deps.favor.scope_mode == "per_group"
-                ):
+                if status == "accepted" and deps.impressions is not None:
                     await deps.impressions.maybe_refresh(
                         group_id, user_id, umo=event.unified_msg_origin
                     )

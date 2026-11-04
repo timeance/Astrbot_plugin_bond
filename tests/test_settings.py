@@ -111,15 +111,20 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
     definitions = fields()
     assert [f["path"] for f in definitions if f["group"] == "basic"] == [
         "assessment.enabled",
-        "assessment.assessment_mode",
         "assessment.small_provider_id",
         "assessment.large_provider_id",
-        "inject.enabled",
-        "default_scope_mode",
+        "assessment.assessment_mode",
         "group_whitelist",
-        "ignored_bot_ids",
+        "default_scope_mode",
         "master_ids",
+        "inject.enabled",
         "relation_mode",
+        "ignored_bot_ids",
+        "command.ranking_access",
+        "command.ranking_image",
+        "command.ranking_limit",
+        "command.text_wake_enabled",
+        "command.text_wake_ranking",
     ]
     by_path = {f["path"]: f for f in definitions}
     assert len(by_path) == len(definitions)
@@ -130,6 +135,86 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
     ):
         assert by_path[path]["special"] == "select_provider"
     assert by_path["inject.memory_count"]["group"] == "memory"
+
+
+def test_host_visibility_and_webui_wording_agree():
+    schema = json.loads(
+        (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
+    )
+    visible = []
+
+    def visit(nodes, prefix="", hidden=False):
+        for key, node in nodes.items():
+            path = f"{prefix}.{key}" if prefix else key
+            assert node["description"]
+            assert "：" not in node["description"]
+            assert "。" not in node["description"]
+            hidden_here = hidden or node.get("invisible", False)
+            if node["type"] == "object":
+                visit(node["items"], path, hidden_here)
+            elif not hidden_here:
+                visible.append(path)
+
+    visit(schema)
+    definitions = fields()
+    assert visible == [f["path"] for f in definitions if f["group"] == "basic"]
+    for field in definitions:
+        node = schema
+        for part in field["path"].split("."):
+            node = node.get("items", node)[part]
+        assert field["label"] == node["description"]
+        assert field["hint"] == node["hint"]
+    for key in (
+        "relation_daily_caps",
+        "familiarity_growth",
+        "decay",
+        "economy",
+        "impression",
+        "judge",
+        "diagnostics",
+    ):
+        assert schema[key]["invisible"] is True
+    assert schema["decay"]["items"]["grace_days"]["invisible"] is True
+    assert schema["decay"]["items"]["grace_days"]["type"] == "float"
+
+
+def test_relation_fields_keep_every_dimension_together_without_changing_group():
+    schema = json.loads(
+        (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
+    )
+    paths = [f["path"] for f in fields() if f["group"] == "rules"]
+    assert paths[:2] == ["decay.grace_days", "timezone"]
+    expected = {"timezone"}
+
+    def collect(path, node):
+        if node["type"] == "object":
+            for key, child in node["items"].items():
+                collect(f"{path}.{key}", child)
+        else:
+            expected.add(path)
+
+    for key in ("relation_daily_caps", "familiarity_growth", "decay", "economy"):
+        collect(key, schema[key])
+    expected.remove("economy.preset")
+    assert set(paths) == expected
+    dimensions = [
+        0 if "familiarity" in path else 2 if "trust" in path else 1
+        for path in paths[2:]
+    ]
+    assert dimensions == sorted(dimensions)
+    assert "economy.enabled" in paths
+
+
+@pytest.mark.parametrize("days", [0, 0.5, 5.0, 30])
+def test_grace_days_and_existing_impression_interval_are_preserved(days):
+    config = {"decay": {"grace_days": days}, "impression": {"interval": 13}}
+    before = copy.deepcopy(config)
+    validate_patch({"decay.grace_days": days})
+    values = snapshot(config)["values"]
+    assert values["decay.grace_days"] == days
+    assert values["impression.interval"] == 13
+    assert snapshot({})["values"]["impression.interval"] == 8
+    assert config == before
 
 
 def test_quickstart_save_merges_assessment_and_keeps_loaded_scope():
@@ -228,6 +313,7 @@ def test_models_and_details_share_revision_and_merge_preserved_fields():
         {"assessment.context_chars": 3000},
         {"relation_daily_caps.familiarity_up": 6},
         {"familiarity_growth.under10": 1.6},
+        {"decay.grace_days": 2.5},
         {"decay.trust_half_life": 200},
         {"decay.familiarity_enabled": False},
         {"decay.familiarity_half_life": 90},
@@ -330,6 +416,8 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
     values = data["values"]
     expected = {
         "relation_mode": "galgame",
+        "decay.grace_days": 5.0,
+        "impression.interval": 8,
         "relation_daily_caps.familiarity_up": 5,
         "relation_daily_caps.familiarity_down": 0,
         "relation_daily_caps.affinity_up": 10,
@@ -383,6 +471,11 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
 @pytest.mark.parametrize(
     "path,value",
     [
+        ("decay.grace_days", -0.1),
+        ("decay.grace_days", True),
+        ("decay.grace_days", "5"),
+        ("decay.grace_days", float("nan")),
+        ("decay.grace_days", float("inf")),
         ("relation_daily_caps.affinity_up", -1),
         ("relation_daily_caps.trust_down", True),
         ("familiarity_growth.at95", float("inf")),
@@ -405,6 +498,7 @@ def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
             relation_mode="realistic",
             relation_daily_caps={"affinity_up": 12},
             decay={"familiarity_enabled": False, "familiarity_half_life": 90},
+            impression={"interval": 13},
             master_ids="8001",
             assessment={"small_provider_id": "chosen"},
         )
@@ -414,6 +508,7 @@ def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
             {
                 "relation_mode": "galgame",
                 "relation_daily_caps.affinity_up": 15,
+                "decay.grace_days": 2.5,
                 "decay.familiarity_enabled": True,
                 "decay.familiarity_half_life": 60,
                 "decay.familiarity_baseline": 20,
@@ -427,6 +522,9 @@ def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
         assert saved["values"]["relation_daily_caps.affinity_up"] == 15
         assert saved["active_values"]["relation_mode"] == "realistic"
         assert saved["active_values"]["relation_daily_caps.affinity_up"] == 12
+        assert saved["values"]["decay.grace_days"] == 2.5
+        assert saved["active_values"]["decay.grace_days"] == 5.0
+        assert config["impression"]["interval"] == 13
         assert saved["values"]["decay.familiarity_enabled"] is True
         assert saved["values"]["decay.familiarity_half_life"] == 60
         assert saved["active_values"]["decay.familiarity_enabled"] is False

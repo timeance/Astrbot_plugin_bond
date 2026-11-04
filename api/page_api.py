@@ -20,12 +20,12 @@ except ImportError:  # pragma: no cover
     request = None
 
 
-ERROR_UNAUTHORIZED = "未授权"
+ERROR_UNAUTHORIZED = "请先登录管理面板"
 ERROR_INVALID = "请求参数无效"
 ERROR_SETTINGS_REVISION = "设置已变更，请刷新后重试"
 ERROR_BOT = "Bot 或数据空间不可用"
 ERROR_OPERATION = "操作失败"
-ERROR_UNDO = "记录不存在或不可撤销"
+ERROR_UNDO = "记录不存在或无法撤销"
 ERROR_BACKUP = "备份不存在或无效"
 
 
@@ -226,13 +226,13 @@ class PageApi:
             f"/{PLUGIN_NAME}/undo",
             self.handle_undo,
             ["POST"],
-            "Bond 撤销/预览一次变动",
+            "Bond 预览或撤销一次变动",
         )
         reg(
             f"/{PLUGIN_NAME}/member",
             self.handle_member,
             ["GET", "POST"],
-            "Bond 成员详情（印象/标签/近期评审）",
+            "Bond 成员详情（印象、标签与近期评估）",
         )
         reg(
             f"/{PLUGIN_NAME}/refresh_impression",

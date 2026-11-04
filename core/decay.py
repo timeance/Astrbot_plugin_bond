@@ -33,6 +33,7 @@ def effective_favor(
     baseline: float,
     floor: float | None = None,
     rounded: bool = True,
+    grace_days: float = 0.0,
 ) -> float:
     """指数遗忘：存量距离按 0.5^(闲置天数/h) 衰减，向 baseline 收敛不越界。
 
@@ -43,12 +44,21 @@ def effective_favor(
       floor——挚爱最多衰到"亲密"下沿，久别重逢不掉出熟悉区间。仅当
       floor 高于 baseline 时生效（地板必须落在衰减目标之上才有意义）；
       stored 本身低于 floor 时不抬高（地板只托底不上涨）。
+    - grace_days 为关系保温期，只衰减超过此天数的部分；0 无宽限。
+      底层函数默认 0 保留直接调用语义，服务层统一装配产品默认值。
     - rounded=True 返回一位小数；写入结算可保留未舍入值。
     """
+    if (
+        isinstance(grace_days, bool)
+        or not isinstance(grace_days, (int, float))
+        or not math.isfinite(grace_days)
+        or grace_days < 0
+    ):
+        raise ValueError("关系保温期须为有限非负天数")
     h = max(HALF_LIFE_MIN, float(half_life)) if half_life else HALF_LIFE_MIN
     if updated_at <= 0 or now <= updated_at:
         return round1(stored) if rounded else float(stored)
-    idle_days = (now - updated_at) / 86400.0
+    idle_days = max(0.0, (now - updated_at) / 86400.0 - grace_days)
     factor = 0.5 ** (idle_days / h)
     eff = baseline + (stored - baseline) * factor
     # 不越过 baseline（stored 在两侧时均收敛向它）

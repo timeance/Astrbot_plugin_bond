@@ -33,7 +33,7 @@ async def handle_set(
     """/好感设置 <QQ号> <数值>（管理员，数值支持一位小数与负值）。"""
     target = (target or "").strip()
     if not is_account_id(target):
-        return "用法：/好感设置 QQ号 数值"
+        return "用法：/好感设置 QQ号 数值（支持一位小数和负数）"
     rec = await svc.set_favor(event.get_group_id(), target, value)
     space = "此 Bot 的全局空间" if svc.scope_mode == "global" else "本群"
     return f"已将 QQ {target} 在{space}的好感度设置为 {fmt(rec.favor)}。"
@@ -52,7 +52,7 @@ async def handle_reset(
         space = "此 Bot 的全局空间" if svc.scope_mode == "global" else "本群"
         return f"已重置 QQ {target} 在{space}的好感度。"
     if svc.scope_mode == "global":
-        return "当前为全局关系空间，群内不支持清空全部共享关系；请在管理面板选择明确的数据空间。"
+        return "当前使用全局关系空间，群内无法清空全部共享关系。请在管理面板确认要操作的数据空间。"
     await svc.reset(group_id, None)
     return "已重置本群全部好感度数据。"
 
@@ -64,13 +64,13 @@ async def handle_set_relationship(
     target = (target or "").strip()
     key = (key or "").strip()
     if not is_account_id(target):
-        keys = "、".join(relationships.keys()) if relationships else "任意自定义"
-        return f"用法：/关系设置 QQ号 类型（可选：{keys}；留空清除）"
+        keys = "、".join(relationships.keys()) if relationships else "自定义类型"
+        return f"用法：/关系设置 QQ号 类型（可选：{keys}；类型留空可清除关系标签）"
     await svc.set_relationship(event.get_group_id(), target, key)
     if not key:
-        return f"已清除 QQ {target} 与当前 Bot的关系标签。"
+        return f"已清除 QQ {target} 与当前 Bot 的关系标签。"
     label = relationships.label_of(key) if relationships else key
-    return f"已将 QQ {target} 与当前 Bot的关系设为「{label}」。"
+    return f"已将 QQ {target} 与当前 Bot 的关系设为「{label}」。"
 
 
 async def handle_set_tags(
@@ -79,7 +79,7 @@ async def handle_set_tags(
     """/印象设置 QQ号 标签1,标签2（管理员；标签留空=清除手动标签）。印象本体由 AI 维护。"""
     target = (target or "").strip()
     if not is_account_id(target):
-        return "用法：/印象设置 QQ号 标签1,标签2（最多 3 个，逗号分隔；留空清除）"
+        return "用法：/印象设置 QQ号 标签1,标签2（最多 3 个，每个最多 6 个字符；逗号分隔，留空清除）"
     parts = [p for p in str(tags or "").replace("，", ",").split(",") if p.strip()]
     if not parts:
         await impressions.set_tags(event.get_group_id(), target, [])

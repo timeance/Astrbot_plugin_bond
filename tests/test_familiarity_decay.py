@@ -37,6 +37,7 @@ def service(db, **kwargs):
         "realistic", rules=kwargs.pop("rules", None), caps=kwargs.pop("caps", None)
     )
     options = dict(
+        decay_grace_days=0,
         familiarity_decay_enabled=True,
         familiarity_half_life=60,
         trust_decay_enabled=True,
@@ -114,7 +115,7 @@ def test_config_reload_reuses_original_anchor_without_writes(db):
         assert len(run(db.query_logs("g", "u"))) == 1
 
 
-def test_tonly_fonly_interleave_do_not_reset_other_anchor_or_charge_decay(db):
+def test_tonly_fonly_interleave_settle_all_dimensions_without_charging_decay(db):
     svc = service(db, rules={"insult": {"affinity": 0, "trust": -1.5}})
     with patch("time.time", return_value=START):
         seed(svc)
@@ -125,16 +126,18 @@ def test_tonly_fonly_interleave_do_not_reset_other_anchor_or_charge_decay(db):
         assert (
             result["before"]["familiarity"] == result["after"]["familiarity"] == before
         )
-        assert raw(db).familiarity == 40 and raw(db).familiarity_updated_at == START
+        assert raw(db).familiarity == before
+        assert raw(db).familiarity_updated_at == START + 17 * DAY + 13
         assert log(db, "t-only")["relation_delta"]["familiarity"] == 0
         assert usage(db)[0][:2] == (0, 0)
         t_value, t_anchor = raw(db).trust, raw(db).trust_updated_at
     with patch("time.time", return_value=START + 60 * DAY):
         result = event(svc, "f-only")
-        assert result["before"]["familiarity"] == 20
+        assert result["before"]["familiarity"] == pytest.approx(20)
         assert result["delta"]["familiarity"] == pytest.approx(0.12)
         assert raw(db).familiarity == pytest.approx(20.12)
-        assert raw(db).trust == t_value and raw(db).trust_updated_at == t_anchor
+        assert raw(db).trust == pytest.approx(svc._effective_trust(t_value, t_anchor))
+        assert raw(db).trust_updated_at == START + 60 * DAY
         assert usage(db)[-1][:2] == (0.12, 0)
         assert log(db, "f-only")["relation_delta"]["familiarity"] == pytest.approx(0.12)
 
@@ -166,7 +169,7 @@ def test_raw_fraction_restart_undo_redo_use_effective_value_without_quota_refund
         assert usage(db) == used
 
 
-def test_duplicate_invalid_and_uncertain_never_add_raw_carry_or_reset_anchor(db):
+def test_rejected_events_preserve_anchor_committed_zero_event_reanchors(db):
     svc = service(db)
     with patch("time.time", return_value=START):
         seed(svc, f=95)
@@ -174,11 +177,13 @@ def test_duplicate_invalid_and_uncertain_never_add_raw_carry_or_reset_anchor(db)
         stored = raw(db)
     with patch("time.time", return_value=START + DAY):
         event(svc, "once")
-        event(svc, "uncertain", "uncertain")
         with pytest.raises(ValueError):
             event(svc, "invalid", "not_an_event")
         assert raw(db).familiarity == stored.familiarity
         assert raw(db).familiarity_updated_at == stored.familiarity_updated_at
+        result = event(svc, "uncertain", "uncertain")
+        assert raw(db).familiarity == result["before"]["familiarity"]
+        assert raw(db).familiarity_updated_at == START + DAY
         assert log(db, "uncertain")["relation_delta"]["familiarity"] == 0
 
 
@@ -408,7 +413,7 @@ def test_concurrent_f_settlement_matches_serial_raw_curve(tmp_path):
                 else:
                     for i in range(8):
                         event(services[i % 2], f"e-{i}")
-                assert raw(first).trust_updated_at == START
+                assert raw(first).trust_updated_at == START + 60 * DAY
                 return raw(first).familiarity, usage(first)
         finally:
             run(first.close())
