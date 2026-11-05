@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc"><title id="title">两种关系节奏，留出一点相处的余温</title><desc id="desc">新安装默认Galgame模式，正向加分和每日正向额度乘二。熟悉度六段倍率独立于关系词典五档。默认保温期五天；熟悉度和亲近度半衰期三十天，信任度六十天，基线分别为十、零、二十。</desc><style>text { font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }</style>
+<rect x="1" y="1" width="1198" height="758" rx="18" fill="#EFF3FA" stroke="#CFDCEB"/>
+<text x="36" y="43" font-size="14" font-weight="600" fill="#1B4480">BOND · 关系好感系统</text>
+<text x="36" y="88" font-size="28" font-weight="700" fill="#10213A">两种关系节奏，留出一点相处的余温</text>
+<text x="36" y="119" font-size="16" font-weight="400" fill="#465978">初识时更容易熟悉；久不联系时，超过保温期才逐渐淡化。</text>
+<rect x="36" y="146" width="360" height="572" rx="12" fill="#FAFCFF" stroke="#CFDCEB"/>
+<path d="M56 146h70" stroke="#1B4480" stroke-width="3" stroke-linecap="round"/>
+<text x="56" y="180" font-size="20" font-weight="700" fill="#10213A">01  选择相处节奏</text>
+<text x="56" y="207" font-size="14" font-weight="400" fill="#465978">两种模式共用一套基础参数</text>
+<rect x="420" y="146" width="360" height="572" rx="12" fill="#FAFCFF" stroke="#CFDCEB"/>
+<path d="M440 146h70" stroke="#0E7988" stroke-width="3" stroke-linecap="round"/>
+<text x="440" y="180" font-size="20" font-weight="700" fill="#10213A">02  熟悉度逐步积累</text>
+<text x="440" y="207" font-size="14" font-weight="400" fill="#465978">六段增长倍率，与词典五档不同</text>
+<rect x="804" y="146" width="360" height="572" rx="12" fill="#FAFCFF" stroke="#CFDCEB"/>
+<path d="M824 146h70" stroke="#9E7322" stroke-width="3" stroke-linecap="round"/>
+<text x="824" y="180" font-size="20" font-weight="700" fill="#10213A">03  久不联系也有缓冲</text>
+<text x="824" y="207" font-size="14" font-weight="400" fill="#465978">只计算超过保温期的时间</text>
+<rect x="56" y="232" width="320" height="124" rx="12" fill="#F2F6FC" stroke="#CFDCEB"/>
+<text x="72" y="263" font-size="20" font-weight="700" fill="#1B4480">Galgame · 默认</text>
+<text x="72" y="295" font-size="15" font-weight="400" fill="#465978">正向加分与每日加分上限 ×2</text>
+<text x="72" y="322" font-size="15" font-weight="400" fill="#465978">每日上限：F +10 / A +20 / T +4</text>
+<rect x="56" y="377" width="320" height="124" rx="12" fill="#F2F6FC" stroke="#CFDCEB"/>
+<text x="72" y="408" font-size="20" font-weight="700" fill="#1B4480">基础模式</text>
+<text x="72" y="440" font-size="15" font-weight="400" fill="#465978">使用基础加分与每日加分上限</text>
+<text x="72" y="467" font-size="15" font-weight="400" fill="#465978">每日上限：F +5 / A +10 / T +2</text>
+<text x="56" y="540" font-size="16" font-weight="400" fill="#465978">两种模式的每日扣分上限相同：</text>
+<text x="56" y="565" font-size="16" font-weight="400" fill="#465978">F 0 / A −8 / T −5。</text>
+<text x="56" y="590" font-size="16" font-weight="400" fill="#465978">加分和扣分额度分别累计。</text>
+<text x="56" y="637" font-size="15" font-weight="400" fill="#465978">切换模式不改变旧分数，</text>
+<text x="56" y="662" font-size="15" font-weight="400" fill="#465978">也不清空当天已经使用的额度。</text>
+<text x="440" y="267" font-size="15" font-weight="500" fill="#10213A">0～不足10</text>
+<rect x="558" y="252" width="145" height="16" rx="5" fill="#DDF0F3" stroke="none"/>
+<rect x="558" y="252" width="145.0" height="16" rx="5" fill="#0E7988" stroke="none"/>
+<text x="712" y="267" font-size="15" font-weight="600" fill="#0E7988">150%</text>
+<text x="440" y="315" font-size="15" font-weight="500" fill="#10213A">10～不足30</text>
+<rect x="558" y="300" width="145" height="16" rx="5" fill="#DDF0F3" stroke="none"/>
+<rect x="558" y="300" width="116.0" height="16" rx="5" fill="#0E7988" stroke="none"/>
+<text x="712" y="315" font-size="15" font-weight="600" fill="#0E7988">120%</text>
+<text x="440" y="363" font-size="15" font-weight="500" fill="#10213A">30～不足55</text>
+<rect x="558" y="348" width="145" height="16" rx="5" fill="#DDF0F3" stroke="none"/>
+<rect x="558" y="348" width="77.33333333333333" height="16" rx="5" fill="#0E7988" stroke="none"/>
+<text x="712" y="363" font-size="15" font-weight="600" fill="#0E7988">80%</text>
+<text x="440" y="411" font-size="15" font-weight="500" fill="#10213A">55～不足80</text>
+<rect x="558" y="396" width="145" height="16" rx="5" fill="#DDF0F3" stroke="none"/>
+<rect x="558" y="396" width="48.333333333333336" height="16" rx="5" fill="#0E7988" stroke="none"/>
+<text x="712" y="411" font-size="15" font-weight="600" fill="#0E7988">50%</text>
+<text x="440" y="459" font-size="15" font-weight="500" fill="#10213A">80～不足95</text>
+<rect x="558" y="444" width="145" height="16" rx="5" fill="#DDF0F3" stroke="none"/>
+<rect x="558" y="444" width="29.0" height="16" rx="5" fill="#0E7988" stroke="none"/>
+<text x="712" y="459" font-size="15" font-weight="600" fill="#0E7988">30%</text>
+<text x="440" y="507" font-size="15" font-weight="500" fill="#10213A">95～100</text>
+<rect x="558" y="492" width="145" height="16" rx="5" fill="#DDF0F3" stroke="none"/>
+<rect x="558" y="492" width="14.5" height="16" rx="5" fill="#0E7988" stroke="none"/>
+<text x="712" y="507" font-size="15" font-weight="600" fill="#0E7988">15%</text>
+<rect x="440" y="551" width="320" height="129" rx="12" fill="#F2F8FA" stroke="#CFDCEB"/>
+<text x="456" y="580" font-size="17" font-weight="700" fill="#0E7988">以上为熟悉度基础倍率</text>
+<text x="456" y="609" font-size="15" font-weight="400" fill="#465978">计算时还会应用所选模式倍率。</text>
+<text x="456" y="633" font-size="15" font-weight="400" fill="#465978">亲近度保留同日加分递减。</text>
+<text x="456" y="657" font-size="15" font-weight="400" fill="#465978">默认事件不会增加信任度。</text>
+<rect x="824" y="232" width="320" height="124" rx="12" fill="#FCF9F2" stroke="#CFDCEB"/>
+<text x="840" y="263" font-size="19" font-weight="700" fill="#9E7322">关系保温期 · 默认 5 天</text>
+<text x="840" y="293" font-size="15" font-weight="400" fill="#465978">新的有效互动会重新计时。</text>
+<text x="840" y="320" font-size="15" font-weight="400" fill="#465978">设为 0 可取消；不恢复已淡化分值。</text>
+<rect x="824" y="373" width="320" height="165" rx="12" fill="#F2F6FC" stroke="#CFDCEB"/>
+<text x="840" y="403" font-size="18" font-weight="700" fill="#1B4480">默认半衰期与基线</text>
+<text x="840" y="435" font-size="16" font-weight="600" fill="#0E7988">熟悉度</text>
+<text x="938" y="435" font-size="16" font-weight="600" fill="#10213A">30 天 / 10</text>
+<text x="840" y="468" font-size="16" font-weight="600" fill="#1B4480">亲近度</text>
+<text x="938" y="468" font-size="16" font-weight="600" fill="#10213A">30 天 / 0</text>
+<text x="840" y="501" font-size="16" font-weight="600" fill="#9E7322">信任度</text>
+<text x="938" y="501" font-size="16" font-weight="600" fill="#10213A">60 天 / ±20</text>
+<text x="840" y="525" font-size="13" font-weight="400" fill="#465978">半衰期：与基线的差值减半所需时间。</text>
+<text x="824" y="570" font-size="15" font-weight="400" fill="#465978">基线是停止范围，不会自动赠分。</text>
+<text x="824" y="595" font-size="15" font-weight="400" fill="#465978">负信任可趋近 −20，不会变为正信任。</text>
+<text x="824" y="631" font-size="15" font-weight="400" fill="#465978">亲近度可按当前等级向下两级托底；</text>
+<text x="824" y="656" font-size="15" font-weight="400" fill="#465978">临时关系期间暂停正式关系衰减。</text>
+<text x="36" y="743" font-size="14" font-weight="400" fill="#465978">日常使用可保留默认值；需要微调时，在「详细设置 → 关系变化」中调整。</text>
+</svg>
