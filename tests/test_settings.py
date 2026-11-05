@@ -319,7 +319,7 @@ def test_models_and_details_share_revision_and_merge_preserved_fields():
         {"decay.familiarity_half_life": 90},
         {"decay.familiarity_baseline": 20},
         {"decay.affinity_baseline": 15},
-        {"decay.trust_baseline": 20},
+        {"decay.trust_baseline": 25},
         {"ignored_bot_ids": ["10001"]},
         {"inject.memory_days": 8},
     ],
@@ -425,14 +425,14 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
         "relation_daily_caps.trust_up": 2,
         "relation_daily_caps.trust_down": 5,
         "decay.familiarity_enabled": True,
-        "decay.familiarity_half_life": 60,
+        "decay.familiarity_half_life": 30,
         "decay.enabled": True,
         "decay.half_life_base": 30,
         "decay.trust_enabled": True,
-        "decay.trust_half_life": 90,
-        "decay.familiarity_baseline": 0,
+        "decay.trust_half_life": 60,
+        "decay.familiarity_baseline": 10,
         "decay.affinity_baseline": 0,
-        "decay.trust_baseline": 0,
+        "decay.trust_baseline": 20,
     }
     for key, value in expected.items():
         assert values[key] == value
@@ -536,7 +536,7 @@ def test_saved_relation_settings_do_not_replace_loaded_runtime_until_reload():
         ):
             path = f"decay.{dimension}_baseline"
             assert saved["values"][path] == baseline
-            assert saved["active_values"][path] == 0
+            assert saved["active_values"][path] == initial["active_values"][path]
         assert config["assessment"]["small_provider_id"] == "chosen"
         assert config["master_ids"] == "8001"
         reloaded = RuntimeService(None, config, None).detailed_settings()
@@ -701,8 +701,9 @@ def test_independent_baseline_bounds_and_legacy_value_ignored(dimension):
     before = copy.deepcopy(legacy)
     data = snapshot(legacy)
     field = next(field for field in data["fields"] if field["path"] == path)
-    assert field["group"] == "rules" and field["default"] == 0
-    assert data["values"][path] == 0
+    expected = {"familiarity": 10, "affinity": 0, "trust": 20}[dimension]
+    assert field["group"] == "rules" and field["default"] == expected
+    assert data["values"][path] == expected
     assert data["values"] == snapshot({})["values"]
     assert "decay.baseline" not in data["values"]
     for value in (0, 20.5, 100):

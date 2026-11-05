@@ -727,7 +727,7 @@
       },
       "familiarity_baseline": {
         "type": "float",
-        "default": 0,
+        "default": 10,
         "description": "熟悉度基线",
         "hint": "范围 0～100；高于基线时逐渐靠近基线，低于或等于基线时不变。"
       },
@@ -739,7 +739,7 @@
       },
       "familiarity_half_life": {
         "type": "float",
-        "default": 60,
+        "default": 30,
         "description": "熟悉度半衰期（天）",
         "hint": "至少 5 天。每经过此天数，熟悉度距基线的差值约减半，对已有和新成员均生效。"
       },
@@ -781,7 +781,7 @@
       },
       "trust_baseline": {
         "type": "float",
-        "default": 0,
+        "default": 20,
         "description": "信任度对称基线",
         "hint": "范围 0～100。填 20 时，高于 +20 向 +20 靠近，低于 −20 向 −20 靠近，区间内不变。"
       },
@@ -793,7 +793,7 @@
       },
       "trust_half_life": {
         "type": "float",
-        "default": 90,
+        "default": 60,
         "description": "信任度半衰期（天）",
         "hint": "至少 5 天。每经过此天数，信任度距同号基线的差值约减半，不越过基线或变号。"
       }

@@ -1447,7 +1447,6 @@ createApp({
                 </div>
               </td>
               <td class="xx-actions">
-                <button class="xx-btn xx-btn-mini" @click="refreshNames(u)" :disabled="memberSaveLoading || scopeLoading">刷新昵称</button>
                 <button class="xx-btn xx-btn-mini" @click="openMember(u)" title="查看成员详情">详情</button>
               </td>
             </tr>
