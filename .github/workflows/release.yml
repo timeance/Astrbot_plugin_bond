@@ -1,6 +1,11 @@
 name: release
 
 on:
+  workflow_call:
+    inputs:
+      previous-ref:
+        required: true
+        type: string
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -14,7 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  # 自动发布按提交隔离，后续 main 推送不能挤掉等待中的版本。
+  group: release-${{ inputs.previous-ref && github.sha || inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -22,12 +28,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
-      tag: ${{ steps.package.outputs.tag }}
+      tag: ${{ steps.select.outputs.tag }}
+      commit: ${{ steps.package.outputs.commit }}
       tag-object: ${{ steps.package.outputs.tag-object }}
     steps:
+      # 发布工具与待打包源码分离，恢复旧标签不要求历史树包含新工具。
+      - name: 检出本次工作流的发布工具
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
           path: astrbot_plugin_bond
           fetch-depth: 0
           persist-credentials: false
@@ -39,7 +53,15 @@ jobs:
           node-version: '22'
       - name: 安装开发检查依赖
         run: python -m pip install -r astrbot_plugin_bond/requirements-dev.txt
+      - name: 选择需要发布的版本
+        id: select
+        working-directory: astrbot_plugin_bond
+        env:
+          PREVIOUS_REF: ${{ inputs.previous-ref }}
+          TAG_INPUT: ${{ inputs.tag || github.ref_name }}
+        run: python "$GITHUB_WORKSPACE/release-tools/scripts/prepare_release.py" --source-dir . --previous-ref "$PREVIOUS_REF" --tag "$TAG_INPUT"
       - name: 检查与测试
+        if: steps.select.outputs.tag != ''
         run: |
           python astrbot_plugin_bond/scripts/check_project.py
           python astrbot_plugin_bond/scripts/check_repository.py
@@ -47,18 +69,25 @@ jobs:
           node --test astrbot_plugin_bond/tests/dashboard.test.cjs
           python -m black --check astrbot_plugin_bond
           python -m ruff format --check astrbot_plugin_bond
-      - name: 验证 tag 并构建发布包
+      - name: 验证源码并构建发布包
+        if: steps.select.outputs.tag != ''
         id: package
         working-directory: astrbot_plugin_bond
         env:
-          TAG_INPUT: ${{ inputs.tag || github.ref_name }}
+          TAG_INPUT: ${{ steps.select.outputs.tag }}
+          PREVIOUS_REF: ${{ inputs.previous-ref }}
         run: |
-          python scripts/build_package.py \
-            --tag "$TAG_INPUT" --output "$RUNNER_TEMP/release/astrbot_plugin_bond-${TAG_INPUT}.zip"
-          git for-each-ref "refs/tags/$TAG_INPUT" --format='%(contents)' > "$RUNNER_TEMP/release/notes.md"
-          echo "tag=$TAG_INPUT" >> "$GITHUB_OUTPUT"
-          echo "tag-object=$(git rev-parse "refs/tags/$TAG_INPUT")" >> "$GITHUB_OUTPUT"
+          TAG_ARGS=()
+          if [ -z "$PREVIOUS_REF" ]; then
+            TAG_ARGS+=(--tag "$TAG_INPUT")
+            echo "tag-object=$(git rev-parse "refs/tags/$TAG_INPUT")" >> "$GITHUB_OUTPUT"
+          fi
+          python scripts/build_package.py "${TAG_ARGS[@]}" \
+            --output "$RUNNER_TEMP/release/astrbot_plugin_bond-${TAG_INPUT}.zip"
+          cp CHANGELOG.md "$RUNNER_TEMP/release/notes.md"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: 保存已经验证的发布文件
+        if: steps.select.outputs.tag != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-package
@@ -68,29 +97,38 @@ jobs:
 
   publish:
     needs: build
+    if: needs.build.outputs.tag != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
+      # 发布工具与待打包源码分离，恢复旧标签不要求历史树包含新工具。
+      - name: 检出本次工作流的发布工具
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          path: astrbot_plugin_bond
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-package
-          path: release
+          path: astrbot_plugin_bond/release
       - name: 核对归档与 tag 后发布
-        working-directory: release
+        working-directory: astrbot_plugin_bond
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_INPUT: ${{ needs.build.outputs.tag }}
           TAG_OBJECT: ${{ needs.build.outputs.tag-object }}
-        run: |
-          sha256sum --check "astrbot_plugin_bond-${TAG_INPUT}.zip.sha256"
-          ACTUAL_TAG=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG_INPUT" --jq '.object.sha')
-          test "$ACTUAL_TAG" = "$TAG_OBJECT"
-          PRE_ARGS=()
-          case "$TAG_INPUT" in *-*) PRE_ARGS+=(--prerelease) ;; esac
-          gh release create "$TAG_INPUT" \
-            "astrbot_plugin_bond-${TAG_INPUT}.zip" \
-            "astrbot_plugin_bond-${TAG_INPUT}.zip.sha256" \
-            --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "$TAG_INPUT" --notes-file notes.md "${PRE_ARGS[@]}"
+          AUTOMATIC: ${{ inputs.previous-ref != '' }}
+        run: bash "$GITHUB_WORKSPACE/release-tools/.github/release.sh"

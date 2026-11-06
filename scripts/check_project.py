@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def check_changelog(root: Path, version: str) -> None:
+    notes = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    headings = re.findall(r"^## (.+)$", notes, re.MULTILINE)
+    if len(headings) != 1 or not re.fullmatch(
+        rf"{re.escape(version)} — \d{{4}}-\d{{2}}-\d{{2}}", headings[0]
+    ):
+        raise ValueError("CHANGELOG 只保留与插件版本一致的当前版本说明")
+    if not notes.split(f"## {headings[0]}", 1)[1].strip():
+        raise ValueError("CHANGELOG 当前版本说明不能为空")
 
 
 def check_project(root: Path = ROOT) -> str:
@@ -90,6 +102,7 @@ def check_project(root: Path = ROOT) -> str:
     ]
     if bad:
         raise ValueError(f"__init__ 局部变量先用后赋值: {bad}")
+    check_changelog(root, str(metadata["version"]))
     return str(metadata["version"])
 
 

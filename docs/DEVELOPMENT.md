@@ -114,7 +114,7 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 | CI | PR、main 推送、手动 | Linux Python 3.10/3.12 和 Windows Python 3.12 离线测试、Node 22 页面测试、元数据、公开内容、Python 3.12 安装包；独立作业验证 AstrBot 4.28.0 装配。 |
 | Code Format Check | PR、main 推送、手动 | `requirements-dev.txt` 锁定版本的 Black 与 Ruff 格式检查。 |
 | CodeQL | PR、main 推送、每周、手动 | Python 静态安全分析。 |
-| release | `v*` tag、手动指定已有 tag | 检查源码与 tag、运行离线和页面测试、格式与公开内容检查、打包，再单独发布。 |
+| release | main 版本变更通过 CI 后；或 `v*` tag、手动指定已有 tag | 检查当前版说明、源码、格式与归档，验证 annotated tag 后发布 ZIP、SHA-256 和 CHANGELOG。 |
 
 工作流固定 Action 提交、设置超时和最小权限。PR 检查不使用仓库密钥或 `pull_request_target`；checkout 不保留 Git 凭据。Dependabot 每月提出 Action 和 Python 依赖更新，由维护者结合 CI 审阅；依赖更新不自动合并。真实框架版本单独固定，升级兼容基线时需同时更新 smoke 说明和验证记录。
 
@@ -124,15 +124,15 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 
 从最新 `main` 建分支，使用中文 Conventional Commits。前置 PR 尚未合并时写明依赖；一次提交只包含本次相关文件。版本以 `metadata.yaml` 和 `main.py` 为准，行为变更同步版本与 CHANGELOG；纯文档、测试和工程流程改动不单独升运行版本。
 
-发布由维护者明确决定，按以下顺序进行：
+维护者通过审阅并合并正式版本 PR 决定发布：
 
-1. 审阅并合并 PR，确认目标 main 提交的全部检查通过，包括独立的真实框架作业。确认需要的真实平台验收；缺口记录在 [验收说明](ACCEPTANCE.md)，商店提交另见 [提交准备](STORE_SUBMISSION.md)。
-2. 获取最新远端，确认工作区干净、HEAD 是已审核的 main 提交。核对两处版本、CHANGELOG 和发行说明，先执行打包干跑。
-3. 为该提交创建版本一致的 annotated tag（例如 `v0.3.0`），标签说明写本次变化、升级操作及已知限制；确认后推送该标签。不要覆盖已有发布标签。
-4. release 工作流的只读构建作业检查 tag 指向 HEAD 且属于 `origin/main`，完成检查并上传 ZIP、SHA-256 和标签说明。只有后续发布作业具有 `contents: write`，它核对校验和及远端标签对象未变，再创建 Release。
-5. 查看 Release 的附件和 Actions 结果。普通 PR、分支推送和本地 ZIP 验证都不会创建 Release，也不会提交插件商店。
+1. 同步修改 `metadata.yaml`、`main.py` 的正式版本号，并用面向使用者的中文替换 `CHANGELOG.md`，只保留当前版本。说明本次变化、必要操作和限制；历史留在 Git 与已经发布的 Releases 中。
+2. 合入 main 后，CI 的完整测试矩阵及真实框架作业成功，才调用发布工作流。它比较本次推送前后的元数据：版本不变时跳过，正式版本递增时继续；启用流程的 0.5.1 不补发。
+3. 发布工作流完成现有离线、页面、格式、公开内容及安装包检查后，仅发布作业获得写权限。作业校验归档，创建 annotated tag，验证版本、目标提交及 main 归属，再推送标签；同一作业继续创建 Release，不依赖标签推送触发另一个工作流。
+4. Release 使用同一份 `CHANGELOG.md`，附安装 ZIP 与 SHA-256；附件上传完成前保持草稿，全部成功后才公开。已有标签不覆盖，已有 Release 不更新或替换附件。普通提交、PR 检查和本地打包不发布，也不提交插件商店。
+5. 查看 Release 附件及 Actions 结果。检查失败不发布；推送、上传或公开失败可能留下标签或草稿。先核对远端状态，再决定恢复，避免盲目重跑。保留 `v*` 标签及手动指定已有 annotated tag 的发布入口，仍执行全部构建与标签验证；已有草稿须先由维护者处理，流程不会覆盖。发布工具单独检出自本次工作流修订；目标标签源码使用自身的版本检查及打包脚本，因此旧标签的多版本 CHANGELOG 不会被新的当前版本格式约束拒绝。
 
-构建失败时修复原因并重新检查。若发布结果不确定，先查看远端 tag、Release 与附件，再决定是否重跑；已存在的 Release 会使创建命令失败，不会覆盖附件。工作流结构检查和本地干跑不能证明真正发布成功，首次正式发布仍须核对远端结果。
+结构检查和本地干跑不代表真正发布成功；首次自动发布仍须核对远端结果。真实平台验收边界见 [验收说明](ACCEPTANCE.md)。停用自动发布时移除 CI 中的 release 调用；已发布版本和标签保持原样。
 
 久别旧友现状可运行 `python scripts/replay_reconnection.py --output artifacts/reconnection-run`；使用新的空输出目录，对照写实/Galgame在90天沉默与三次友好互动后的三维值。研究结论见 [久别旧识评估](research/RECONNECTION_ASSESSMENT.md)，不启用额外回暖机制。
 
