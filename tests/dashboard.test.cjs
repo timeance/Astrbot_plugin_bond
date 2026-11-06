@@ -755,6 +755,6 @@ test('overview impression columns retain status, handle empty rows and constrain
  assert.doesNotMatch(overview,/v-html/);
  assert.match(overview,/@click="openMember\(u\)"/);
  const css=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.css'),'utf8');
- assert.match(css,/\.xx-overview-table\.is-impressions\s*\{[^}]*table-layout: fixed;[^}]*min-width: 1000px;/);
+ assert.match(css,/\.xx-overview-table\.is-impressions\s*\{[^}]*table-layout: fixed;[^}]*min-width: 900px;/);
  assert.match(css,/\.xx-overview-impression\s*\{[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/);
 });

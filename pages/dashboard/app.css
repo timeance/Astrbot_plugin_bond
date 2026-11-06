@@ -911,10 +911,20 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
   text-overflow: ellipsis;
 }
 
-/* 印象视图固定列宽，长文本只在自己的列内换行；窄屏沿用表格横向滚动。 */
+/* 前四列按内容收紧，剩余宽度留给印象；长文本只在自己的列内换行。 */
 .xx-overview-table.is-impressions {
   table-layout: fixed;
-  min-width: 1000px;
+  min-width: 900px;
+}
+.xx-overview-col-member { width: 176px; }
+.xx-overview-col-relation { width: 140px; }
+.xx-overview-col-status { width: 96px; }
+.xx-overview-col-tags { width: 208px; }
+.xx-overview-col-actions { width: 80px; }
+.xx-overview-table.is-impressions th,
+.xx-overview-table.is-impressions td {
+  padding: 9px 10px;
+  text-align: left;
 }
 .xx-overview-table.is-impressions td {
   overflow: hidden;
@@ -1612,6 +1622,91 @@ details.xx-form-card[open] > summary::after {
   .xx-settings-grid,
   .xx-modal-edit-grid {
     grid-template-columns: 1fr;
+  }
+  /* 窄屏将同一行资料重排，账号、状态、标签和详情都保留在可见宽度内。 */
+  .xx-overview-table.is-impressions {
+    display: block;
+    min-width: 0;
+  }
+  .xx-overview-table.is-impressions colgroup {
+    display: none;
+  }
+  .xx-overview-table.is-impressions thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .xx-overview-table.is-impressions tbody {
+    display: block;
+  }
+  .xx-overview-table.is-impressions tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 88px;
+    gap: 7px 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--xx-line);
+  }
+  .xx-overview-table.is-impressions tbody tr:last-child {
+    border-bottom: none;
+  }
+  .xx-overview-table.is-impressions td {
+    display: block;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    border-bottom: none;
+    align-self: center;
+  }
+  .xx-overview-table.is-impressions .xx-overview-member-cell {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .xx-overview-table.is-impressions .xx-user-cell {
+    max-width: none;
+  }
+  .xx-overview-table.is-impressions .xx-user-id {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .xx-overview-table.is-impressions .xx-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .xx-overview-table.is-impressions .xx-actions .xx-btn {
+    min-height: 36px;
+  }
+  .xx-overview-table.is-impressions .xx-overview-relation-cell {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .xx-overview-table.is-impressions .xx-overview-status-cell {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+  .xx-overview-table.is-impressions .xx-overview-status-cell .xx-tag {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .xx-overview-table.is-impressions td[data-label] {
+    display: grid;
+    grid-template-columns: 2em minmax(0, 1fr);
+    gap: 8px;
+    grid-column: 1 / -1;
+    align-items: start;
+  }
+  .xx-overview-table.is-impressions td[data-label]::before {
+    content: attr(data-label);
+    color: var(--xx-ink-3);
+    line-height: 1.5;
+  }
+  .xx-overview-table.is-impressions .xx-empty {
+    grid-column: 1 / -1;
+    white-space: normal;
   }
 }
 
