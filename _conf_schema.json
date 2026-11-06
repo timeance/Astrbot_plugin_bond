@@ -164,6 +164,18 @@
     "invisible": false,
     "hint": "用于主人标记和仅主人查榜，不授予管理权限，也不免除评估。多个 QQ 用英文逗号分隔。"
   },
+  "passive_familiarity": {
+    "type": "object",
+    "description": "眼熟模式",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "default": false,
+        "description": "眼熟模式",
+        "hint": "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
+      }
+    }
+  },
   "inject": {
     "type": "object",
     "description": "回复中的关系信息",

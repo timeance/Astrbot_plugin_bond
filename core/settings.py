@@ -27,6 +27,7 @@ SECTIONS = {
             "group_whitelist",
             "default_scope_mode",
             "master_ids",
+            "passive_familiarity.enabled",
             "inject.enabled",
             "relation_mode",
             "ignored_bot_ids",

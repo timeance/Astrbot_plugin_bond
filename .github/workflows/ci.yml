@@ -87,6 +87,10 @@ jobs:
         run: >-
           python astrbot_plugin_bond/scripts/smoke_diagnostics.py
           --runtime-dir "${{ runner.temp }}/bond-diagnostics"
+      - name: 群聊活跃熟悉度与直接评估
+        run: >-
+          python astrbot_plugin_bond/scripts/smoke_passive_familiarity.py
+          --runtime-dir "${{ runner.temp }}/bond-passive-familiarity"
 
   release:
     needs: [test, framework]

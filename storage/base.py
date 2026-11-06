@@ -160,6 +160,13 @@ class StorageBackend(ABC):
     async def apply_relation_change(self, group_id, user_id, deltas, **options):
         """三维变动、限幅、去重、冷却及流水在同一事务内提交。"""
 
+    async def apply_passive_familiarity(self, group_id, user_id, **options):
+        """被动 F 增量、每日额度、独立冷却和流水原子提交，不维护任何维度。
+
+        不提供多次独立写入的兼容回退，避免第三方后端漏掉事务或保温约束。
+        """
+        raise NotImplementedError("此存储后端不支持被动熟悉度")
+
     @abstractmethod
     async def set_value(self, group_id: str, user_id: str, value: float) -> FavorRecord:
         """直接设定好感度数值（精度一位小数）。"""

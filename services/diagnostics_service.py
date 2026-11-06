@@ -31,10 +31,10 @@ class DiagnosticRecorder:
     KINDS = frozenset("assessment call relation render entry content".split())
     ENUMS = {
         "status": frozenset(
-            "queued started ok success accepted skipped failed rejected disabled cancelled applied unchanged invalid timeout abstained temporary busy filtered duplicate_or_cooldown committed duplicate cooldown injected budget".split()
+            "queued started ok success accepted skipped failed rejected disabled cancelled applied unchanged invalid timeout abstained temporary busy filtered duplicate_or_cooldown committed duplicate cooldown injected budget stale bound rule_zero quota".split()
         ),
         "reason": frozenset(
-            "none unknown disabled cooldown duplicate duplicate_or_cooldown budget capacity timeout invalid error unavailable filtered no_change no_target not_directed insufficient_evidence policy storage queue_full shutdown temporary busy abstained accepted unchanged success failed enabled rendered injected empty legacy missing not_group not_allowed entry automatic manual undo reset temporary_end".split()
+            "none unknown disabled cooldown duplicate duplicate_or_cooldown budget capacity timeout invalid error unavailable filtered no_change no_target not_directed insufficient_evidence policy storage queue_full shutdown temporary busy abstained accepted unchanged success failed enabled rendered injected empty legacy missing not_group not_allowed entry automatic manual undo reset temporary_end passive".split()
         ),
         "event_type": frozenset(
             "normal_question thanks friendly joke criticism insult manipulation apology uncertain".split()
@@ -154,6 +154,8 @@ class DiagnosticRecorder:
                     "legacy",
                     "duplicate",
                     "cooldown",
+                    "passive",
+                    "ceiling",
                 }
                 valid = (
                     type(value) is dict

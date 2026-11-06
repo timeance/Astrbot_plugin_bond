@@ -83,7 +83,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.5.1",
+    "0.5.5",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -305,7 +305,13 @@ class BondPlugin(Star):
             prompts=self._prompts,
         )
 
+        from .services.passive_activity import PassiveActivity
+
         return Deps(
+            passive_activity=PassiveActivity(
+                storage.bot_id,
+                enabled=(config.get("passive_familiarity") or {}).get("enabled", False),
+            ),
             assessment=assessment,
             prompts=self._prompts,
             bot_id=storage.bot_id,
@@ -348,8 +354,8 @@ class BondPlugin(Star):
     # （最后），"先跑并 stop_event 掐断默认优先级监听器"在其上不成立——
     # 饿死只可能来自优先级更高（或同优先级更早注册）的接管型监听器，
     # 而部署环境各插件实际取值无法逐版本确证。本监听器是纯后台观察者
-    # （不发声、不 stop、不改正文），取 1000 保证恒先于任何接管者执行
-    # （priority=1 盖不过正数大优先级的接管者）；文字唤醒默认关，开启时
+    # （不发声、不 stop、不改正文），取 1000 先于常见的默认优先级接管者执行
+    # （更高优先级仍可提前终止，不能观察被截断的消息）；文字唤醒默认关，开启时
     # 由 _bond_cmd_done 防重。
     @filter.event_message_type(filter.EventMessageType.ALL, priority=1000)
     async def _on_group_msg(self, event: AstrMessageEvent):
@@ -393,7 +399,7 @@ class BondPlugin(Star):
         except Exception:
             logger.warning("[Bond] 文字查询失败，继续正常对话")
         try:
-            await on_group_message(deps, event)
+            await on_group_message(deps, event, ignored_ids=ignored)
         except Exception:
             logger.warning("[Bond] 关系观察失败，本次跳过，不影响对话")
 

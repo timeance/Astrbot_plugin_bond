@@ -791,3 +791,10 @@ test('diagnostic labels and compact usage remain in settings',()=>{
  assert.ok(!source.includes('下载脱敏记录'));
  assert.ok(!source.includes('不保存聊天原文'));
 });
+
+
+test('passive familiarity has a clear audit source label',()=>{
+ const {ui}=harness();
+ assert.equal(ui.sourceLabel('passive_familiarity'),'群聊活跃');
+ assert.equal(ui.sourceLabel('judge'),'评估');
+});

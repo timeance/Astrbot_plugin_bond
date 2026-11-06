@@ -396,7 +396,9 @@ class SQLiteBackend(StorageBackend):
                             if value is not None and value > 0:
                                 setattr(rec, key, value + duration)
                 logs = (
-                    self._query_logs_sync(group_id, user_id, limit=log_limit)
+                    self._query_logs_sync(
+                        group_id, user_id, limit=log_limit, exclude_passive=True
+                    )
                     if log_limit > 0
                     else []
                 )
@@ -910,6 +912,172 @@ class SQLiteBackend(StorageBackend):
                     delta=real,
                     skipped=None,
                     maintenance=maintenance,
+                )
+            except BaseException:
+                conn.rollback()
+                raise
+
+    async def apply_passive_familiarity(
+        self,
+        group_id,
+        user_id,
+        *,
+        event_id,
+        day,
+        daily_cap_up,
+        amount=0.3,
+        ceiling=60.0,
+        cooldown_sec=1800.0,
+        expected_revision=None,
+        day_start=None,
+        day_end=None,
+        origin_group_id="",
+    ):
+        """只结算 F；被动出现不是维护，也不影响主动互动冷却。"""
+        for value in (amount, ceiling, cooldown_sec, daily_cap_up):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError("被动熟悉度参数须为有限非负数")
+        if ceiling > 100 or not isinstance(event_id, str) or not event_id:
+            raise ValueError("被动熟悉度上限或事件编号无效")
+        now = time.time()
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                self._guard_relation_write(group_id, user_id, expected_revision)
+                record = self._maintenance_record(conn, group_id, user_id)
+                if self._effective_record is None:
+                    raise RuntimeError("被动熟悉度须配置完整关系结算函数")
+                before = self._effective_record(record, now)
+                clocks = {
+                    "affinity": (
+                        record.updated_at
+                        if record.affinity_maintained_at is None
+                        else record.affinity_maintained_at
+                    ),
+                    "familiarity": (
+                        record.familiarity_updated_at
+                        if record.familiarity_maintained_at is None
+                        else record.familiarity_maintained_at
+                    ),
+                    "trust": (
+                        record.trust_updated_at
+                        if record.trust_maintained_at is None
+                        else record.trust_maintained_at
+                    ),
+                }
+                duplicate = conn.execute(
+                    "SELECT 1 FROM favor_log WHERE group_id=? AND user_id=? AND event_id=?",
+                    (group_id, user_id, event_id),
+                ).fetchone()
+                last = conn.execute(
+                    "SELECT last_ts FROM cooldown WHERE group_id=? AND user_id=? AND key='passive_familiarity'",
+                    (group_id, user_id),
+                ).fetchone()
+                skipped = None
+                if duplicate:
+                    skipped = "duplicate"
+                elif last and now - last[0] < cooldown_sec:
+                    skipped = "cooldown"
+                elif before["familiarity"] >= ceiling:
+                    skipped = "bound"
+                elif amount == 0:
+                    skipped = "rule_zero"
+                allowed = 0.0
+                if skipped is None:
+                    used, _ = read_usage(
+                        conn, group_id, user_id, day, day_start, day_end
+                    )
+                    allowed, _ = clamp_daily(
+                        min(amount, ceiling - before["familiarity"]),
+                        used["familiarity"],
+                        daily_cap_up,
+                        0,
+                    )
+                    allowed = max(
+                        0.0,
+                        min(
+                            allowed,
+                            amount,
+                            ceiling - before["familiarity"],
+                            daily_cap_up - used["familiarity"][0],
+                        ),
+                    )
+                    if allowed <= 0:
+                        skipped = "quota"
+                after = dict(before)
+                delta = dict.fromkeys(before, 0.0)
+                if skipped is not None:
+                    conn.rollback()
+                else:
+                    # 不先舍入衰减基线；本次增加不能因舍入超出额度或上限。
+                    after["familiarity"] = min(ceiling, before["familiarity"] + allowed)
+                    delta["familiarity"] = allowed
+                    conn.execute(
+                        "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,"
+                        "familiarity,familiarity_updated_at,affinity_maintained_at,"
+                        "familiarity_maintained_at,trust_maintained_at) VALUES(?,?,?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(group_id,user_id) DO UPDATE SET "
+                        "familiarity=excluded.familiarity,"
+                        "familiarity_updated_at=excluded.familiarity_updated_at,"
+                        "familiarity_maintained_at=COALESCE(favor.familiarity_maintained_at,favor.familiarity_updated_at)",
+                        (
+                            group_id,
+                            user_id,
+                            self._initial_favor,
+                            0,
+                            self._initial_half_life,
+                            after["familiarity"],
+                            now,
+                            0,
+                            0,
+                            0,
+                        ),
+                    )
+                    add_usage(conn, group_id, user_id, day, delta)
+                    conn.execute(
+                        "INSERT INTO cooldown(group_id,user_id,key,last_ts) VALUES(?,?,'passive_familiarity',?) "
+                        "ON CONFLICT(group_id,user_id,key) DO UPDATE SET last_ts=excluded.last_ts",
+                        (group_id, user_id, now),
+                    )
+                    conn.execute(
+                        "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,message,relation_delta,event_id,origin_group_id) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            group_id,
+                            user_id,
+                            0,
+                            before["affinity"],
+                            before["affinity"],
+                            "群聊活跃",
+                            "passive_familiarity",
+                            now,
+                            "",
+                            json.dumps(delta),
+                            event_id,
+                            origin_group_id,
+                        ),
+                    )
+                    conn.commit()
+                return dict(
+                    before=before,
+                    after=after,
+                    delta=delta,
+                    skipped=skipped,
+                    maintenance=dict(
+                        maintenance_strategy=self._maintenance_strategy,
+                        maintenance_at=now,
+                        maintenance_before=clocks,
+                        maintenance_after=dict(clocks),
+                        maintenance_qualified=dict.fromkeys(before, False),
+                        maintenance_applied=dict.fromkeys(before, False),
+                        maintenance_reason=dict.fromkeys(before, "passive"),
+                    ),
                 )
             except BaseException:
                 conn.rollback()
@@ -1616,6 +1784,7 @@ class SQLiteBackend(StorageBackend):
         fuzzy=False,
         dimension=None,
         source=None,
+        exclude_passive=False,
     ) -> list[dict]:
         sql = (
             "SELECT id, group_id, user_id, delta, favor_before, favor_after, reason, source, ts, message, reversed, relation_delta, event_id "
@@ -1649,6 +1818,9 @@ class SQLiteBackend(StorageBackend):
         if source is not None:
             where.append("source = ?")
             args.append(source)
+        if exclude_passive:
+            # 被动在场记录用于审计，不挤占语义事件和印象的上下文条数。
+            where.append("COALESCE(source, '') != 'passive_familiarity'")
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?"
@@ -1811,7 +1983,9 @@ class SQLiteBackend(StorageBackend):
                     )
                     if changed
                 ]
-                self._mark_maintenance(conn, group_id, user_id, maintained, now)
+                # 被动来源沿撤销链保留，撤销或重做都不授予维护资格。
+                if row[5] != "passive_familiarity":
+                    self._mark_maintenance(conn, group_id, user_id, maintained, now)
                 if real or any(extra.values()) or actor:
                     conn.execute(
                         "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,relation_delta,origin_group_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -1826,7 +2000,11 @@ class SQLiteBackend(StorageBackend):
                                 if actor
                                 else f"撤销#{int(log_id)}"
                             )[:200],
-                            "undo",
+                            (
+                                "passive_familiarity"
+                                if row[5] == "passive_familiarity"
+                                else "undo"
+                            ),
                             now,
                             json.dumps(extra),
                             row[6],
