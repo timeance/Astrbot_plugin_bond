@@ -145,7 +145,11 @@ def test_page_uses_decay_effective_order(tmp_path):
             await favor.set_favor("123", "8001", 80)
             await favor.set_favor("123", "8002", 20)
             # 仅替换有效值计算，证明排序和零值折叠不按正式分数抢先 LIMIT。
-            favor._effective = lambda stored, *args: 0 if stored == 80 else stored
+            favor._effective_record = lambda rec, *args: dict(
+                affinity=0 if rec.favor == 80 else rec.favor,
+                familiarity=rec.familiarity,
+                trust=rec.trust,
+            )
             result = await favor.standings_page("123")
             assert result["total"] == 1 and result["collapsed_count"] == 1
             assert result["users"][0]["user_id"] == "8002"

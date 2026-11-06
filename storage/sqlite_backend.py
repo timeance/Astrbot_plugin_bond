@@ -37,10 +37,138 @@ class SQLiteBackend(StorageBackend):
         self._lock = threading.RLock()
         self._initial_half_life = 10.0
         self._initial_favor = 0.0
+        self._maintenance_strategy = "legacy"
+        self._effective_record = None
 
     def configure_initial_values(self, value, default_favor=0):
         self._initial_half_life = float(value)
         self._initial_favor = float(default_favor)
+
+    def _uses_record_effective(self, effective):
+        # 保留调用方显式传入的自定义投影；服务自身使用完整维护资料。
+        return self._effective_record is not None and (
+            effective is None
+            or getattr(effective, "__self__", None)
+            is getattr(self._effective_record, "__self__", None)
+        )
+
+    def _maintenance_record(self, conn, group_id, user_id):
+        row = conn.execute(
+            "SELECT favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at,"
+            "affinity_maintained_at,familiarity_maintained_at,trust_maintained_at,affinity_floor_reference "
+            "FROM favor WHERE group_id=? AND user_id=?",
+            (group_id, user_id),
+        ).fetchone()
+        if row is None:
+            return FavorRecord(
+                group_id,
+                user_id,
+                favor=self._initial_favor,
+                half_life=self._initial_half_life,
+            )
+        return FavorRecord(
+            group_id,
+            user_id,
+            favor=row[0],
+            updated_at=row[1],
+            half_life=row[2],
+            familiarity=row[3],
+            trust=row[4],
+            trust_updated_at=row[5],
+            familiarity_updated_at=row[6],
+            affinity_maintained_at=row[7],
+            familiarity_maintained_at=row[8],
+            trust_maintained_at=row[9],
+            affinity_floor_reference=row[10],
+        )
+
+    def configure_maintenance(self, strategy, effective_record):
+        """重载边界原子切换全部成员；结算不是互动，不刷新维护时间。"""
+        if strategy not in ("independent", "legacy"):
+            raise ValueError("关系维护策略无效")
+        with self._lock:
+            conn = self._c()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                previous, _ = conn.execute(
+                    "SELECT strategy,effective_at FROM maintenance_policy WHERE id=1"
+                ).fetchone()
+                if previous != strategy:
+                    now = time.time()
+                    keys = conn.execute("SELECT group_id,user_id FROM favor").fetchall()
+                    for group_id, user_id in keys:
+                        override = self._override_state(group_id, user_id, now)
+                        # 暂停期间先结算到暂停开始，结束时仍只平移一次完整暂停时长。
+                        point = (
+                            min(now, override["started_at"])
+                            if override["active"]
+                            else now
+                        )
+                        rec = self._maintenance_record(conn, group_id, user_id)
+                        values = effective_record(rec, point)
+                        conn.execute(
+                            "UPDATE favor SET favor=?,familiarity=?,trust=?,updated_at=?,"
+                            "familiarity_updated_at=?,trust_updated_at=?,"
+                            "affinity_maintained_at=COALESCE(affinity_maintained_at,?),"
+                            "familiarity_maintained_at=COALESCE(familiarity_maintained_at,?),"
+                            "trust_maintained_at=COALESCE(trust_maintained_at,?),"
+                            "affinity_floor_reference=COALESCE(affinity_floor_reference,?) "
+                            "WHERE group_id=? AND user_id=?",
+                            (
+                                values["affinity"],
+                                values["familiarity"],
+                                values["trust"],
+                                max(rec.updated_at, point) if rec.updated_at > 0 else 0,
+                                (
+                                    max(rec.familiarity_updated_at, point)
+                                    if rec.familiarity_updated_at > 0
+                                    else 0
+                                ),
+                                (
+                                    max(rec.trust_updated_at, point)
+                                    if rec.trust_updated_at > 0
+                                    else 0
+                                ),
+                                rec.updated_at,
+                                rec.familiarity_updated_at,
+                                rec.trust_updated_at,
+                                rec.favor,
+                                group_id,
+                                user_id,
+                            ),
+                        )
+                    conn.execute(
+                        "UPDATE maintenance_policy SET strategy=?,effective_at=? WHERE id=1",
+                        (strategy, now),
+                    )
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            self._maintenance_strategy = strategy
+            self._effective_record = effective_record
+
+    @staticmethod
+    def _mark_maintenance(conn, group_id, user_id, keys, now):
+        """只在合格维护/显式管理写入时重设相应维度的参考。"""
+        columns = {
+            "affinity": "affinity_maintained_at",
+            "familiarity": "familiarity_maintained_at",
+            "trust": "trust_maintained_at",
+        }
+        assignments, params = [], []
+        for key in keys:
+            assignments.append(columns[key] + "=?")
+            params.append(now)
+            if key == "affinity":
+                assignments.append("affinity_floor_reference=favor")
+        if assignments:
+            conn.execute(
+                "UPDATE favor SET "
+                + ",".join(assignments)
+                + " WHERE group_id=? AND user_id=?",
+                (*params, group_id, user_id),
+            )
 
     async def init(self) -> None:
         with self._lock:
@@ -158,6 +286,10 @@ class SQLiteBackend(StorageBackend):
                 staged = None
                 try:
                     self._conn = self._open_connection()
+                    if self._effective_record is not None:
+                        self.configure_maintenance(
+                            self._maintenance_strategy, self._effective_record
+                        )
                 except Exception as open_error:
                     self._remove_sidecars(db_path)
                     db_path.unlink(missing_ok=True)
@@ -193,7 +325,7 @@ class SQLiteBackend(StorageBackend):
             row = (
                 self._c()
                 .execute(
-                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at "
+                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at, affinity_maintained_at, familiarity_maintained_at, trust_maintained_at, affinity_floor_reference "
                     "FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 )
@@ -217,6 +349,10 @@ class SQLiteBackend(StorageBackend):
             trust=float(row[10]),
             trust_updated_at=float(row[11]),
             familiarity_updated_at=float(row[12]),
+            affinity_maintained_at=row[13],
+            familiarity_maintained_at=row[14],
+            trust_maintained_at=row[15],
+            affinity_floor_reference=row[16],
         )
 
     def _compute_favor_write(
@@ -254,8 +390,12 @@ class SQLiteBackend(StorageBackend):
                 0.0,
                 self._initial_half_life,
             )
-        # 时间衰减（指数遗忘曲线）：落库前先把存量衰减到当下（锁定），再叠加本次增减
-        if decay:
+        # 时间衰减（指数遗忘曲线）：落库前先结算，不借此发放保温期。
+        if self._uses_record_effective(effective) and row:
+            current = self._effective_record(
+                self._maintenance_record(conn, group_id, user_id), now
+            )["affinity"]
+        elif decay:
             base, growth, h_max, baseline = decay
             current = (
                 effective(current, last_ts, half_life)
@@ -273,6 +413,8 @@ class SQLiteBackend(StorageBackend):
         # 先封顶及舍入；只有实际正增长才能巩固，避免零分事件悄悄延长半衰期。
         new_value = round1(max(min_favor, min(max_favor, current + delta)))
         real_delta = round1(new_value - current)
+        if decay:
+            base, growth, h_max, _ = decay
         new_h = (
             consolidate_half_life(
                 half_life,
@@ -322,6 +464,7 @@ class SQLiteBackend(StorageBackend):
                 "favor=excluded.favor, updated_at=excluded.updated_at, half_life=excluded.half_life",
                 (group_id, user_id, new_value, now, new_h),
             )
+            self._mark_maintenance(conn, group_id, user_id, ("affinity",), now)
             conn.commit()
         return (
             FavorRecord(group_id, user_id, new_value, now, half_life=new_h),
@@ -419,6 +562,7 @@ class SQLiteBackend(StorageBackend):
                     "favor=excluded.favor, updated_at=excluded.updated_at, half_life=excluded.half_life",
                     (group_id, user_id, new_value, now, new_h),
                 )
+                self._mark_maintenance(conn, group_id, user_id, ("affinity",), now)
                 if real_delta:
                     if day:
                         add_usage(
@@ -514,10 +658,39 @@ class SQLiteBackend(StorageBackend):
                 )
                 current_t = effective_trust(t, t_ts) if effective_trust else float(t)
                 before = dict(familiarity=current_f, affinity=a, trust=current_t)
+                if self._uses_record_effective(effective) and row:
+                    before = self._effective_record(
+                        self._maintenance_record(conn, group_id, user_id), now
+                    )
+                    a = before["affinity"]
                 if values is None and not -100 <= a <= 100:
                     raise ValueError(
                         "历史亲近度超出三维范围，须由管理员确认调整后再启用事件评估"
                     )
+                record = self._maintenance_record(conn, group_id, user_id)
+                clocks = {
+                    "affinity": record.affinity_maintained_at,
+                    "familiarity": record.familiarity_maintained_at,
+                    "trust": record.trust_maintained_at,
+                }
+                settled = dict(
+                    affinity=record.updated_at,
+                    familiarity=record.familiarity_updated_at,
+                    trust=record.trust_updated_at,
+                )
+                clocks = {
+                    key: settled[key] if value is None else value
+                    for key, value in clocks.items()
+                }
+                policy_at = conn.execute(
+                    "SELECT effective_at FROM maintenance_policy WHERE id=1"
+                ).fetchone()[0]
+                maintenance = dict(
+                    maintenance_strategy=self._maintenance_strategy,
+                    maintenance_at=now,
+                    maintenance_policy_at=policy_at,
+                    maintenance_before=clocks,
+                )
                 duplicate = conn.execute(
                     "SELECT 1 FROM favor_log WHERE group_id=? AND user_id=? AND event_id=?",
                     (group_id, user_id, event_id),
@@ -535,25 +708,59 @@ class SQLiteBackend(StorageBackend):
                         after=before,
                         delta=dict.fromkeys(before, 0.0),
                         skipped="duplicate" if duplicate else "cooldown",
+                        maintenance=dict(
+                            maintenance,
+                            maintenance_after=clocks,
+                            maintenance_qualified=dict.fromkeys(before, False),
+                            maintenance_applied=dict.fromkeys(before, False),
+                            maintenance_reason=dict.fromkeys(
+                                before, "duplicate" if duplicate else "cooldown"
+                            ),
+                        ),
                     )
                 used, positive_count = read_usage(
                     conn, group_id, user_id, day, day_start, day_end
                 )
+                original_deltas = dict(deltas)
                 if transform is not None and values is None:
                     deltas = transform(dict(before), positive_count)
-                after, real = {}, {}
+                adjusted = dict(deltas)
+                after, real, qualified, allowed, reasons = {}, {}, set(), {}, {}
                 for key in before:
                     lower = 0 if key == "familiarity" else -100
                     if values is not None:
                         after[key] = float(values[key])
+                        qualified.add(key)
+                        allowed[key], reasons[key] = 0.0, "manual"
                     else:
-                        amount, _ = clamp_daily(deltas[key], used[key], *caps[key])
+                        intent, _ = clamp_daily(adjusted[key], used[key], *caps[key])
+                        allowed[key] = intent
+                        if original_deltas[key] == 0:
+                            reasons[key] = "original_zero"
+                        elif adjusted[key] == 0:
+                            reasons[key] = "rule_zero"
+                        elif intent == 0:
+                            reasons[key] = "quota"
+                        else:
+                            qualified.add(key)
+                            reasons[key] = "eligible"
+                        # 计分沿用原顺序：规则后一位小数，再扣额度和向零截断。
+                        scoring = (
+                            round1(adjusted[key])
+                            if transform is not None and key != "familiarity"
+                            else adjusted[key]
+                        )
+                        amount, _ = clamp_daily(scoring, used[key], *caps[key])
                         if key != "familiarity":
                             # 最后才舍入；额度尾差只能向零收敛，不可四舍五入超领。
                             amount = math.copysign(
                                 math.floor(abs(amount) * 10 + 1e-8) / 10, amount
                             )
+                        if key in qualified and amount == 0:
+                            reasons[key] = "precision"
                         value = max(lower, min(100, before[key] + amount))
+                        if key in qualified and amount != 0 and value == before[key]:
+                            reasons[key] = "bound"
                         after[key] = (
                             round(value, 8)
                             if key == "familiarity" and amount
@@ -561,7 +768,14 @@ class SQLiteBackend(StorageBackend):
                         )
                     real[key] = round(after[key] - before[key], 8)
                 new_h = h
-                if decay is not None and values is None:
+                if (
+                    decay is not None
+                    and values is None
+                    and (
+                        self._maintenance_strategy == "legacy"
+                        or "affinity" in qualified
+                    )
+                ):
                     base, growth, h_max, _ = decay
                     new_h = consolidate_half_life(
                         h,
@@ -570,9 +784,10 @@ class SQLiteBackend(StorageBackend):
                         h_max=h_max,
                         positive=real["affinity"] > 0,
                     )
-                # 成功接纳的关系事件统一结算三维并重新起算保温期；额度为零也算。
-                # 先存当前有效值，避免新互动恢复旧值或补算保温期内的衰减。
-                # 流水、额度仍只记录事件增量；去重、冷却和失败均不推进时间锚。
+                maintained = (
+                    set(before) if self._maintenance_strategy == "legacy" else qualified
+                )
+                # 无关维度保留原始数值、结算锚、托底参考和巩固状态。
                 conn.execute(
                     "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,familiarity,trust,trust_updated_at,familiarity_updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
                     "ON CONFLICT(group_id,user_id) DO UPDATE SET favor=excluded.favor,updated_at=excluded.updated_at,"
@@ -580,15 +795,16 @@ class SQLiteBackend(StorageBackend):
                     (
                         group_id,
                         user_id,
-                        after["affinity"],
-                        now,
+                        after["affinity"] if "affinity" in maintained else stored,
+                        now if "affinity" in maintained else ts,
                         new_h,
-                        after["familiarity"],
-                        after["trust"],
-                        now,
-                        now,
+                        after["familiarity"] if "familiarity" in maintained else f,
+                        after["trust"] if "trust" in maintained else t,
+                        now if "trust" in maintained else t_ts,
+                        now if "familiarity" in maintained else f_ts,
                     ),
                 )
+                self._mark_maintenance(conn, group_id, user_id, maintained, now)
                 if values is None:
                     add_usage(
                         conn, group_id, user_id, day, real, judge=source == "judge"
@@ -617,7 +833,31 @@ class SQLiteBackend(StorageBackend):
                     ),
                 )
                 conn.commit()
-                return dict(before=before, after=after, delta=real, skipped=None)
+                maintenance.update(
+                    intent=original_deltas,
+                    adjusted=adjusted,
+                    allowed=allowed,
+                    maintenance_qualified={key: key in qualified for key in before},
+                    maintenance_applied={key: key in maintained for key in before},
+                    maintenance_reason={
+                        key: (
+                            "legacy"
+                            if key not in qualified and key in maintained
+                            else reasons[key]
+                        )
+                        for key in before
+                    },
+                    maintenance_after={
+                        key: now if key in maintained else clocks[key] for key in before
+                    },
+                )
+                return dict(
+                    before=before,
+                    after=after,
+                    delta=real,
+                    skipped=None,
+                    maintenance=maintenance,
+                )
             except BaseException:
                 conn.rollback()
                 raise
@@ -650,6 +890,8 @@ class SQLiteBackend(StorageBackend):
             f"ON CONFLICT(group_id, user_id) DO UPDATE SET {update_sql}",
             (group_id, user_id, now, self._initial_half_life, *insert_cols.values()),
         )
+        if touch:
+            self._mark_maintenance(self._c(), group_id, user_id, ("affinity",), now)
         self._c().commit()
 
     async def set_value(self, group_id: str, user_id: str, value: float) -> FavorRecord:
@@ -691,12 +933,17 @@ class SQLiteBackend(StorageBackend):
                         self._initial_half_life,
                     )
                 before = effective(stored, ts, h) if effective else round1(stored)
+                if self._uses_record_effective(effective) and row:
+                    before = self._effective_record(
+                        self._maintenance_record(conn, group_id, user_id), now
+                    )["affinity"]
                 conn.execute(
                     "INSERT INTO favor(group_id, user_id, favor, updated_at, half_life) VALUES(?,?,?,?,?) "
                     "ON CONFLICT(group_id, user_id) DO UPDATE SET "
                     "favor=excluded.favor, updated_at=excluded.updated_at",
                     (group_id, user_id, value, now, h),
                 )
+                self._mark_maintenance(conn, group_id, user_id, ("affinity",), now)
                 delta = round1(value - before)
                 if delta != 0:
                     conn.execute(
@@ -936,7 +1183,7 @@ class SQLiteBackend(StorageBackend):
             rows = (
                 self._c()
                 .execute(
-                    "SELECT user_id, favor, updated_at, half_life, familiarity, trust, trust_updated_at, familiarity_updated_at FROM favor "
+                    "SELECT user_id, favor, updated_at, half_life, familiarity, trust, trust_updated_at, familiarity_updated_at, affinity_maintained_at, familiarity_maintained_at, trust_maintained_at, affinity_floor_reference FROM favor "
                     "WHERE group_id=? ORDER BY favor DESC, updated_at ASC LIMIT ?",
                     (group_id, limit),
                 )
@@ -953,6 +1200,10 @@ class SQLiteBackend(StorageBackend):
                 trust=float(r[5]),
                 trust_updated_at=float(r[6]),
                 familiarity_updated_at=float(r[7]),
+                affinity_maintained_at=r[8],
+                familiarity_maintained_at=r[9],
+                trust_maintained_at=r[10],
+                affinity_floor_reference=r[11],
             )
             for r in rows
         ]
@@ -968,7 +1219,7 @@ class SQLiteBackend(StorageBackend):
                 rows = (
                     self._c()
                     .execute(
-                        "SELECT user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at FROM favor "
+                        "SELECT user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at, affinity_maintained_at, familiarity_maintained_at, trust_maintained_at, affinity_floor_reference FROM favor "
                         "WHERE group_id=? ORDER BY updated_at DESC LIMIT ?",
                         (group_id, limit),
                     )
@@ -991,6 +1242,10 @@ class SQLiteBackend(StorageBackend):
                         float(r[11]),
                         float(r[12]),
                         float(r[13]),
+                        r[14],
+                        r[15],
+                        r[16],
+                        r[17],
                     )
                     for r in rows
                 ]
@@ -998,7 +1253,7 @@ class SQLiteBackend(StorageBackend):
                 rows = (
                     self._c()
                     .execute(
-                        "SELECT group_id, user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at FROM favor "
+                        "SELECT group_id, user_id, favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at, affinity_maintained_at, familiarity_maintained_at, trust_maintained_at, affinity_floor_reference FROM favor "
                         "ORDER BY updated_at DESC LIMIT ?",
                         (limit,),
                     )
@@ -1021,6 +1276,10 @@ class SQLiteBackend(StorageBackend):
                         float(r[12]),
                         float(r[13]),
                         float(r[14]),
+                        r[15],
+                        r[16],
+                        r[17],
+                        r[18],
                     )
                     for r in rows
                 ]
@@ -1125,7 +1384,7 @@ class SQLiteBackend(StorageBackend):
                 .execute(
                     "SELECT f.user_id, f.favor, f.updated_at, f.relationship, "
                     "f.nickname, f.impression, f.tags, f.impression_at, "
-                    "f.half_life, f.points, f.familiarity, f.trust, f.trust_updated_at, f.familiarity_updated_at FROM favor AS f "
+                    "f.half_life, f.points, f.familiarity, f.trust, f.trust_updated_at, f.familiarity_updated_at, f.affinity_maintained_at, f.familiarity_maintained_at, f.trust_maintained_at, f.affinity_floor_reference FROM favor AS f "
                     "INNER JOIN observed_members AS o ON o.user_id=f.user_id "
                     "WHERE f.group_id=? AND o.group_id=? "
                     "ORDER BY f.favor DESC, f.user_id ASC LIMIT ?",
@@ -1150,6 +1409,10 @@ class SQLiteBackend(StorageBackend):
                 float(row[11]),
                 float(row[12]),
                 float(row[13]),
+                row[14],
+                row[15],
+                row[16],
+                row[17],
             )
             for row in rows
         ]
@@ -1435,6 +1698,15 @@ class SQLiteBackend(StorageBackend):
                     else float(f)
                 )
                 current_t = effective_trust(t, t_ts) if effective_trust else float(t)
+                if self._uses_record_effective(effective):
+                    current = self._effective_record(
+                        self._maintenance_record(conn, group_id, user_id), now
+                    )
+                    cur, current_f, current_t = (
+                        current["affinity"],
+                        current["familiarity"],
+                        current["trust"],
+                    )
                 vector = json.loads(row[4])
                 low, high = affinity_bounds_for_undo(
                     vector, legacy_min=min_favor, legacy_max=max_favor
@@ -1477,6 +1749,16 @@ class SQLiteBackend(StorageBackend):
                         now if change_f else f_ts,
                     ),
                 )
+                maintained = [
+                    key
+                    for key, changed in (
+                        ("affinity", real),
+                        ("familiarity", change_f),
+                        ("trust", change_t),
+                    )
+                    if changed
+                ]
+                self._mark_maintenance(conn, group_id, user_id, maintained, now)
                 if real or any(extra.values()) or actor:
                     conn.execute(
                         "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,relation_delta,origin_group_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -1780,8 +2062,20 @@ class SQLiteBackend(StorageBackend):
         self._c().execute(
             "UPDATE favor SET updated_at=CASE WHEN updated_at>0 THEN updated_at+? ELSE updated_at END, "
             "trust_updated_at=CASE WHEN trust_updated_at>0 THEN trust_updated_at+? ELSE trust_updated_at END, "
-            "familiarity_updated_at=CASE WHEN familiarity_updated_at>0 THEN familiarity_updated_at+? ELSE familiarity_updated_at END WHERE group_id=? AND user_id=?",
-            (duration, duration, duration, group_id, user_id),
+            "familiarity_updated_at=CASE WHEN familiarity_updated_at>0 THEN familiarity_updated_at+? ELSE familiarity_updated_at END, "
+            "affinity_maintained_at=CASE WHEN affinity_maintained_at>0 THEN affinity_maintained_at+? ELSE affinity_maintained_at END, "
+            "familiarity_maintained_at=CASE WHEN familiarity_maintained_at>0 THEN familiarity_maintained_at+? ELSE familiarity_maintained_at END, "
+            "trust_maintained_at=CASE WHEN trust_maintained_at>0 THEN trust_maintained_at+? ELSE trust_maintained_at END WHERE group_id=? AND user_id=?",
+            (
+                duration,
+                duration,
+                duration,
+                duration,
+                duration,
+                duration,
+                group_id,
+                user_id,
+            ),
         )
         self._c().execute(
             "UPDATE relation_override SET active=0 WHERE group_id=? AND user_id=?",

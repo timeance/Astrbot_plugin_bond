@@ -64,6 +64,7 @@ class FavorService:
         familiarity_baseline=0.0,
         trust_baseline=0.0,
         decay_grace_days: float = 5.0,
+        maintenance_strategy: str = "independent",
     ) -> None:
         from ..core.relation_policy import RelationPolicy, RelationResolver
 
@@ -90,6 +91,9 @@ class FavorService:
             or decay_grace_days < 0
         ):
             raise ValueError("关系保温期须为有限非负天数")
+        if maintenance_strategy not in ("independent", "legacy"):
+            raise ValueError("关系维护策略须为 independent 或 legacy")
+        self.maintenance_strategy = maintenance_strategy
         self._decay_grace_days = float(decay_grace_days)
         self.diagnostics = diagnostics
         self._familiarity_growth = FamiliarityConfig.from_config(familiarity_growth)
@@ -114,7 +118,7 @@ class FavorService:
             from ..core.relation_lexicon import LEXICON_VERSION
 
             self._diagnostic_config = dict(
-                policy_version="0.3.9",
+                policy_version="0.4.5",
                 lexicon_version=LEXICON_VERSION,
                 config_hash=hashlib.sha256(
                     json.dumps(
@@ -134,6 +138,7 @@ class FavorService:
                             ],
                             economy=asdict(economy) if economy is not None else None,
                             decay_grace_days=self._decay_grace_days,
+                            maintenance_strategy=maintenance_strategy,
                             timezone=tz_name,
                             floor=decay_floor_enabled,
                             initial=[min_favor, max_favor, default_favor],
@@ -178,6 +183,9 @@ class FavorService:
         self._relationships = relationships
         self._economy = economy
         self._nick_cache: dict[tuple[str, str], str] = {}
+        self._storage.configure_maintenance(
+            maintenance_strategy, self._effective_record
+        )
         # 每日限幅/同日衰减的"一天"边界时区。默认东八区（插件面向 QQ/中文
         # 社区，而 Docker 容器系统时区多为 UTC——按 UTC 换日会让"每天"在
         # 北京时间早 8 点才开始）；显式配置可覆盖为任意 IANA 时区名。
@@ -257,6 +265,7 @@ class FavorService:
                 term_before=before.key,
                 term_after=after.key,
                 status=result["skipped"] or "committed",
+                **result.get("maintenance", {}),
             )
         except Exception:
             self._diagnostic_failure()
@@ -329,6 +338,71 @@ class FavorService:
             grace_days=self._decay_grace_days,
         )
 
+    def _effective_record(self, rec, now=None):
+        """同一记录按结算时点和维护截止点读取；读取不移动锚点或托底参考。"""
+        now = time.time() if now is None else now
+        result = {}
+        for key, value, settled, maintained, half_life, amplitude in (
+            (
+                "affinity",
+                rec.favor,
+                rec.updated_at,
+                rec.affinity_maintained_at,
+                (
+                    resolve_half_life(
+                        rec.half_life,
+                        base=self._decay[0],
+                        growth=self._decay[1],
+                        h_max=self._decay[2],
+                    )
+                    if self._decay
+                    else None
+                ),
+                self._decay[3] if self._decay else 0,
+            ),
+            (
+                "familiarity",
+                rec.familiarity,
+                rec.familiarity_updated_at,
+                rec.familiarity_maintained_at,
+                self._familiarity_half_life,
+                self._familiarity_baseline,
+            ),
+            (
+                "trust",
+                rec.trust,
+                rec.trust_updated_at,
+                rec.trust_maintained_at,
+                self._trust_half_life,
+                self._trust_baseline,
+            ),
+        ):
+            if half_life is None or settled <= 0:
+                result[key] = float(value)
+                continue
+            maintenance = settled if maintained is None else min(settled, maintained)
+            start = max(settled, maintenance + self._decay_grace_days * 86400)
+            target = decay_target(value, amplitude)
+            floor = None
+            if key == "affinity":
+                reference = rec.affinity_floor_reference
+                floor = self._decay_floor(
+                    value if reference is None else reference, target
+                )
+            result[key] = effective_favor(
+                value,
+                start,
+                now,
+                half_life=half_life,
+                baseline=target,
+                floor=floor,
+                rounded=False,
+            )
+            # 数值已在地板上时，分段结算仍须停在同一地板，不能再次向下衰减。
+            if floor is not None and value >= floor > target:
+                result[key] = max(result[key], floor)
+        return result
+
     def _effective_affinity_raw(self, stored, updated_at, half_life=10.0):
         return self._effective(stored, updated_at, half_life, rounded=False)
 
@@ -390,11 +464,10 @@ class FavorService:
                 updated_at=0.0,
             )
         else:
-            rec.favor = self._effective(rec.favor, rec.updated_at, rec.half_life)
-            rec.trust = round1(self._effective_trust(rec.trust, rec.trust_updated_at))
-            rec.familiarity = round1(
-                self._effective_familiarity(rec.familiarity, rec.familiarity_updated_at)
-            )
+            current = self._effective_record(rec)
+            rec.favor = round1(current["affinity"])
+            rec.trust = round1(current["trust"])
+            rec.familiarity = round1(current["familiarity"])
         if temporary["active"]:
             rec.favor = temporary["values"]["affinity"]
             rec.familiarity = temporary["values"]["familiarity"]
@@ -488,9 +561,7 @@ class FavorService:
             deltas = self._relation_policy.limit_deltas(
                 event_type, deltas, familiarity_multiplier=f_mult, rounded=False
             )
-            # F 在库中保留余量，A/T 仅在全部倍率后取一位小数。
-            for dimension in ("affinity", "trust"):
-                deltas[dimension] = round1(deltas[dimension])
+            # 保留规则处理后的意图；事务层分别判定维护资格与一位小数计分。
             return deltas
 
         result = await self._storage.apply_relation_change(
@@ -605,6 +676,24 @@ class FavorService:
         rows.sort(key=lambda r: (-r.favor, r.user_id))
         return rows[:limit] if limit >= 0 else rows
 
+    @staticmethod
+    def last_maintained_at(rec):
+        """最近真实维护时间；结算与策略切换不算互动。"""
+        return max(
+            settled if maintained is None else maintained
+            for settled, maintained in (
+                (rec.updated_at, rec.affinity_maintained_at),
+                (rec.familiarity_updated_at, rec.familiarity_maintained_at),
+                (rec.trust_updated_at, rec.trust_maintained_at),
+            )
+        )
+
+    @classmethod
+    def idle_days(cls, rec, now=None):
+        last = cls.last_maintained_at(rec)
+        now = time.time() if now is None else now
+        return max(0, int((now - last) // 86400)) if last > 0 else None
+
     async def standings(
         self, group_id: str | None = None, limit: int = 500
     ) -> list[dict]:
@@ -619,7 +708,8 @@ class FavorService:
         for stored in recs:
             r = await self.get(stored.group_id, stored.user_id)
             eff = r.favor
-            idle = int((now - r.updated_at) // 86400) if r.updated_at > 0 else None
+            last_maintained = self.last_maintained_at(r)
+            idle = self.idle_days(r, now)
             out.append(
                 {
                     "group_id": r.group_id,
@@ -649,7 +739,7 @@ class FavorService:
                     "impression": r.impression or "",
                     "tags": r.parsed_tags(),
                     "impression_at": r.impression_at,
-                    "updated_at": r.updated_at,
+                    "updated_at": last_maintained,
                     "idle_days": idle,
                 }
             )
@@ -1127,13 +1217,10 @@ class FavorService:
         state = await self.get(group_id, user_id)
         stored = await self._storage.get(self.group_key(group_id), user_id)
         if stored is not None:
-            state.familiarity = self._effective_familiarity(
-                stored.familiarity, stored.familiarity_updated_at
-            )
-            state.favor = self._effective_affinity_raw(
-                stored.favor, stored.updated_at, stored.half_life
-            )
-            state.trust = self._effective_trust(stored.trust, stored.trust_updated_at)
+            current = self._effective_record(stored)
+            state.familiarity = current["familiarity"]
+            state.favor = current["affinity"]
+            state.trust = current["trust"]
         cur = state.favor
         vector = log.get("relation_delta") or {}
         affinity_min, affinity_max = affinity_bounds_for_undo(
@@ -1260,33 +1347,10 @@ class FavorService:
         rec = await self._storage.get(self.group_key(group_id), user_id)
         if rec is None:
             return dict(familiarity=0, affinity=self.default_favor, trust=0)
-        shift = (
-            max(0, time.time() - state["started_at"])
-            if state["active"] and rec.updated_at > 0
-            else 0
-        )
-        return dict(
-            familiarity=round1(
-                self._effective_familiarity(
-                    rec.familiarity,
-                    rec.familiarity_updated_at
-                    + (
-                        max(0, time.time() - state["started_at"])
-                        if state["active"] and rec.familiarity_updated_at > 0
-                        else 0
-                    ),
-                )
-            ),
-            affinity=self._effective(rec.favor, rec.updated_at + shift, rec.half_life),
-            trust=round1(
-                self._effective_trust(
-                    rec.trust,
-                    rec.trust_updated_at
-                    + (
-                        max(0, time.time() - state["started_at"])
-                        if state["active"] and rec.trust_updated_at > 0
-                        else 0
-                    ),
-                )
-            ),
-        )
+        # 正式关系在覆盖开始时暂停；同一结算/维护语义用于读值、预览和写入。
+        now = time.time()
+        point = min(now, state["started_at"]) if state["active"] else now
+        return {
+            key: round1(value)
+            for key, value in self._effective_record(rec, point).items()
+        }

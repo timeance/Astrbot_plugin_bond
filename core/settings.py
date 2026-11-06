@@ -46,6 +46,7 @@ SECTIONS = {
             "relation_daily_caps.affinity_up",
             "relation_daily_caps.affinity_down",
             "economy",
+            "decay.maintenance_strategy",
             "decay.enabled",
             "decay.half_life_base",
             "decay.half_life_growth",

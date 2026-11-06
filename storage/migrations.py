@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -179,6 +179,16 @@ MIGRATIONS: dict[int, list[str]] = {
         "(SELECT MAX(0,MIN(CAST(strftime('%s','now') AS REAL),expires_at)-started_at) "
         "FROM relation_override WHERE relation_override.group_id=favor.group_id "
         "AND relation_override.user_id=favor.user_id AND active=1),0) WHERE familiarity != 0",
+    ],
+    # v18：结算时点与合格维护时间分离；迁移不发放新保温期。
+    18: [
+        "ALTER TABLE favor ADD COLUMN affinity_maintained_at REAL",
+        "ALTER TABLE favor ADD COLUMN familiarity_maintained_at REAL",
+        "ALTER TABLE favor ADD COLUMN trust_maintained_at REAL",
+        "ALTER TABLE favor ADD COLUMN affinity_floor_reference REAL",
+        "UPDATE favor SET affinity_maintained_at=updated_at,familiarity_maintained_at=familiarity_updated_at,trust_maintained_at=trust_updated_at,affinity_floor_reference=favor",
+        "CREATE TABLE maintenance_policy (id INTEGER PRIMARY KEY CHECK(id=1),strategy TEXT NOT NULL,effective_at REAL NOT NULL)",
+        "INSERT INTO maintenance_policy VALUES(1,'legacy',0)",
     ],
 }
 

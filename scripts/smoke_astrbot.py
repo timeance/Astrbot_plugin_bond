@@ -1037,18 +1037,19 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     config2 = AstrBotConfig(str(config_path), schema=schema)
     context2 = _context(Context, config2)
     plugin2 = BondPlugin(context2, config2)
-    await plugin2.initialize()
+    with patch(
+        "astrbot_plugin_bond.main.FavorService", wraps=type(old_deps.favor)
+    ) as assembled_favor:
+        await plugin2.initialize()
     try:
         assert plugin2._runtime.current_mode(BOT_IDS[0]) == "global"
         assert plugin2._storage.known_bot_ids() == sorted(BOT_IDS)
         assert len(context2.registered_web_apis) == 18
         assert plugin2._prompts.load_error
         # 保留旧亲近度关闭输入，并直接核验真实工厂收到三维独立基线。
-        with patch(
-            "astrbot_plugin_bond.main.FavorService", wraps=type(old_deps.favor)
-        ) as assembled_favor:
-            deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
-        assert assembled_favor.call_count == 1
+        deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
+        # 重载已装配全部既有空间，切换不等待下次消息。
+        assert assembled_favor.call_count == len(BOT_IDS) * 2
         assert assembled_favor.call_args.kwargs["familiarity_baseline"] == 10
         assert assembled_favor.call_args.kwargs["decay_baseline"] == 5
         assert assembled_favor.call_args.kwargs["trust_baseline"] == 3

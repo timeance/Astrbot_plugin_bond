@@ -30,6 +30,7 @@ def db(tmp_path):
 
 def service(db, **kwargs):
     options = dict(
+        maintenance_strategy="legacy",
         decay_enabled=True,
         half_life_base=10,
         half_life_growth=1,
