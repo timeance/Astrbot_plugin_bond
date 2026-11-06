@@ -725,3 +725,36 @@ test('event reasons use Chinese without rewriting custom descriptions',()=>{
  assert.equal(ui.displayReason('unknown_event'),'unknown_event');
  assert.equal(ui.displayReason('__proto__'),'__proto__');
 });
+
+test('overview impression view defaults to numbers and toggles without requests or changing list state',()=>{
+ const {ui,reads,pending}=harness();
+ const members=[
+  {user_id:'synthetic-cn',impression:'友善且细心。'.repeat(100)},
+  {user_id:'synthetic-en',impression:'UnbrokenEnglish'.repeat(100)},
+  {user_id:'synthetic-empty',impression:''}
+ ];
+ ui.users.value=members;ui.userPage.value=2;ui.includeZeroUsers.value=true;
+ assert.equal(ui.showUserImpressions.value,false);
+ ui.toggleUserImpressions();assert.equal(ui.showUserImpressions.value,true);
+ assert.equal(ui.visibleUsers.value,members);
+ assert.equal(ui.userPage.value,2);assert.equal(ui.includeZeroUsers.value,true);
+ ui.toggleUserImpressions();assert.equal(ui.showUserImpressions.value,false);
+ assert.equal(reads.length,0);assert.equal(pending.length,0);
+});
+
+test('overview impression columns retain status, handle empty rows and constrain long text',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ const overview=source.split('<!-- 当前总览 -->')[1].split('<!-- 变动流水 -->')[0];
+ assert.match(source,/:aria-pressed="showUserImpressions"/);
+ assert.match(source,/showUserImpressions \? "显示数值" : "显示印象"/);
+ for(const label of ['熟悉度','亲近度','信任度'])assert.ok(overview.includes(`<th v-if="!showUserImpressions">${label}</th>`));
+ assert.equal((overview.match(/<td v-if="!showUserImpressions">/g)||[]).length,3);
+ assert.match(overview,/<th>状态<\/th><th>标签<\/th><th v-if="showUserImpressions">印象<\/th>/);
+ assert.match(overview,/:colspan="showUserImpressions \? 6 : 8"/);
+ assert.match(overview,/u\.impression && u\.impression\.trim\(\) \? u\.impression : "暂无印象"/);
+ assert.doesNotMatch(overview,/v-html/);
+ assert.match(overview,/@click="openMember\(u\)"/);
+ const css=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.css'),'utf8');
+ assert.match(css,/\.xx-overview-table\.is-impressions\s*\{[^}]*table-layout: fixed;[^}]*min-width: 1000px;/);
+ assert.match(css,/\.xx-overview-impression\s*\{[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/);
+});
