@@ -382,7 +382,17 @@ class DiagnosticRecorder:
                     return filter_text(text)
                 if len(text) > 32768:
                     raise ValueError("JSON 内容过大")
-                parsed = json.loads(text)
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    # 括号、表情和 Markdown 链接也可能以 { 或 [ 开头。
+                    # 残缺 JSON 含敏感字段时仍省略，避免退回文本过滤后漏出值。
+                    # 连无冒号或未闭合的引号片段也一次消费，避免反复扫描。
+                    quoted = r'("(?:\\.|[^"\\])*(?:"|\\?$))(\s*:)?'
+                    for key in re.finditer(quoted, text):
+                        if key[2] and denied.search(json.loads(key[1])):
+                            raise ValueError("残缺 JSON 含敏感字段")
+                    return filter_text(text)
                 cleaned = redact(parsed, depth)
                 return (
                     json.dumps(cleaned, ensure_ascii=False, allow_nan=False)
@@ -416,7 +426,7 @@ class DiagnosticRecorder:
                     omitted = True
                 return result
             except (ValueError, RecursionError):
-                # 解析失败或超限时整段省略，避免部分 JSON 漏出敏感字段。
+                # 敏感 JSON 解析失败或超限时整段省略，避免漏出敏感字段。
                 truncated = omitted = True
                 return "[JSON content omitted]"
 

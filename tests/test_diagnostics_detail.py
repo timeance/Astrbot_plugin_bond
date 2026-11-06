@@ -369,6 +369,8 @@ def test_empty_nested_containers_consume_budget_and_survive_export(tmp_path):
     [
         json.dumps({"password": 123456, "text": "x" * 32768}),
         '{"password":123456,',
+        '{"secret":{"value":"synthetic-private"},',
+        r'{"\u0070assword":123456,',
         "[" * 40 + "0" + "]" * 40,
         json.dumps([[]] * 5000),
     ],
@@ -474,3 +476,50 @@ def test_tiny_json_budget_keeps_snapshot_idempotent(monkeypatch, budget, text):
     monkeypatch.setattr(DiagnosticRecorder, "CONTENT_BYTES", budget)
     data = DiagnosticRecorder._content_snapshot({"text": text})["data"]
     assert DiagnosticRecorder._content_snapshot(data)["data"] == data
+
+
+@pytest.mark.parametrize("level", ["raw", "full"])
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("[捂脸]这也太离谱了", "[捂脸]这也太离谱了"),
+        ("  [捂脸]这也太离谱了", "  [捂脸]这也太离谱了"),
+        ("{注意}先别点", "{注意}先别点"),
+        ('{"topic":"hello",', '{"topic":"hello",'),
+        ("[1] 选第一项", "[1] 选第一项"),
+        ("(普通括号)这是玩笑", "(普通括号)这是玩笑"),
+        (
+            "[链接](https://example.invalid/help)",
+            "[链接](https://example.invalid/help)",
+        ),
+        (
+            "[https://example.invalid/help] 看这里",
+            "[https://example.invalid/help] 看这里",
+        ),
+        (
+            "https://example.invalid/help?signature=synthetic-private",
+            "https://example.invalid/help",
+        ),
+        ("[捂脸] Bearer synthetic-private-token", "[捂脸] [redacted]"),
+    ],
+)
+def test_bracketed_chat_text_survives_disk_and_export(tmp_path, level, text, expected):
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level=level
+        )
+        assert content(recorder, content={"text": text})
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        assert disk[0]["content"]["data"] == {"text": expected}
+        assert not disk[0]["content"]["truncated"]
+        assert "synthetic-private" not in path.read_text(encoding="utf-8")
+        exported = await recorder.export(B, M)
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())
