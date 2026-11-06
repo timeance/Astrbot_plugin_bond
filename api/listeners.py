@@ -1,6 +1,6 @@
 """心弦好感度 - 事件监听 handler。
 
-on_group_message：触发 LLM 评估（好感度变化的唯一自动引擎）。
+on_group_message：调度直接互动评估及可选的群聊活跃熟悉度。
 on_llm_request：向 system_prompt 注入好感度档案。
 身份一律从事件取（get_sender_id/get_group_id），不解析任何注入文本。
 """
@@ -49,6 +49,7 @@ class Deps:
     assessment: object | None = None
     prompts: object | None = None
     bot_id: str = ""
+    passive_activity: object | None = None
 
 
 @dataclass(frozen=True)
@@ -237,8 +238,10 @@ async def on_llm_response(deps: Deps, event: AstrMessageEvent, response) -> None
 # 只被事件循环弱引用可能被 GC 中途回收，且卸载时需 cancel_and_wait
 
 
-async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
-    """群消息入口：评估引擎（唯一自动引擎，内部自行判断开关/冷却/降级）。
+async def on_group_message(
+    deps: Deps, event: AstrMessageEvent, *, ignored_ids=()
+) -> None:
+    """群消息入口：独立调度互动评估和被动熟悉度，各自处理开关与冷却。
 
     评审是事后打分（评的是已说出口的话），结果只影响下一条消息的注入——
     因此整个评审+落库放后台任务，不阻塞本条消息的回复链路（AstrBot 的
@@ -265,6 +268,24 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     has_at_bot, is_reply_bot = _chain_flags(event)
     reply_metadata = _reply_metadata(event)
     original_event = event
+    passive_batch = None
+    passive_activity = getattr(deps, "passive_activity", None)
+    if (
+        passive_activity is not None
+        and str(event.get_self_id() or "") == deps.bot_id == passive_activity.bot_id
+    ):
+        try:
+            passive_batch = passive_activity.observe(
+                str(group_id),
+                str(user_id),
+                platform=str(event.get_platform_name() or ""),
+                message_id=str(getattr(event.message_obj, "message_id", "") or ""),
+                mentioned=has_at_bot,
+                has_content=bool(text.strip() or event.message_obj.message),
+                ignored_ids=ignored_ids,
+            )
+        except Exception:
+            logger.warning("[Bond] 群聊活跃观察失败，继续正常对话")
     diagnostic_capture = event_capture(deps, original_event)
     if diagnostic_capture is not None and (has_at_bot or is_reply_bot):
         diagnostic_capture.content(
@@ -281,6 +302,8 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
 
     # 必须先于本消息任何后台评估与印象写入，不能挪到请求钩子。
     await _freeze_relation(deps, original_event)
+    if passive_activity is not None:
+        passive_activity.schedule(passive_batch, deps.favor, deps.registry)
     admission_state = await deps.favor.temporary_state(group_id, user_id)
     admitted_interaction = None
     if (

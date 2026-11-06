@@ -144,3 +144,7 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 `python scripts/export_behavior_cases.py --output <新空目录>` 导出14类场景、156组无Bond/旧提示/新提示请求与两条SQLite持久化合成轨迹。输入共用同一人格和历史，不调用模型，输出与评分留空；方法见 [行为验收](P0_BEHAVIOR_EVALUATION.md)。
 
 在独立 AstrBot4.28.0 环境运行 `python scripts/smoke_relation_runner.py --runtime-dir <新目录>`，通过真实 ToolLoopAgentRunner 和离线记录 Provider 验证初始请求、工具续跑及空输出重试的最终上下文。脚本禁用网络，主入口钩子直接调用，未启动完整平台 pipeline，也不等于真实QQ或真实模型验收。离线pytest中的监听器替身只验证钩子契约，不能冒充这一边界。
+
+## 0.5.5 被动熟悉度验证
+
+离线新增测试为 `tests/test_passive_activity.py`、`tests/test_passive_storage.py`、`tests/test_passive_service.py`，覆盖只结算F、不刷新保温、共享额度、持久冷却和消息时序。真实AstrBot4.28.0环境运行 `python scripts/smoke_passive_familiarity.py --runtime-dir <新空目录>`，验证实际配置、消息对象、主钩子与后续直接评估。所有数据合成，禁止网络；不替代真实平台或第三方插件同装测试。规则与交付边界见 [群聊活跃熟悉度](PASSIVE_FAMILIARITY.md)。

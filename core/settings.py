@@ -24,6 +24,7 @@ SECTIONS = {
             "assessment.small_provider_id",
             "assessment.large_provider_id",
             "assessment.assessment_mode",
+            "passive_familiarity.enabled",
             "group_whitelist",
             "default_scope_mode",
             "master_ids",

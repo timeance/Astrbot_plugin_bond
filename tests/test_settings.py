@@ -114,6 +114,7 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
         "assessment.small_provider_id",
         "assessment.large_provider_id",
         "assessment.assessment_mode",
+        "passive_familiarity.enabled",
         "group_whitelist",
         "default_scope_mode",
         "master_ids",

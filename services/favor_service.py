@@ -652,6 +652,59 @@ class FavorService:
         )
         return result
 
+    async def apply_passive_familiarity(
+        self, group_id, user_id, *, trigger_id, observed_at=None, triggered_at=None
+    ):
+        """群聊活跃只增加 F，不授予维护资格，也不经过语义评估的倍率与冷却。"""
+        from ..core.scope import account_id
+
+        account_id(str(group_id))
+        account_id(str(user_id))
+        self._validate_event_id(trigger_id)
+        now = time.time()
+        triggered_at = now if triggered_at is None else triggered_at
+        if observed_at is not None and (
+            type(observed_at) not in (int, float)
+            or not math.isfinite(observed_at)
+            or type(triggered_at) not in (int, float)
+            or not math.isfinite(triggered_at)
+            or not 0 <= triggered_at - observed_at <= 600
+            or not 0 <= now - triggered_at <= 600
+        ):
+            self.record_diagnostic(
+                group_id, user_id, "relation", reason="passive", status="stale"
+            )
+            return {"skipped": "stale"}
+        state = await self.temporary_state(group_id, user_id)
+        if state["active"]:
+            self.record_diagnostic(
+                group_id, user_id, "relation", reason="passive", status="temporary"
+            )
+            return {"skipped": "temporary"}
+        try:
+            result = await self._storage.apply_passive_familiarity(
+                self.group_key(group_id),
+                str(user_id),
+                event_id="passive:" + trigger_id,
+                day=self._today(now).isoformat(),
+                daily_cap_up=self._relation_caps["familiarity"][0],
+                amount=0.3,
+                ceiling=60.0,
+                cooldown_sec=1800,
+                expected_revision=state["revision"],
+                day_start=self._day_start(now),
+                day_end=self._day_end(now),
+                origin_group_id=str(group_id),
+            )
+        except ValueError:
+            # 暂停/恢复若发生在排队期间，旧候选不得穿越临时关系边界。
+            current = await self.temporary_state(group_id, user_id)
+            if current["active"] or current["revision"] != state["revision"]:
+                return {"skipped": "temporary"}
+            raise
+        self._diagnose_change(group_id, user_id, result, "passive", trigger_id)
+        return result
+
     async def set_relation(
         self,
         group_id,
@@ -987,7 +1040,11 @@ class FavorService:
                 group_id, user_id, limit=max(count * 5, count)
             )
         )
-        rows = [r for r in rows if not r.get("reversed")]
+        rows = [
+            r
+            for r in rows
+            if not r.get("reversed") and r.get("source") != "passive_familiarity"
+        ]
         if days and days > 0:
             now = time.time() if now is None else now
             normal_cutoff = now - days * 86400
@@ -1314,8 +1371,9 @@ class FavorService:
 
         整个"校验未撤销→反向→记账→标记"在 storage.apply_undo 单事务内完成
         （X4：拆开的检查-执行序列存在 TOCTOU，并发双击会双重反向扣分）。
-        原流水标记 reversed=1（防重复撤销），并追加一条 source=undo 的反向
-        流水；撤销一条 undo 行 = 重做原变动（对称）。撤销以衰减后的有效值
+        原流水标记 reversed=1（防重复撤销），并追加反向流水；普通变动来源
+        为 undo，被动变动沿用 passive_familiarity，整条撤销链不刷新保温。
+        撤销一条反向流水 = 重做原变动（对称）。撤销以衰减后的有效值
         为基数（effective 回调传入存储层，语义与旧实现一致）。
         """
         info = await self._storage.apply_undo(
