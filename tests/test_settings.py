@@ -120,11 +120,6 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
         "inject.enabled",
         "relation_mode",
         "ignored_bot_ids",
-        "command.ranking_access",
-        "command.ranking_image",
-        "command.ranking_limit",
-        "command.text_wake_enabled",
-        "command.text_wake_ranking",
     ]
     by_path = {f["path"]: f for f in definitions}
     assert len(by_path) == len(definitions)
@@ -157,7 +152,11 @@ def test_host_visibility_and_webui_wording_agree():
 
     visit(schema)
     definitions = fields()
-    assert visible == [f["path"] for f in definitions if f["group"] == "basic"]
+    assert visible == [
+        f["path"]
+        for f in definitions
+        if f["group"] == "basic" or f["path"].startswith("command.")
+    ]
     for field in definitions:
         node = schema
         for part in field["path"].split("."):
@@ -722,3 +721,25 @@ def test_independent_baseline_bounds_and_legacy_value_ignored(dimension):
 def test_independent_baseline_invalid_values(dimension, value):
     with pytest.raises(ValueError):
         validate_patch({f"decay.{dimension}_baseline": value})
+
+
+def test_query_settings_share_host_values_and_reject_unknown_impression_mode():
+    config = {"command": {"ranking_access": "master", "impression_mode": "大模型总结"}}
+    data = snapshot(config)
+    query_fields = [f["path"] for f in data["fields"] if f["group"] == "commands"]
+    assert query_fields == [
+        "command.ranking_access",
+        "command.ranking_image",
+        "command.ranking_limit",
+        "command.text_wake_enabled",
+        "command.text_wake_ranking",
+        "command.impression_mode",
+        "render.font_path",
+    ]
+    assert data["values"]["command.ranking_access"] == "master"
+    assert data["values"]["command.impression_mode"] == "大模型总结"
+    assert snapshot({})["values"]["command.impression_mode"] == "关闭"
+    for mode in ("关闭", "输出关系称谓", "大模型总结"):
+        validate_patch({"command.impression_mode": mode})
+    with pytest.raises(ValueError):
+        validate_patch({"command.impression_mode": "unknown"})

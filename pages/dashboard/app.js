@@ -1393,7 +1393,7 @@ createApp({
       <div v-if="tab === 'users'" class="xx-table-wrap">
         <table class="xx-table xx-overview-table" :class="{ 'is-impressions': showUserImpressions }">
           <colgroup v-if="showUserImpressions">
-            <col style="width:20%"><col style="width:16%"><col style="width:12%"><col style="width:20%"><col style="width:24%"><col style="width:8%">
+            <col class="xx-overview-col-member"><col class="xx-overview-col-relation"><col class="xx-overview-col-status"><col class="xx-overview-col-tags"><col><col class="xx-overview-col-actions">
           </colgroup>
           <thead>
             <tr>
@@ -1405,13 +1405,13 @@ createApp({
               <td :colspan="showUserImpressions ? 6 : 8" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "尚无关系变化的成员已折叠，可在上方展开" : "暂无匹配成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
-              <td :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">
+              <td class="xx-overview-member-cell" :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">
                 <div class="xx-user-cell">
                   <span class="xx-user-nick" :class="{ 'is-unknown': !u.nickname }">{{ u.nickname || "昵称未知" }}</span>
                   <span class="xx-user-id xx-mono">QQ {{ u.user_id }}</span>
                 </div>
               </td>
-              <td><span class="xx-title-badge">{{ u.relation_title || "-" }}</span></td>
+              <td class="xx-overview-relation-cell"><span class="xx-title-badge">{{ u.relation_title || "-" }}</span></td>
               <td v-if="!showUserImpressions">
                 <div class="xx-dim-cell">
                   <div class="xx-dim-head">
@@ -1439,12 +1439,12 @@ createApp({
                   <div class="xx-dim-track is-signed" aria-hidden="true"><i class="xx-dim-fill" :class="u.trust < 0 ? 'is-neg' : 'is-t-pos'" :style="dimBarStyle('trust', u.trust)"></i></div>
                 </div>
               </td>
-              <td>
+              <td class="xx-overview-status-cell">
                 <span v-if="u.decayed" class="xx-tag">衰减中</span>
                 <span v-else-if="u.idle_days != null && u.idle_days >= 3" class="xx-tag">{{ u.idle_days }}天未动</span>
                 <span v-else class="xx-muted-text">-</span>
               </td>
-              <td class="xx-imp-cell">
+              <td class="xx-imp-cell" data-label="标签">
                 <div class="xx-imp">
                   <div v-if="u.tags && u.tags.length" class="xx-chips">
                     <span v-for="t in u.tags" :key="t" class="xx-chip">{{ t }}</span>
@@ -1452,7 +1452,7 @@ createApp({
                   <span v-if="!(u.tags && u.tags.length)" class="xx-muted-text">-</span>
                 </div>
               </td>
-              <td v-if="showUserImpressions" class="xx-overview-impression-cell">
+              <td v-if="showUserImpressions" class="xx-overview-impression-cell" data-label="印象">
                 <p class="xx-overview-impression" :class="{ 'xx-muted-text': !u.impression || !u.impression.trim() }">{{ u.impression && u.impression.trim() ? u.impression : "暂无印象" }}</p>
               </td>
               <td class="xx-actions">

@@ -361,6 +361,53 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         await plugin._on_llm_req(other, other_request)
         assert "维护者在插件配置中将当前用户设为主人" not in other_request.system_prompt
 
+        # 我的印象使用真实命令/工具装配，模型响应仅为合成契约数据。
+        from astrbot_plugin_bond.services.self_impression_service import (
+            SelfImpressionService,
+        )
+        from unittest.mock import AsyncMock, patch
+
+        off = [item async for item in plugin._cmd_self_impression(FakeEvent())]
+        assert off[0].chain[0].text == "我的印象功能未开启。"
+        assert (
+            json.loads(await plugin._tool_self_impression(FakeEvent()))["status"]
+            == "unavailable"
+        )
+        for mode in ("title", "summary"):
+            plugin._self_impression = SelfImpressionService(context, mode=mode)
+            with patch.object(context, "get_using_provider", return_value=None):
+                title = await old_deps.favor.relation_title(OLD_GROUP, OLD_USER)
+                replies = [
+                    item async for item in plugin._cmd_self_impression(FakeEvent())
+                ]
+                assert replies[0].chain[0].text == title
+                assert (
+                    json.loads(await plugin._tool_self_impression(FakeEvent()))[
+                        "facts"
+                    ]["impression_reply"]
+                    == title
+                )
+            assert [item async for item in plugin._cmd_self_impression(excluded)] == []
+            assert (
+                json.loads(await plugin._tool_self_impression(excluded))["status"]
+                == "unavailable"
+            )
+            private_impression = FakeEvent()
+            private_impression.group = ""
+            replies = [
+                item async for item in plugin._cmd_self_impression(private_impression)
+            ]
+            assert replies[0].chain[0].text == "请在群聊中查询自己的印象。"
+            assert (
+                json.loads(await plugin._tool_self_impression(private_impression))[
+                    "status"
+                ]
+                == "unavailable"
+            )
+        # 开启/关闭新功能均不改变已有关系命令。
+        relation = [item async for item in plugin._cmd_self_relation(FakeEvent())]
+        assert relation[0].chain[0].text == "你与当前 Bot 的关系：" + title + "。"
+
         # 真实装配入口返回资料；不让固定测试响应冒充人格表达验收。
         query = json.loads(await plugin._tool_query(FakeEvent()))
         assert query["status"] == "ok" and query["subject"] == "当前 Bot"
