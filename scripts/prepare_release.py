@@ -14,11 +14,17 @@ from check_project import ROOT, check_project
 
 
 def select_tag(previous_ref: str, tag: str, root: Path = ROOT) -> str:
-    version = check_project(root)
+    # 恢复标签时只选择版本；检查与打包由该历史源码自己的脚本完成。
     if not previous_ref:
+        version = str(
+            yaml.safe_load((root / "metadata.yaml").read_text(encoding="utf-8"))[
+                "version"
+            ]
+        )
         if tag != f"v{version}":
             raise ValueError("tag 与插件版本不一致")
         return tag
+    version = check_project(root)
     if not re.fullmatch(r"[0-9a-f]{40}", previous_ref) or set(previous_ref) == {"0"}:
         raise ValueError("自动发布需要有效的前一次 main 提交")
     previous = yaml.safe_load(
@@ -37,10 +43,11 @@ def select_tag(previous_ref: str, tag: str, root: Path = ROOT) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-dir", type=Path, default=ROOT)
     parser.add_argument("--previous-ref", default="")
     parser.add_argument("--tag", default="")
     args = parser.parse_args()
-    tag = select_tag(args.previous_ref, args.tag)
+    tag = select_tag(args.previous_ref, args.tag, args.source_dir.resolve())
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"tag={tag}\n")
     print(f"准备发布 {tag}" if tag else "版本未变化，跳过发布")

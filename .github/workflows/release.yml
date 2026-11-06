@@ -31,6 +31,13 @@ jobs:
       commit: ${{ steps.package.outputs.commit }}
       tag-object: ${{ steps.package.outputs.tag-object }}
     steps:
+      # 发布工具与待打包源码分离，恢复旧标签不要求历史树包含新工具。
+      - name: 检出本次工作流的发布工具
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.sha }}
@@ -51,7 +58,7 @@ jobs:
         env:
           PREVIOUS_REF: ${{ inputs.previous-ref }}
           TAG_INPUT: ${{ inputs.tag || github.ref_name }}
-        run: python scripts/prepare_release.py --previous-ref "$PREVIOUS_REF" --tag "$TAG_INPUT"
+        run: python "$GITHUB_WORKSPACE/release-tools/scripts/prepare_release.py" --source-dir . --previous-ref "$PREVIOUS_REF" --tag "$TAG_INPUT"
       - name: 检查与测试
         if: steps.select.outputs.tag != ''
         run: |
@@ -95,6 +102,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 发布工具与待打包源码分离，恢复旧标签不要求历史树包含新工具。
+      - name: 检出本次工作流的发布工具
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.build.outputs.commit }}
@@ -116,4 +130,4 @@ jobs:
           TAG_INPUT: ${{ needs.build.outputs.tag }}
           TAG_OBJECT: ${{ needs.build.outputs.tag-object }}
           AUTOMATIC: ${{ inputs.previous-ref != '' }}
-        run: bash .github/release.sh
+        run: bash "$GITHUB_WORKSPACE/release-tools/.github/release.sh"

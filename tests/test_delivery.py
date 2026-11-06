@@ -361,6 +361,25 @@ def test_release_workflow_requires_ci_and_retains_immutable_draft_publish():
     assert release["permissions"] == {"contents": "read"}
     assert release["jobs"]["publish"]["permissions"] == {"contents": "write"}
     assert release["jobs"]["publish"]["if"] == "needs.build.outputs.tag != ''"
+    for job in release["jobs"].values():
+        tools_checkout = next(
+            step
+            for step in job["steps"]
+            if step.get("with", {}).get("path") == "release-tools"
+        )
+        assert tools_checkout["with"]["ref"] == "${{ github.workflow_sha }}"
+        assert tools_checkout["with"]["persist-credentials"] is False
+    build_select = next(
+        step for step in release["jobs"]["build"]["steps"] if step.get("id") == "select"
+    )
+    assert (
+        '"$GITHUB_WORKSPACE/release-tools/scripts/prepare_release.py" --source-dir .'
+        in build_select["run"]
+    )
+    assert (
+        release["jobs"]["publish"]["steps"][-1]["run"]
+        == 'bash "$GITHUB_WORKSPACE/release-tools/.github/release.sh"'
+    )
 
 
 @pytest.mark.parametrize(
@@ -430,3 +449,165 @@ exit 0
             calls.splitlines()[-1]
             == "gh release edit v0.5.5 --repo synthetic/bond --draft=false"
         )
+
+
+def test_dispatch_recovers_real_historical_tree_with_current_tools(tmp_path):
+    # 主干 0.4.4 的真实历史树：没有新发布工具，CHANGELOG 含多个旧版本。
+    historical_commit = "91caea9b460009d65daa83a086dfaf457f3787bd"
+    source = tmp_path / "astrbot_plugin_bond"
+    bash = shutil.which("bash")
+    if not bash and os.name == "nt":
+        bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe")
+    if not bash or not Path(bash).is_file():
+        pytest.skip("需要 Bash 验证发布脚本")
+    env = {**os.environ, "PYTHONUTF8": "1"}
+
+    def command(*args, cwd=source, check=True, command_env=None):
+        return subprocess.run(
+            args,
+            cwd=cwd,
+            env=command_env or env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=check,
+        )
+
+    command(
+        "git",
+        "clone",
+        "--no-tags",
+        "--no-hardlinks",
+        "--no-checkout",
+        str(ROOT),
+        str(source),
+        cwd=tmp_path,
+    )
+    command("git", "checkout", "--detach", historical_commit)
+    command("git", "update-ref", "refs/remotes/origin/main", historical_commit)
+    assert not (source / "scripts/prepare_release.py").exists()
+    assert not (source / ".github/release.sh").exists()
+    from check_project import check_changelog
+
+    with pytest.raises(ValueError, match="CHANGELOG"):
+        check_changelog(source, "0.4.4")
+    identity = (
+        "-c",
+        "user.name=Bond Test",
+        "-c",
+        "user.email=bond-test@example.invalid",
+        "-c",
+        "tag.gpgsign=false",
+    )
+
+    def annotate(target=historical_commit):
+        command("git", *identity, "tag", "-a", "v0.4.4", target, "-m", "历史恢复测试")
+
+    annotate()
+    output = tmp_path / "output.txt"
+    command(
+        sys.executable,
+        str(ROOT / "scripts/prepare_release.py"),
+        "--source-dir",
+        str(source),
+        "--tag",
+        "v0.4.4",
+        command_env={**env, "GITHUB_OUTPUT": str(output)},
+    )
+    assert output.read_text(encoding="utf-8") == "tag=v0.4.4\n"
+    archive = source / "release/astrbot_plugin_bond-v0.4.4.zip"
+    command(sys.executable, "scripts/check_project.py")
+    command(
+        sys.executable,
+        "scripts/build_package.py",
+        "--tag",
+        "v0.4.4",
+        "--output",
+        str(archive),
+    )
+    # 发布 runner 为 Linux；本机 Windows 生成的校验文件使用相同的 LF 换行。
+    checksum = archive.with_suffix(".zip.sha256")
+    checksum.write_text(
+        checksum.read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
+    )
+    shutil.copyfile(source / "CHANGELOG.md", archive.with_name("notes.md"))
+    with zipfile.ZipFile(archive) as package:
+        original = subprocess.check_output(
+            ["git", "-C", str(source), "show", f"{historical_commit}:main.py"]
+        )
+        assert package.read("main.py").replace(b"\r\n", b"\n") == original.replace(
+            b"\r\n", b"\n"
+        )
+        assert "scripts/prepare_release.py" not in package.namelist()
+
+    # 只替代 GitHub 远端服务；Git、历史源码检查、标签验证和校验和均真实执行。
+    mock_bin = tmp_path / "bin"
+    mock_bin.mkdir()
+    gh = mock_bin / "gh"
+    gh.write_text(
+        r"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CALL_LOG"
+if [[ "$1" == api ]]; then
+  printf '%s\n' "$EXPECTED_TAG_OBJECT"
+elif [[ "$2" == create && "$RELEASE_EXISTS" == true ]]; then
+  exit 1
+fi
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    gh.chmod(0o755)
+    call_log = tmp_path / "calls.txt"
+
+    def publish(*, release_exists="false", remote_object=None):
+        call_log.write_text("", encoding="utf-8")
+        tag_object = command("git", "rev-parse", "refs/tags/v0.4.4").stdout.strip()
+        publish_env = {
+            **env,
+            "CALL_LOG": call_log.as_posix(),
+            "TAG_INPUT": "v0.4.4",
+            "TAG_OBJECT": tag_object,
+            "EXPECTED_TAG_OBJECT": remote_object or tag_object,
+            "AUTOMATIC": "false",
+            "GITHUB_REPOSITORY": "synthetic/bond",
+            "RELEASE_EXISTS": release_exists,
+        }
+        result = command(
+            bash,
+            "-c",
+            'export PATH="$(cd "$1" && pwd):$(cd "$4" && pwd):$PATH"; cd "$2"; "$BASH" "$3"',
+            "--",
+            mock_bin.as_posix(),
+            source.as_posix(),
+            (ROOT / ".github/release.sh").as_posix(),
+            Path(sys.executable).parent.as_posix(),
+            command_env=publish_env,
+            check=False,
+        )
+        return result, call_log.read_text(encoding="utf-8")
+
+    result, calls = publish()
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "--verify-tag --draft" in calls
+    assert "release edit v0.4.4 --repo synthetic/bond --draft=false" in calls
+    result, calls = publish(release_exists="true")
+    assert result.returncode != 0
+    assert "release edit" not in calls
+    result, calls = publish(remote_object="changed-object")
+    assert result.returncode != 0
+    assert "release create" not in calls
+    for kind in ("lightweight", "different-head", "outside-main"):
+        command("git", "tag", "-d", "v0.4.4")
+        if kind == "lightweight":
+            command("git", "tag", "v0.4.4")
+        elif kind == "different-head":
+            annotate(f"{historical_commit}^")
+        else:
+            annotate()
+            command(
+                "git", "update-ref", "refs/remotes/origin/main", f"{historical_commit}^"
+            )
+        result, calls = publish()
+        assert result.returncode != 0, kind
+        assert calls == "", kind
+    assert command("git", "status", "--porcelain", "--untracked-files=no").stdout == ""
