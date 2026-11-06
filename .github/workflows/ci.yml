@@ -13,8 +13,8 @@ env:
   PYTHONUTF8: "1"
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -90,3 +90,12 @@ jobs:
         run: >-
           python astrbot_plugin_bond/scripts/smoke_passive_familiarity.py
           --runtime-dir "${{ runner.temp }}/bond-passive-familiarity"
+
+  release:
+    needs: [test, framework]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      previous-ref: ${{ github.event.before }}
