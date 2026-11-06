@@ -52,6 +52,8 @@ createApp({
     const userCollapsedCount = ref(0);
     const userZeroCount = ref(0);
     const includeZeroUsers = ref(false);
+    const showUserImpressions = ref(false);
+    const toggleUserImpressions = () => { showUserImpressions.value = !showUserImpressions.value; };
     let userRequestId = 0;
     const groups = ref([]);
     const filterGroup = ref("");
@@ -1236,7 +1238,7 @@ createApp({
       filterGroup, filterUser, filterLimit,
       logDimension, logSource, logDimensions, logDeltaParts, fmtKnownDelta, showEvaluationChanges,
       userPage, userPageSize, userPages, userTotal, userMatchedCount,
-      userCollapsedCount, userZeroCount, includeZeroUsers,
+      userCollapsedCount, userZeroCount, includeZeroUsers, showUserImpressions, toggleUserImpressions,
       resetUserPage, changeUserPage, changeListFilter,
       bots, selectedBot, selectedMode, selectedBotInfo, scopeLabel,
       scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
@@ -1377,6 +1379,7 @@ createApp({
         <span role="status" aria-live="polite">共 {{ userMatchedCount }} 条成员记录，当前显示 {{ userTotal }} 条</span>
         <button v-if="userCollapsedCount" class="xx-btn xx-btn-mini" @click="includeZeroUsers = true; resetUserPage()" :disabled="loading">展开 {{ userCollapsedCount }} 位尚无关系变化的成员</button>
         <button v-else-if="includeZeroUsers && !filterUser.trim()" class="xx-btn xx-btn-mini" @click="includeZeroUsers = false; resetUserPage()" :disabled="loading">折叠尚无关系变化的成员（{{ userZeroCount }}）</button>
+        <button type="button" class="xx-btn xx-btn-mini" @click="toggleUserImpressions" :aria-pressed="showUserImpressions">{{ showUserImpressions ? "显示数值" : "显示印象" }}</button>
         <span v-if="filterUser.trim()" class="xx-help">搜索会包含已折叠的成员</span>
         <div class="xx-pagination-nav">
           <label>每页 <select v-model.number="userPageSize" @change="resetUserPage()" :disabled="loading"><option v-for="size in [30, 50, 100, 200]" :key="size" :value="size">{{ size }}</option></select> 条</label>
@@ -1388,15 +1391,18 @@ createApp({
 
       <!-- 当前总览 -->
       <div v-if="tab === 'users'" class="xx-table-wrap">
-        <table class="xx-table">
+        <table class="xx-table xx-overview-table" :class="{ 'is-impressions': showUserImpressions }">
+          <colgroup v-if="showUserImpressions">
+            <col style="width:20%"><col style="width:16%"><col style="width:12%"><col style="width:20%"><col style="width:24%"><col style="width:8%">
+          </colgroup>
           <thead>
             <tr>
-              <th>成员 / QQ</th><th>关系称谓</th><th>熟悉度</th><th>亲近度</th><th>信任度</th><th>状态</th><th>标签</th><th>操作</th>
+              <th>成员 / QQ</th><th>关系称谓</th><th v-if="!showUserImpressions">熟悉度</th><th v-if="!showUserImpressions">亲近度</th><th v-if="!showUserImpressions">信任度</th><th>状态</th><th>标签</th><th v-if="showUserImpressions">印象</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!visibleUsers.length">
-              <td colspan="8" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "尚无关系变化的成员已折叠，可在上方展开" : "暂无匹配成员") }}</td>
+              <td :colspan="showUserImpressions ? 6 : 8" class="xx-empty">{{ loading ? "加载中…" : (userCollapsedCount ? "尚无关系变化的成员已折叠，可在上方展开" : "暂无匹配成员") }}</td>
             </tr>
             <tr v-for="u in visibleUsers" :key="u.group_id + '_' + u.user_id">
               <td :title="(u.nickname || '昵称未知') + '（' + u.user_id + '）'">
@@ -1406,7 +1412,7 @@ createApp({
                 </div>
               </td>
               <td><span class="xx-title-badge">{{ u.relation_title || "-" }}</span></td>
-              <td>
+              <td v-if="!showUserImpressions">
                 <div class="xx-dim-cell">
                   <div class="xx-dim-head">
                     <span class="xx-dim-badge xx-dim-f">F</span>
@@ -1415,7 +1421,7 @@ createApp({
                   <div class="xx-dim-track" aria-hidden="true"><i class="xx-dim-fill is-f" :style="dimBarStyle('familiarity', u.familiarity)"></i></div>
                 </div>
               </td>
-              <td>
+              <td v-if="!showUserImpressions">
                 <div class="xx-dim-cell">
                   <div class="xx-dim-head">
                     <span class="xx-dim-badge xx-dim-a">A</span>
@@ -1424,7 +1430,7 @@ createApp({
                   <div class="xx-dim-track is-signed" aria-hidden="true"><i class="xx-dim-fill" :class="u.affinity < 0 ? 'is-neg' : 'is-a-pos'" :style="dimBarStyle('affinity', u.affinity)"></i></div>
                 </div>
               </td>
-              <td>
+              <td v-if="!showUserImpressions">
                 <div class="xx-dim-cell">
                   <div class="xx-dim-head">
                     <span class="xx-dim-badge xx-dim-t">T</span>
@@ -1445,6 +1451,9 @@ createApp({
                   </div>
                   <span v-if="!(u.tags && u.tags.length)" class="xx-muted-text">-</span>
                 </div>
+              </td>
+              <td v-if="showUserImpressions" class="xx-overview-impression-cell">
+                <p class="xx-overview-impression" :class="{ 'xx-muted-text': !u.impression || !u.impression.trim() }">{{ u.impression && u.impression.trim() ? u.impression : "暂无印象" }}</p>
               </td>
               <td class="xx-actions">
                 <button class="xx-btn xx-btn-mini" @click="openMember(u)" title="查看成员详情">详情</button>

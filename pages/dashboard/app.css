@@ -911,6 +911,41 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
   text-overflow: ellipsis;
 }
 
+/* 印象视图固定列宽，长文本只在自己的列内换行；窄屏沿用表格横向滚动。 */
+.xx-overview-table.is-impressions {
+  table-layout: fixed;
+  min-width: 1000px;
+}
+.xx-overview-table.is-impressions td {
+  overflow: hidden;
+}
+.xx-overview-table.is-impressions .xx-title-badge {
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.xx-overview-table.is-impressions .xx-chip {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.xx-overview-table td.xx-overview-impression-cell {
+  white-space: normal;
+}
+.xx-overview-impression {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  margin: 0;
+  line-height: 1.5;
+  max-height: 3em;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- 弹窗与成员详情分层 ---------- */
 .xx-modal {
   position: fixed;
