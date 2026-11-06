@@ -19,7 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  # 自动发布按提交隔离，后续 main 推送不能挤掉等待中的版本。
+  group: release-${{ inputs.previous-ref && github.sha || inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
