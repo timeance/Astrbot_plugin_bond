@@ -419,7 +419,9 @@ def test_json_tool_truncation_and_text_filters_remain_exportable(
             json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
         ]
         snapshot = disk[0]["content"]
-        assert snapshot["omitted"] and snapshot["truncated"]
+        assert snapshot["omitted"]
+        if "items" in tool_payload:
+            assert snapshot["truncated"]
         data = snapshot["data"]
         assert recorder._content_snapshot(data)["data"] == data
         assert "synthetic-private" not in path.read_text(encoding="utf-8")
@@ -458,3 +460,14 @@ def test_plain_redaction_markers_are_stable_on_export(tmp_path, text):
         await recorder.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("budget", [24, 32, 48, 64, 96, 128])
+@pytest.mark.parametrize(
+    "text",
+    ['{"items":["hello","world"]}', "[redacted]", "Bearer synthetic-private-token"],
+)
+def test_tiny_json_budget_keeps_snapshot_idempotent(monkeypatch, budget, text):
+    monkeypatch.setattr(DiagnosticRecorder, "CONTENT_BYTES", budget)
+    data = DiagnosticRecorder._content_snapshot({"text": text})["data"]
+    assert DiagnosticRecorder._content_snapshot(data)["data"] == data

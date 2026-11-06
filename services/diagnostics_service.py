@@ -355,8 +355,22 @@ class DiagnosticRecorder:
             r'(?i)("(?:api.?key|authorization|credential|password|secret|access.?token|refresh.?token|cookie)"\s*:\s*)"(?:\\.|[^"\\])*"'
         )
 
+        def filter_text(value):
+            value = quoted_credential.sub(
+                lambda match: match[1] + '"[redacted]"', value
+            )
+            value = credential.sub("[redacted]", value)
+            value = re.sub(r"data:[^\s]+", "[media omitted]", value)
+            return re.sub(
+                r'https?://[^\s<>"]+',
+                lambda m: m[0].split("?")[0].split("#")[0] if "?" in m[0] else m[0],
+                value,
+            )
+
         def redact_json(value):
             nonlocal truncated, omitted
+            if value in ("[redacted]", "[media omitted]", "[JSON content omitted]"):
+                return value
             if not value.lstrip().startswith(("{", "[")):
                 return value
             # 工具内容本身是 JSON 字符串；限制解析大小、深度与节点数。
@@ -378,6 +392,8 @@ class DiagnosticRecorder:
                     }
                 if type(item) is list:
                     return [redact(child, depth + 1) for child in item]
+                if type(item) is str:
+                    return filter_text(item)
                 return item
 
             try:
@@ -401,18 +417,8 @@ class DiagnosticRecorder:
                 remaining -= 8
                 return None
             if type(value) is str:
-                value = quoted_credential.sub(
-                    lambda match: match[1] + '"[redacted]"', value
-                )
-                value = credential.sub("[redacted]", value)
-                value = re.sub(r"data:[^\s]+", "[media omitted]", value)
-                value = re.sub(
-                    r"https?://[^\s<>\"]+",
-                    lambda m: m[0].split("?")[0].split("#")[0] if "?" in m[0] else m[0],
-                    value,
-                )
                 json_value = value.lstrip().startswith(("{", "["))
-                value = redact_json(value)
+                value = redact_json(value) if json_value else filter_text(value)
                 size = min(32768, remaining)
                 if (
                     json_value
@@ -421,6 +427,8 @@ class DiagnosticRecorder:
                 ):
                     truncated = omitted = True
                     value = "[JSON content omitted]"
+                    if len(json.dumps(value).encode("utf-8")) > size:
+                        value = ""
                 raw = value.encode("utf-8")
                 if len(raw) > size:
                     truncated = True

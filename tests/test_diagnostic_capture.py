@@ -350,3 +350,63 @@ def test_json_tool_sensitive_values_are_redacted_for_every_type(tmp_path, sensit
         await recorder.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "escaped_text",
+    [
+        r"https:\/\/example.invalid\/tool?signature=synthetic-private",
+        r"Bearer synthetic\u002dprivate-token",
+        r"data:application\/octet-stream;base64,synthetic-private",
+    ],
+)
+@pytest.mark.parametrize("has_sensitive_key", [True, False])
+def test_decoded_json_text_is_filtered_before_disk_and_export(
+    tmp_path, escaped_text, has_sensitive_key
+):
+    from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+    from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="full"
+        )
+        capture = create_capture(
+            SimpleNamespace(diagnostics=recorder, scope_mode="per_group"),
+            "10001",
+            "20001",
+            "30001",
+            "synthetic",
+            "escaped-text",
+        )
+        serialized = (
+            '{"text":"'
+            + escaped_text
+            + '"'
+            + (',"password":123' if has_sensitive_key else "")
+            + "}"
+        )
+        capture.content(
+            "request",
+            request_content(
+                SimpleNamespace(
+                    tool_calls_result=[{"role": "tool", "content": serialized}]
+                )
+            ),
+        )
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        assert "synthetic-private" not in path.read_text(encoding="utf-8")
+        parsed = json.loads(disk[0]["content"]["data"]["tool_results"][0]["content"])
+        assert "synthetic-private" not in json.dumps(parsed)
+        if has_sensitive_key:
+            assert parsed["password"] == "[redacted]"
+        exported = await recorder.export("10001", "per_group")
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())
