@@ -393,3 +393,68 @@ def test_unparseable_or_oversized_json_is_omitted_and_exportable(tmp_path, seria
         await recorder.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "tool_payload,prefix",
+    [
+        ({"items": ["hello"] * 3000}, {}),
+        ({"items": ["hello"] * 1000}, {key: "x" * 30000 for key in "abcd"}),
+        ({"items": ["\x00"] * 3000}, {}),
+        ({"text": "data:application/octet-stream;base64,synthetic-private"}, {}),
+    ],
+)
+def test_json_tool_truncation_and_text_filters_remain_exportable(
+    tmp_path, tool_payload, prefix
+):
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="full"
+        )
+        payload = {**prefix, "tool_results": [{"content": json.dumps(tool_payload)}]}
+        assert content(recorder, "request", content=payload)
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        snapshot = disk[0]["content"]
+        assert snapshot["omitted"] and snapshot["truncated"]
+        data = snapshot["data"]
+        assert recorder._content_snapshot(data)["data"] == data
+        assert "synthetic-private" not in path.read_text(encoding="utf-8")
+        exported = await recorder.export(B, M)
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Bearer synthetic-private-token",
+        "data:application/octet-stream;base64,synthetic-private",
+    ],
+)
+def test_plain_redaction_markers_are_stable_on_export(tmp_path, text):
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="raw"
+        )
+        assert content(recorder, content={"text": text})
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        data = disk[0]["content"]["data"]
+        assert recorder._content_snapshot(data)["data"] == data
+        assert "synthetic-private" not in path.read_text(encoding="utf-8")
+        exported = await recorder.export(B, M)
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())

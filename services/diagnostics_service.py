@@ -401,7 +401,6 @@ class DiagnosticRecorder:
                 remaining -= 8
                 return None
             if type(value) is str:
-                value = redact_json(value)
                 value = quoted_credential.sub(
                     lambda match: match[1] + '"[redacted]"', value
                 )
@@ -412,8 +411,17 @@ class DiagnosticRecorder:
                     lambda m: m[0].split("?")[0].split("#")[0] if "?" in m[0] else m[0],
                     value,
                 )
-                raw = value.encode("utf-8")
+                json_value = value.lstrip().startswith(("{", "["))
+                value = redact_json(value)
                 size = min(32768, remaining)
+                if (
+                    json_value
+                    and len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+                    > size
+                ):
+                    truncated = omitted = True
+                    value = "[JSON content omitted]"
+                raw = value.encode("utf-8")
                 if len(raw) > size:
                     truncated = True
                     value = raw[:size].decode("utf-8", errors="ignore")
