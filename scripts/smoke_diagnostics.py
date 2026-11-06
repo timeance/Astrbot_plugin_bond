@@ -58,7 +58,11 @@ async def check(root, runtime):
                 await on_llm_request(
                     deps,
                     SimpleNamespace(
-                        get_group_id=lambda: group, get_sender_id=lambda: user
+                        get_group_id=lambda: group,
+                        get_sender_id=lambda: user,
+                        get_self_id=lambda: bot,
+                        get_platform_name=lambda: "synthetic",
+                        message_obj=SimpleNamespace(message_id=f"diag-{bot}-{mode}"),
                     ),
                     req,
                 )
