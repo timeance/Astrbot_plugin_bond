@@ -437,7 +437,10 @@ def test_json_tool_truncation_and_text_filters_remain_exportable(
     "text",
     [
         "Bearer synthetic-private-token",
+        "Bearer synthetic-private-token trailing text",
+        "  Bearer synthetic-private-token trailing text",
         "data:application/octet-stream;base64,synthetic-private",
+        "data:application/octet-stream;base64,synthetic-private trailing text",
     ],
 )
 def test_plain_redaction_markers_are_stable_on_export(tmp_path, text):

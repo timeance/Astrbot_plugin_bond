@@ -410,3 +410,65 @@ def test_decoded_json_text_is_filtered_before_disk_and_export(
         await recorder.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("layers", [1, 2, 8])
+def test_nested_encoded_json_shares_limits_and_redacts_sensitive_fields(
+    tmp_path, layers
+):
+    from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+    from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="full"
+        )
+        capture = create_capture(
+            SimpleNamespace(diagnostics=recorder, scope_mode="per_group"),
+            "10001",
+            "20001",
+            "30001",
+            "synthetic",
+            "nested-json",
+        )
+        serialized = json.dumps(
+            {
+                "password": 123456,
+                "secret": {"value": "synthetic-private"},
+                "text": "ordinary",
+            }
+        )
+        for _ in range(layers):
+            serialized = json.dumps({"payload": serialized})
+        capture.content(
+            "request",
+            request_content(
+                SimpleNamespace(
+                    tool_calls_result=[{"role": "tool", "content": serialized}]
+                )
+            ),
+        )
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        assert "123456" not in path.read_text(encoding="utf-8")
+        assert "synthetic-private" not in path.read_text(encoding="utf-8")
+        parsed = disk[0]["content"]["data"]["tool_results"][0]["content"]
+        if layers < 8:
+            for _ in range(layers):
+                parsed = json.loads(parsed)["payload"]
+            assert json.loads(parsed) == {
+                "password": "[redacted]",
+                "secret": "[redacted]",
+                "text": "ordinary",
+            }
+        else:
+            assert disk[0]["content"]["truncated"]
+        exported = await recorder.export("10001", "per_group")
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())

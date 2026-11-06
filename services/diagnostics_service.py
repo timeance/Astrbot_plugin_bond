@@ -369,12 +369,26 @@ class DiagnosticRecorder:
 
         def redact_json(value):
             nonlocal truncated, omitted
-            if value in ("[redacted]", "[media omitted]", "[JSON content omitted]"):
-                return value
-            if not value.lstrip().startswith(("{", "[")):
-                return value
-            # 工具内容本身是 JSON 字符串；限制解析大小、深度与节点数。
+            # 所有再次编码的 JSON 共用同一深度、节点和大小限制。
             nodes = 4096
+
+            def redact_text(text, depth=0):
+                stripped = text.lstrip()
+                if stripped.startswith(
+                    ("[redacted]", "[media omitted]", "[JSON content omitted]")
+                ):
+                    return filter_text(text)
+                if not stripped.startswith(("{", "[")):
+                    return filter_text(text)
+                if len(text) > 32768:
+                    raise ValueError("JSON 内容过大")
+                parsed = json.loads(text)
+                cleaned = redact(parsed, depth)
+                return (
+                    json.dumps(cleaned, ensure_ascii=False, allow_nan=False)
+                    if cleaned != parsed
+                    else text
+                )
 
             def redact(item, depth=0):
                 nonlocal nodes
@@ -393,18 +407,14 @@ class DiagnosticRecorder:
                 if type(item) is list:
                     return [redact(child, depth + 1) for child in item]
                 if type(item) is str:
-                    return filter_text(item)
+                    return redact_text(item, depth + 1)
                 return item
 
             try:
-                if len(value) > 32768:
-                    raise ValueError("JSON 内容过大")
-                parsed = json.loads(value)
-                cleaned = redact(parsed)
-                if cleaned != parsed:
+                result = redact_text(value)
+                if result != value:
                     omitted = True
-                    return json.dumps(cleaned, ensure_ascii=False, allow_nan=False)
-                return value
+                return result
             except (ValueError, RecursionError):
                 # 解析失败或超限时整段省略，避免部分 JSON 漏出敏感字段。
                 truncated = omitted = True
@@ -417,8 +427,8 @@ class DiagnosticRecorder:
                 remaining -= 8
                 return None
             if type(value) is str:
+                value = redact_json(value)
                 json_value = value.lstrip().startswith(("{", "["))
-                value = redact_json(value) if json_value else filter_text(value)
                 size = min(32768, remaining)
                 if (
                     json_value
