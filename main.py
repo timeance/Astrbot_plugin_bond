@@ -24,7 +24,13 @@ except ImportError:  # pragma: no cover
 from .api import commands as cmd
 from .api import llm_tools as tools
 from .api.facade import BondFacade
-from .api.listeners import Deps, on_group_message, on_llm_request, on_llm_response
+from .api.listeners import (
+    Deps,
+    clear_relation_injection,
+    on_group_message,
+    on_llm_request,
+    on_llm_response,
+)
 from .core.config_migrations import migrate_saved_defaults
 from .core.identity import parse_master_ids
 from .core.judge_parse import DEFAULT_ATTITUDE_DELTAS
@@ -77,7 +83,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.4.5",
+    "0.5.0",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -388,6 +394,7 @@ class BondPlugin(Star):
     @filter.on_llm_request(priority=-100)
     async def _on_llm_req(self, event: AstrMessageEvent, req: ProviderRequest):
         try:
+            clear_relation_injection(req)
             deps = await self._runtime.for_event(event)
             if deps is None:
                 return

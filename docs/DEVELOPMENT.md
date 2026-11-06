@@ -137,3 +137,10 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 久别旧友现状可运行 `python scripts/replay_reconnection.py --output artifacts/reconnection-run`；使用新的空输出目录，对照写实/Galgame在90天沉默与三次友好互动后的三维值。研究结论见 [久别旧识评估](research/RECONNECTION_ASSESSMENT.md)，不启用额外回暖机制。
 
 0.3.8窗口、增长与三维衰减长期回放：`python scripts/replay_framework.py --output artifacts/framework-replay`。输出固定时钟的7/30/180天逻辑结果，使用预置模型响应和真实服务/SQLite；不访问网络。连续运行两次并比较results.json，应完全一致。迁移及回退见 [框架合同](ASSESSMENT_FRAMEWORK.md)。
+
+
+## 0.5.0 行为与消息快照验证
+
+`python scripts/export_behavior_cases.py --output <新空目录>` 导出14类场景、156组无Bond/旧提示/新提示请求与两条SQLite持久化合成轨迹。输入共用同一人格和历史，不调用模型，输出与评分留空；方法见 [行为验收](P0_BEHAVIOR_EVALUATION.md)。
+
+在独立 AstrBot4.28.0 环境运行 `python scripts/smoke_relation_runner.py --runtime-dir <新目录>`，通过真实 ToolLoopAgentRunner 和离线记录 Provider 验证初始请求、工具续跑及空输出重试的最终上下文。脚本禁用网络，主入口钩子直接调用，未启动完整平台 pipeline，也不等于真实QQ或真实模型验收。离线pytest中的监听器替身只验证钩子契约，不能冒充这一边界。

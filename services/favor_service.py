@@ -456,6 +456,10 @@ class FavorService:
         group_id = self.group_key(group_id)
         temporary = await self._storage.override_state(group_id, user_id)
         rec = await self._storage.get(group_id, user_id)
+        return self._snapshot_record(group_id, user_id, rec, temporary, time.time())
+
+    def _snapshot_record(self, group_id, user_id, rec, temporary, now):
+        """只投影返回副本；普通查询与消息快照共用默认值、衰减和临时关系语义。"""
         if rec is None:
             rec = FavorRecord(
                 group_id=group_id,
@@ -464,7 +468,7 @@ class FavorService:
                 updated_at=0.0,
             )
         else:
-            current = self._effective_record(rec)
+            current = self._effective_record(rec, now)
             rec.favor = round1(current["affinity"])
             rec.trust = round1(current["trust"])
             rec.familiarity = round1(current["familiarity"])
@@ -473,6 +477,41 @@ class FavorService:
             rec.familiarity = temporary["values"]["familiarity"]
             rec.trust = temporary["values"]["trust"]
         return rec
+
+    async def read_relation_snapshot(
+        self,
+        group_id,
+        user_id,
+        *,
+        count=3,
+        days=7,
+        sig_threshold=0.0,
+        sig_window_mult=1.0,
+    ):
+        """一次一致读取；全局作用域不召回其他群的印象或流水。"""
+        key = self.group_key(group_id)
+        local = self.scope_mode == "per_group"
+        rec, temporary, logs, now = await self._storage.read_relation_snapshot(
+            key, user_id, log_limit=max(count * 5, count) if local and count > 0 else 0
+        )
+        rec = self._snapshot_record(key, user_id, rec, temporary, now)
+        events = (
+            await self.recent_events(
+                key,
+                user_id,
+                count,
+                days,
+                sig_threshold=sig_threshold,
+                sig_window_mult=sig_window_mult,
+                logs=logs,
+                now=now,
+            )
+            if local
+            else []
+        )
+        if not local:
+            rec.impression = ""
+        return rec, events, now
 
     async def get_relation(self, group_id, user_id):
         from ..core.relation_policy import RelationState
@@ -913,6 +952,7 @@ class FavorService:
         sig_threshold: float = 0.0,
         sig_window_mult: float = 1.0,
         logs: list[dict] | None = None,
+        now: float | None = None,
     ) -> list[dict]:
         """最近 count 条变动流水（倒序），供注入「近期印象」。
 
@@ -932,7 +972,7 @@ class FavorService:
         )
         rows = [r for r in rows if not r.get("reversed")]
         if days and days > 0:
-            now = time.time()
+            now = time.time() if now is None else now
             normal_cutoff = now - days * 86400
             sig_cutoff = now - days * 86400 * max(1.0, sig_window_mult)
 
