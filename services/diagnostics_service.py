@@ -355,6 +355,45 @@ class DiagnosticRecorder:
             r'(?i)("(?:api.?key|authorization|credential|password|secret|access.?token|refresh.?token|cookie)"\s*:\s*)"(?:\\.|[^"\\])*"'
         )
 
+        def redact_json(value):
+            nonlocal truncated, omitted
+            if not value.lstrip().startswith(("{", "[")):
+                return value
+            # 工具内容本身是 JSON 字符串；限制解析大小、深度与节点数。
+            nodes = 4096
+
+            def redact(item, depth=0):
+                nonlocal nodes
+                nodes -= 1
+                if nodes < 0 or depth > 8:
+                    raise ValueError("JSON 内容过大")
+                if type(item) is dict:
+                    return {
+                        key: (
+                            "[redacted]"
+                            if denied.search(key)
+                            else redact(child, depth + 1)
+                        )
+                        for key, child in item.items()
+                    }
+                if type(item) is list:
+                    return [redact(child, depth + 1) for child in item]
+                return item
+
+            try:
+                if len(value) > 32768:
+                    raise ValueError("JSON 内容过大")
+                parsed = json.loads(value)
+                cleaned = redact(parsed)
+                if cleaned != parsed:
+                    omitted = True
+                    return json.dumps(cleaned, ensure_ascii=False, allow_nan=False)
+                return value
+            except (ValueError, RecursionError):
+                # 解析失败或超限时整段省略，避免部分 JSON 漏出敏感字段。
+                truncated = omitted = True
+                return "[JSON content omitted]"
+
         def copy(value, depth=0):
             nonlocal remaining, truncated, omitted
             if remaining <= 0 or depth > 8:
@@ -362,6 +401,7 @@ class DiagnosticRecorder:
                 remaining -= 8
                 return None
             if type(value) is str:
+                value = redact_json(value)
                 value = quoted_credential.sub(
                     lambda match: match[1] + '"[redacted]"', value
                 )
@@ -396,6 +436,7 @@ class DiagnosticRecorder:
                 remaining -= 8
                 return None
             if type(value) is dict:
+                remaining -= 16
                 result = {}
                 for index, (key, item) in enumerate(value.items()):
                     if index >= 128 or remaining <= 0:
@@ -410,11 +451,13 @@ class DiagnosticRecorder:
                     result[key] = copy(item, depth + 1)
                 return result
             if type(value) in (list, tuple):
+                remaining -= 16
                 result = []
                 for index, item in enumerate(value):
                     if index >= 128 or remaining <= 0:
                         truncated = True
                         break
+                    remaining -= 8
                     result.append(copy(item, depth + 1))
                 return result
             omitted = True

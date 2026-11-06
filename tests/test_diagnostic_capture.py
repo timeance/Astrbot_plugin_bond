@@ -289,3 +289,64 @@ def test_export_rejects_persisted_unsanitized_json_tool_content(tmp_path):
         await recorder.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "sensitive",
+    [123456, {"value": "synthetic-private"}, ["synthetic-private"], True, None],
+)
+def test_json_tool_sensitive_values_are_redacted_for_every_type(tmp_path, sensitive):
+    from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+    from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="full"
+        )
+        capture = create_capture(
+            SimpleNamespace(diagnostics=recorder, scope_mode="per_group"),
+            "10001",
+            "20001",
+            "30001",
+            "synthetic",
+            "json-types",
+        )
+        original = {
+            "password": sensitive,
+            "secret": sensitive,
+            "text": "ordinary tool result",
+        }
+        serialized = json.dumps(original).replace('"password"', '"pass\\u0077ord"')
+        capture.content(
+            "request",
+            request_content(
+                SimpleNamespace(
+                    tool_calls_result=[{"role": "tool", "content": serialized}]
+                )
+            ),
+        )
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        data = disk[0]["content"]["data"]
+        result = json.loads(data["tool_results"][0]["content"])
+        assert result == {
+            "password": "[redacted]",
+            "secret": "[redacted]",
+            "text": "ordinary tool result",
+        }
+        assert "synthetic-private" not in path.read_text(encoding="utf-8")
+        assert "123456" not in path.read_text(encoding="utf-8")
+        exported = await recorder.export("10001", "per_group")
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        disk[0]["content"]["data"]["tool_results"][0]["content"] = serialized
+        path.write_text(json.dumps(disk[0]) + "\n", encoding="utf-8")
+        exported = await recorder.export("10001", "per_group")
+        assert exported["rows"] == []
+        assert exported["missing"]["corrupt_lines"] == 1
+        await recorder.close()
+
+    asyncio.run(run())

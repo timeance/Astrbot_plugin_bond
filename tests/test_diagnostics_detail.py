@@ -335,3 +335,61 @@ def test_supported_omitted_deep_and_wide_content_is_bounded_and_idempotent(tmp_p
         await r.close()
 
     asyncio.run(run())
+
+
+def test_empty_nested_containers_consume_budget_and_survive_export(tmp_path):
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="full"
+        )
+        payload = []
+        for _ in range(3):
+            payload = [payload] * 128
+        snapshot = recorder._content_snapshot(payload)
+        assert snapshot["truncated"]
+        assert len(json.dumps(snapshot["data"]).encode()) <= recorder.CONTENT_BYTES
+        assert recorder._content_snapshot(snapshot["data"])["data"] == snapshot["data"]
+        assert content(recorder, "request", content=payload)
+        await recorder.flush()
+        disk = [
+            json.loads(line)
+            for path in recorder.root.iterdir()
+            for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        exported = await recorder.export(B, M)
+        assert len(disk) == 1 and exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "serialized",
+    [
+        json.dumps({"password": 123456, "text": "x" * 32768}),
+        '{"password":123456,',
+        "[" * 40 + "0" + "]" * 40,
+        json.dumps([[]] * 5000),
+    ],
+)
+def test_unparseable_or_oversized_json_is_omitted_and_exportable(tmp_path, serialized):
+    async def run():
+        recorder = DiagnosticRecorder(
+            tmp_path / "logs", TaskRegistry(), True, detail_level="full"
+        )
+        assert content(recorder, "request", content={"text": serialized})
+        await recorder.flush()
+        path = next(recorder.root.iterdir())
+        disk = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        snapshot = disk[0]["content"]
+        assert snapshot["data"] == {"text": "[JSON content omitted]"}
+        assert snapshot["truncated"] and snapshot["omitted"]
+        exported = await recorder.export(B, M)
+        assert exported["rows"] == disk
+        assert exported["missing"]["corrupt_lines"] == 0
+        await recorder.close()
+
+    asyncio.run(run())
