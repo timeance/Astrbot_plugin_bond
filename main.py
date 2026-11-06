@@ -77,7 +77,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.4.4",
+    "0.4.5",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -201,6 +201,7 @@ class BondPlugin(Star):
             master_ids=master_ids,
             decay_enabled=bool(decay_cfg.get("enabled", True)),
             decay_grace_days=float(decay_cfg.get("grace_days", 5)),
+            maintenance_strategy=decay_cfg.get("maintenance_strategy", "independent"),
             half_life_base=float(decay_cfg.get("half_life_base", 30)),
             half_life_growth=float(decay_cfg.get("half_life_growth", 1.0)),
             half_life_max=float(decay_cfg.get("half_life_max", 120)),
@@ -314,6 +315,10 @@ class BondPlugin(Star):
 
     async def initialize(self) -> None:
         self._runtime.modes()
+        # 重载时结算全部既有空间，不等待成员再次出现。
+        for bot_id in self._storage.known_bot_ids():
+            for mode in ("per_group", "global"):
+                await self._runtime.select(bot_id, mode)
         logger.info("[八千代] 好感度插件已加载")
 
     async def terminate(self) -> None:

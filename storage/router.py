@@ -16,6 +16,7 @@ from .sqlite_backend import SQLiteBackend
 _DB_NAMES = {"per_group": "group.db", "global": "global.db"}
 _BACKUP_NAME = re.compile(r"(?:per_group|global)-[0-9]+-[0-9a-f]{32}\.db\Z")
 _REQUIRED_COLUMNS = {
+    "maintenance_policy": {"id", "strategy", "effective_at"},
     "relation_override": {
         "group_id",
         "user_id",
@@ -56,6 +57,10 @@ _REQUIRED_COLUMNS = {
         "trust",
         "trust_updated_at",
         "familiarity_updated_at",
+        "affinity_maintained_at",
+        "familiarity_maintained_at",
+        "trust_maintained_at",
+        "affinity_floor_reference",
     },
     "daily_gain": {
         "group_id",
@@ -94,6 +99,7 @@ _REQUIRED_COLUMNS = {
     "observed_members": {"group_id", "user_id", "last_seen_at"},
 }
 _TABLE_INFO_SQL = {
+    "maintenance_policy": "PRAGMA table_info(maintenance_policy)",
     "relation_override": "PRAGMA table_info(relation_override)",
     "override_audit": "PRAGMA table_info(override_audit)",
     "member_names": "PRAGMA table_info(member_names)",

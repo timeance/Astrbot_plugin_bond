@@ -129,7 +129,8 @@ def test_fixed_half_life_changes_existing_reads_and_writes_without_migration(
                 assert result["before"]["affinity"] == result["after"]["affinity"]
                 assert round(result["after"]["affinity"], 1) == 14.1
                 assert (await service.get_relation("g", "u")).affinity == 14.1
-                assert (await store.get("g", "u")).half_life == 60
+                # F-only 事件不重写 A 的巩固参考；当前固定半衰期仍按配置读取。
+                assert (await store.get("g", "u")).half_life == stored_half_life
                 logs = await store.query_logs("g", "u")
                 await service.undo_log(logs[0]["id"])
                 assert (await service.get_relation("g", "u")).as_dict() == dict(

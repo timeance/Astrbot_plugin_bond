@@ -36,6 +36,11 @@ class StorageBackend(ABC):
     def configure_initial_values(self, value: float, default_favor: float = 0) -> None:
         """指定新成员的半衰期，不修改现有成员。"""
 
+    def configure_maintenance(self, strategy, effective_record):
+        """后端应原子结算策略切换；不支持的后端不得静默宣称独立维护。"""
+        if strategy != "legacy":
+            raise NotImplementedError("此存储后端不支持独立关系维护")
+
     @abstractmethod
     async def init(self) -> None:
         """初始化存储（建库、迁移）。"""

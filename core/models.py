@@ -37,6 +37,12 @@ class FavorRecord:
     trust_updated_at: float = 0.0
     familiarity_updated_at: float = 0.0
 
+    # 结算不等于互动；None 兼容直接创建的旧记录。
+    affinity_maintained_at: float | None = None
+    familiarity_maintained_at: float | None = None
+    trust_maintained_at: float | None = None
+    affinity_floor_reference: float | None = None
+
     @property
     def affinity(self) -> float:
         """亲近度沿用 favor 存储，避免维护两份数值。"""

@@ -729,6 +729,16 @@
     "type": "object",
     "description": "时间衰减",
     "items": {
+      "maintenance_strategy": {
+        "type": "string",
+        "default": "independent",
+        "options": [
+          "independent",
+          "legacy"
+        ],
+        "description": "关系维护策略",
+        "hint": "independent 分别维护熟悉、亲近和信任；legacy 沿用接纳事件统一保温。重载生效，保留历史数据，切换不发放新保温期。"
+      },
       "grace_days": {
         "type": "float",
         "default": 5.0,

@@ -35,6 +35,8 @@ def db(tmp_path):
 
 
 def service(db, mode="realistic", *, rules=None, caps=None, event_caps=None, **kwargs):
+    # 此套回归固定旧维护语义；独立策略另由 test_independent_maintenance 覆盖。
+    kwargs.setdefault("maintenance_strategy", "legacy")
     policy, effective_caps = build_relation_profile(
         mode, rules=rules, event_caps=event_caps, caps=caps
     )

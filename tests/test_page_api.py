@@ -681,8 +681,11 @@ def test_member_detail_exposes_overview_interaction_age(
 
     monkeypatch.setattr(page_module.time, "time", lambda: 864000)
     monkeypatch.setattr(page_module, "request", SimpleNamespace(method="GET"))
+    from astrbot_plugin_bond.services.favor_service import FavorService
+
     record = FavorRecord("300", "201", updated_at=updated_at)
     favor = SimpleNamespace(
+        idle_days=FavorService.idle_days,
         get=AsyncMock(return_value=record),
         query_logs=AsyncMock(return_value=[]),
         member_name=AsyncMock(return_value="合成成员"),

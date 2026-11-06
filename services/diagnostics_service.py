@@ -20,7 +20,7 @@ from pathlib import Path
 
 class DiagnosticRecorder:
     VERSION = 1
-    MAX_BYTES, MAX_LINE, MAX_FILES, MAX_NAMESPACES = 20 * 1024 * 1024, 2048, 512, 128
+    MAX_BYTES, MAX_LINE, MAX_FILES, MAX_NAMESPACES = 20 * 1024 * 1024, 4096, 512, 128
     SEGMENT_BYTES, MAX_EXPORT_ROWS = 256 * 1024, 32768
     MODES = ("per_group", "global")
     KINDS = frozenset("assessment call relation render entry".split())
@@ -35,6 +35,7 @@ class DiagnosticRecorder:
             "normal_question thanks friendly joke criticism insult manipulation apology uncertain".split()
         ),
         "tier": frozenset(("small", "large")),
+        "maintenance_strategy": frozenset(("independent", "legacy")),
     }
     PATTERNS = {
         "event_id": r"[0-9a-f]{16,128}",
@@ -49,7 +50,7 @@ class DiagnosticRecorder:
         tuple(ENUMS)
         + tuple(PATTERNS)
         + tuple(
-            "elapsed_ms tokens confidence before after delta bands_before bands_after temporary".split()
+            "elapsed_ms tokens confidence before after delta bands_before bands_after temporary intent adjusted allowed maintenance_at maintenance_policy_at maintenance_before maintenance_after maintenance_qualified maintenance_applied maintenance_reason".split()
         )
     )
     CODES = tuple(
@@ -124,7 +125,47 @@ class DiagnosticRecorder:
                     type(value) is str
                     and re.fullmatch(cls.PATTERNS[key], value) is not None
                 )
-            elif key in ("before", "after", "delta"):
+            elif key in (
+                "maintenance_qualified",
+                "maintenance_applied",
+                "maintenance_reason",
+            ):
+                reasons = {
+                    "manual",
+                    "original_zero",
+                    "rule_zero",
+                    "quota",
+                    "eligible",
+                    "precision",
+                    "bound",
+                    "legacy",
+                    "duplicate",
+                    "cooldown",
+                }
+                valid = (
+                    type(value) is dict
+                    and set(value) == cls.DIMENSIONS
+                    and all(
+                        (
+                            type(v) is bool
+                            if key != "maintenance_reason"
+                            else type(v) is str and v in reasons
+                        )
+                        for v in value.values()
+                    )
+                )
+            elif key in ("maintenance_at", "maintenance_policy_at"):
+                valid = cls._number(value, 0, 10**12)
+            elif key in (
+                "before",
+                "after",
+                "delta",
+                "intent",
+                "adjusted",
+                "allowed",
+                "maintenance_before",
+                "maintenance_after",
+            ):
                 valid = (
                     type(value) is dict
                     and len(value) <= 3

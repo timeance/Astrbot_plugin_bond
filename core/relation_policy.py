@@ -213,8 +213,10 @@ class RelationPolicy:
             result[key] = round1(value) if rounded else value
         return result
 
-    def base_deltas(self, event_type: str, intensity: float = 1) -> dict[str, float]:
-        """基础事件请求先限幅，不舍入；供事务内曲线计算使用。"""
+    def base_deltas(
+        self, event_type: str, intensity: float = 1, *, bounded: bool = True
+    ) -> dict[str, float]:
+        """默认先限幅、不舍入；bounded=False 供维护诊断保留限幅前的意图。"""
         event = _event_name(event_type)
         factor = _number(intensity, "intensity")
         if factor < 0:
@@ -223,7 +225,7 @@ class RelationPolicy:
         for dimension in RELATION_DIMENSIONS:
             requested = self._rules[event].get(dimension, 0.0) * factor
             cap = self._event_caps[event][dimension]
-            result[dimension] = max(-cap, min(cap, requested))
+            result[dimension] = max(-cap, min(cap, requested)) if bounded else requested
         return result
 
     def scale_positive(self, deltas, *, rounded=True) -> dict[str, float]:
