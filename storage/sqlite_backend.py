@@ -321,6 +321,9 @@ class SQLiteBackend(StorageBackend):
                     staged.unlink(missing_ok=True)
 
     async def get(self, group_id: str, user_id: str) -> FavorRecord | None:
+        return self._get_sync(group_id, user_id)
+
+    def _get_sync(self, group_id: str, user_id: str) -> FavorRecord | None:
         with self._lock:
             row = (
                 self._c()
@@ -354,6 +357,52 @@ class SQLiteBackend(StorageBackend):
             trust_maintained_at=row[15],
             affinity_floor_reference=row[16],
         )
+
+    async def read_relation_snapshot(self, group_id, user_id, *, log_limit=0):
+        return await asyncio.to_thread(
+            self._read_relation_snapshot_sync, group_id, user_id, log_limit
+        )
+
+    def _read_relation_snapshot_sync(self, group_id, user_id, log_limit):
+        # 同连接上的线程由锁协调；BEGIN 保证其他 WAL 连接提交也不会混入后续查询。
+        with self._lock:
+            conn = self._c()
+            conn.execute("BEGIN")
+            try:
+                now = time.time()
+                row = conn.execute(
+                    "SELECT active,started_at,expires_at,values_json "
+                    "FROM relation_override WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ).fetchone()
+                rec = self._get_sync(group_id, user_id)
+                temporary = dict(active=False)
+                if row is not None and row[0]:
+                    if now < row[2]:
+                        temporary = dict(active=True, values=json.loads(row[3]))
+                    elif rec is not None:
+                        # get() 到期会结束覆盖并平移时钟。只读快照投影相同结果，
+                        # 不在消息注入路径写到期审计或移动数据库中的维护时间。
+                        duration = max(0, row[2] - row[1])
+                        for key in (
+                            "updated_at",
+                            "familiarity_updated_at",
+                            "trust_updated_at",
+                            "affinity_maintained_at",
+                            "familiarity_maintained_at",
+                            "trust_maintained_at",
+                        ):
+                            value = getattr(rec, key)
+                            if value is not None and value > 0:
+                                setattr(rec, key, value + duration)
+                logs = (
+                    self._query_logs_sync(group_id, user_id, limit=log_limit)
+                    if log_limit > 0
+                    else []
+                )
+                return rec, temporary, logs, now
+            finally:
+                conn.rollback()
 
     def _compute_favor_write(
         self,

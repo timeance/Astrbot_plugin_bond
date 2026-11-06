@@ -49,7 +49,7 @@ async def _response_parts(value):
 async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     import astrbot
     from astrbot.api import AstrBotConfig
-    from astrbot.api.provider import LLMResponse
+    from astrbot.api.provider import LLMResponse, ProviderRequest
     from astrbot.api.star import Context, StarTools
     from quart import Quart, g
 
@@ -330,7 +330,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             plugin._cmd_refresh_imp,
         ):
             assert [item async for item in handler(excluded)] == []
-        request = SimpleNamespace(system_prompt="当前人格", prompt="输入", contexts=[])
+        request = ProviderRequest(system_prompt="当前人格", prompt="输入", contexts=[])
         await plugin._on_llm_req(excluded, request)
         assert request.system_prompt == "当前人格"
         for handler in (plugin._tool_query, plugin._tool_rank):
@@ -1074,8 +1074,10 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             get_group_id=lambda: OLD_GROUP,
             get_sender_id=lambda: OLD_USER,
             get_self_id=lambda: BOT_IDS[0],
+            get_platform_name=lambda: "synthetic",
+            message_obj=SimpleNamespace(message_id="reload-request"),
         )
-        req2 = SimpleNamespace(system_prompt="当前人格", prompt="输入", contexts=[])
+        req2 = ProviderRequest(system_prompt="当前人格", prompt="输入", contexts=[])
         await plugin2._on_llm_req(event2, req2)
         assert req2.system_prompt == "当前人格" and req2.prompt == "输入"
         prompt_url = "/astrbot_plugin_bond/prompts"

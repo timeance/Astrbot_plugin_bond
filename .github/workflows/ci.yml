@@ -74,6 +74,10 @@ jobs:
           python astrbot_plugin_bond/scripts/smoke_astrbot.py
           --session-dir "${{ runner.temp }}/bond-smoke"
           --runtime-dir "${{ runner.temp }}/bond-smoke/runtime"
+      - name: 真实 runner 到离线 Provider 的关系快照
+        run: >-
+          python astrbot_plugin_bond/scripts/smoke_relation_runner.py
+          --runtime-dir "${{ runner.temp }}/bond-relation-runner"
       - name: 真实 OneBot 合成消息元数据
         run: >-
           python astrbot_plugin_bond/scripts/smoke_message_metadata.py

@@ -49,6 +49,10 @@ class StorageBackend(ABC):
     async def get(self, group_id: str, user_id: str) -> FavorRecord | None:
         """读取一条记录，不存在返回 None。"""
 
+    async def read_relation_snapshot(self, group_id, user_id, *, log_limit=0):
+        """同一短事务读取档案、临时覆盖值、流水和时点；不支持时不得拆读回退。"""
+        raise NotImplementedError("此存储后端不支持一致关系快照")
+
     @abstractmethod
     async def apply_delta(
         self,

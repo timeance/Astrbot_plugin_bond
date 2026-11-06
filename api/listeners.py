@@ -7,6 +7,7 @@ on_llm_request：向 system_prompt 注入好感度档案。
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from astrbot.api import logger
@@ -71,6 +72,103 @@ class AssessmentEvent:
 
     def get_platform_name(self):
         return self.platform_name
+
+
+@dataclass(frozen=True)
+class RelationSnapshot:
+    """本轮实际发送的完整关系资料；不保留可变记录或平台事件。"""
+
+    block: str
+    familiarity: float
+    affinity: float
+    trust: float
+    bands: tuple
+    term: str
+    bot_id: str
+    scope_mode: str
+    group_id: str
+    user_id: str
+    captured_at: float
+
+
+def _message_identity(event):
+    """仅以平台身份与消息编号绑定；缺编号时限于当前事件实例。"""
+    return (
+        str(event.get_self_id() or ""),
+        str(event.get_group_id() or ""),
+        str(event.get_sender_id() or ""),
+        str(event.get_platform_name() or ""),
+        str(getattr(getattr(event, "message_obj", None), "message_id", "") or ""),
+    )
+
+
+async def _freeze_relation(deps, event):
+    """先冻结再调度评估；同一事件的重试共享结果，失败也不改为事后读库。"""
+    from ..core.scope import is_account_id
+
+    identity = _message_identity(event)
+    binding = getattr(event, "_bond_relation_binding", None)
+    if isinstance(binding, tuple) and len(binding) == 3 and binding[0] == identity:
+        return binding[1], await asyncio.shield(binding[2])
+    future = asyncio.get_running_loop().create_future()
+    event._bond_relation_binding = (identity, deps, future)
+    try:
+        if (
+            not deps.inject_enabled
+            or not all(is_account_id(value) for value in identity[:3])
+            or identity[0] != deps.bot_id
+        ):
+            snapshot = None
+        else:
+            group_id, user_id = identity[1:3]
+            rec, events, captured_at = await deps.favor.read_relation_snapshot(
+                group_id,
+                user_id,
+                count=deps.memory_count,
+                days=deps.memory_days,
+                sig_threshold=deps.memory_sig_threshold,
+                sig_window_mult=deps.memory_sig_window_mult,
+            )
+            template = deps.prompts.resolve("behavior", deps.bot_id, group_id)
+            description = deps.favor.describe_relation(
+                rec.familiarity, rec.favor, rec.trust
+            )
+            block = deps.inject.build_relation_block(
+                template,
+                relationship=description.text,
+                impression=rec.impression,
+                events=events,
+                configured_master=deps.favor.is_master(user_id),
+                identity=dict(
+                    bot_id=identity[0],
+                    scope_mode=deps.favor.scope_mode,
+                    group_id=group_id,
+                    user_id=user_id,
+                ),
+                captured_at=captured_at,
+            )
+            snapshot = RelationSnapshot(
+                block,
+                rec.familiarity,
+                rec.favor,
+                rec.trust,
+                tuple(description.bands or ()),
+                description.key,
+                identity[0],
+                deps.favor.scope_mode,
+                group_id,
+                user_id,
+                captured_at,
+            )
+        future.set_result(snapshot)
+        return deps, snapshot
+    except BaseException as exc:
+        # 捕获失败后本轮跳过，不能在后台写入后重读出另一份资料。
+        future.set_result(None)
+        if isinstance(exc, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)):
+            raise
+        logger.warning("[Bond] 关系快照失败，本轮跳过注入（不影响对话）", exc_info=True)
+        return deps, None
 
 
 def _chain_flags(event: AstrMessageEvent) -> tuple[bool, bool]:
@@ -170,6 +268,8 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
         str(getattr(event.message_obj, "message_id", "") or ""),
     )
 
+    # 必须先于本消息任何后台评估与印象写入，不能挪到请求钩子。
+    await _freeze_relation(deps, original_event)
     admission_state = await deps.favor.temporary_state(group_id, user_id)
     admitted_interaction = None
     if (
@@ -234,6 +334,19 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
 
 
+def clear_relation_injection(req):
+    """清除本插件上次完整注入的块，即使本轮不注入也不能遗留其他成员资料。"""
+    marker = getattr(req, "_bond_injected_snapshot", None)
+    if not isinstance(marker, RelationSnapshot):
+        return
+    current = getattr(req, "system_prompt", "") or ""
+    previous = current.rfind(marker.block)
+    if previous >= 0:
+        prefix = current[:previous].removesuffix("\n\n")
+        req.system_prompt = prefix + current[previous + len(marker.block) :]
+    req._bond_injected_snapshot = None
+
+
 async def on_llm_request(
     deps: Deps, event: AstrMessageEvent, req: ProviderRequest
 ) -> None:
@@ -242,6 +355,8 @@ async def on_llm_request(
     X2：注入是每次对话的必经路径而非增值功能——任何失败（存储/渲染/
     模板）只 warning 并跳过本次注入，绝不把异常抛进框架钩子打断回复。"""
     try:
+        # 必须在身份读取和快照尝试之前清理；失败、私聊与关闭注入也适用。
+        clear_relation_injection(req)
         await _on_llm_request_inner(deps, event, req)
     except Exception:
         logger.warning(
@@ -252,42 +367,25 @@ async def on_llm_request(
 async def _on_llm_request_inner(
     deps: Deps, event: AstrMessageEvent, req: ProviderRequest
 ) -> None:
-    if not deps.inject_enabled:
-        return
     group_id, user_id = event.get_group_id(), event.get_sender_id()
     if not group_id or not user_id:
         return
-    rec = await deps.favor.get(group_id, user_id)
-    # 全局关系可用于当前成员的称谓，但不召回其他群的印象或聊天流水。
-    local = deps.favor.scope_mode == "per_group"
-    events = (
-        await deps.favor.recent_events(
-            group_id,
-            user_id,
-            deps.memory_count,
-            deps.memory_days,
-            sig_threshold=deps.memory_sig_threshold,
-            sig_window_mult=deps.memory_sig_window_mult,
-        )
-        if local
-        else []
-    )
-    template = deps.prompts.resolve("behavior", deps.bot_id, str(group_id))
-    description = deps.favor.describe_relation(rec.familiarity, rec.favor, rec.trust)
-    block = deps.inject.build_relation_block(
-        template,
-        relationship=description.text,
-        impression=rec.impression if local else "",
-        events=events,
-        configured_master=deps.favor.is_master(str(user_id)),
-    )
-    deps.inject.inject(req, block)
-    deps.favor.record_diagnostic(
+    # 没经过消息入口的请求可首次捕获；已入场的请求只能复用原空间的快照。
+    origin, snapshot = await _freeze_relation(deps, event)
+    if snapshot is None:
+        return
+    origin.inject.inject(req, snapshot.block)
+    req._bond_injected_snapshot = snapshot
+    origin.favor.record_diagnostic(
         group_id,
         user_id,
         "render",
         status="injected",
-        after=dict(familiarity=rec.familiarity, affinity=rec.favor, trust=rec.trust),
-        bands_after=description.bands or None,
-        term_after=description.key,
+        after=dict(
+            familiarity=snapshot.familiarity,
+            affinity=snapshot.affinity,
+            trust=snapshot.trust,
+        ),
+        bands_after=snapshot.bands or None,
+        term_after=snapshot.term,
     )
