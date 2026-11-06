@@ -114,10 +114,10 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
         "assessment.small_provider_id",
         "assessment.large_provider_id",
         "assessment.assessment_mode",
-        "passive_familiarity.enabled",
         "group_whitelist",
         "default_scope_mode",
         "master_ids",
+        "passive_familiarity.enabled",
         "inject.enabled",
         "relation_mode",
         "ignored_bot_ids",
@@ -131,6 +131,11 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
     ):
         assert by_path[path]["special"] == "select_provider"
     assert by_path["inject.memory_count"]["group"] == "memory"
+    assert by_path["passive_familiarity.enabled"]["label"] == "眼熟模式"
+    assert (
+        by_path["passive_familiarity.enabled"]["hint"]
+        == "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
+    )
 
 
 def test_host_visibility_and_webui_wording_agree():
