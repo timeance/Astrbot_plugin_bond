@@ -230,6 +230,19 @@ class FavorService:
                 if not is_account_id(str(group_id or "")):
                     self._diagnostic_failure()
                     return
+                from .diagnostic_capture import CURRENT
+
+                capture = CURRENT.get()
+                if capture is not None and (
+                    capture.recorder is self.diagnostics
+                    and capture.bot == self._storage.bot_id
+                    and capture.mode == self.scope_mode
+                    and capture.group == str(group_id)
+                    and capture.user == str(user_id)
+                ):
+                    fields.update(
+                        trace_id=capture.trace_id, generation=capture.generation
+                    )
                 self.diagnostics.emit(
                     self._storage.bot_id,
                     self.scope_mode,

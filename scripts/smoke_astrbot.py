@@ -337,7 +337,8 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             result = json.loads(await handler(excluded))
             assert result["status"] == "unavailable"
             assert result["facts"] == {"reason": "本群未启用关系功能。"}
-        assert not plugin._registry._tasks and not entered.is_set()
+        assert set(plugin._registry._tasks.values()) <= {"bond-diagnostics-retention"}
+        assert not entered.is_set()
         for bot_id in BOT_IDS:
             assert "60006" not in {
                 row["group_id"]

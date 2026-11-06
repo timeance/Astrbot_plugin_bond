@@ -702,3 +702,30 @@ def test_member_detail_exposes_overview_interaction_age(
     payload, status = asyncio.run(page.handle_member())
     assert status == 200
     assert payload["member"]["idle_days"] == expected
+
+
+def test_diagnostics_status_uses_actual_disk_snapshot(page_module, monkeypatch):
+    page, runtime = make_api(page_module, monkeypatch, {}, None)
+    expected = {
+        "disk_bytes": 32,
+        "total_disk_bytes": 80,
+        "max_bytes": 100000000,
+        "size_available": True,
+    }
+    runtime.diagnostics = SimpleNamespace(status=AsyncMock(return_value=expected))
+    monkeypatch.setattr(page_module, "request", SimpleNamespace(method="GET"))
+    payload, status = asyncio.run(page.handle_diagnostics())
+    assert status == 200 and payload["diagnostics"] == expected
+    runtime.diagnostics.status.assert_awaited_once_with("10001", "per_group")
+
+
+def test_diagnostics_export_includes_updated_disk_status(page_module, monkeypatch):
+    page, runtime = make_api(page_module, monkeypatch, {"action": "export"}, None)
+    runtime.diagnostics = SimpleNamespace(
+        export=AsyncMock(return_value={"rows": []}),
+        status=AsyncMock(return_value={"disk_bytes": 18, "size_available": True}),
+    )
+    monkeypatch.setattr(page_module, "request", SimpleNamespace(method="GET"))
+    payload, status = asyncio.run(page.handle_diagnostics())
+    assert status == 200 and payload["status"]["disk_bytes"] == 18
+    assert payload["diagnostics"] == {"rows": []}

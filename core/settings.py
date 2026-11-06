@@ -106,7 +106,15 @@ LABELS = {
     ),
     "diagnostics.enabled": (
         "记录关系诊断",
-        "本机记录脱敏状态和耗时，不新增原文或模型输出，供管理员导出。保留最多 7 天、20 MB，量大时提前轮转。",
+        "记录评估与关系变化，按所选详细程度保留诊断内容。",
+    ),
+    "diagnostics.detail_level": (
+        "诊断详细程度",
+        "按所选级别记录；完整上下文包含 Bond 观察到的回复请求。",
+    ),
+    "diagnostics.max_size_mb": (
+        "诊断容量上限（MB）",
+        "所有 Bot 和数据空间合计；达到上限后清理旧记录。",
     ),
     "default_scope_mode": (
         "默认数据空间",
@@ -488,6 +496,8 @@ def validate_patch(values):
                 }
                 else 1000000
             )
+            if path == "diagnostics.max_size_mb":
+                minimum, maximum = 1, 10000
             if path == "inject.memory_count":
                 maximum = 10
             if path in {"economy.repair_factor", "economy.same_day_decay"}:
