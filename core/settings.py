@@ -30,11 +30,6 @@ SECTIONS = {
             "inject.enabled",
             "relation_mode",
             "ignored_bot_ids",
-            "command.ranking_access",
-            "command.ranking_image",
-            "command.ranking_limit",
-            "command.text_wake_enabled",
-            "command.text_wake_ranking",
         ],
     ),
     "rules": (

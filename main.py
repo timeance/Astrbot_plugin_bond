@@ -48,6 +48,7 @@ from .services.assessment_service import (
 from .services.judge_service import JudgeService
 from .storage.router import BotScopeStorageRouter
 from .services.runtime_service import RuntimeService
+from .services.self_impression_service import SelfImpressionService
 
 _PLUGIN_DIR = Path(__file__).resolve().parent
 
@@ -76,7 +77,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.4.3",
+    "0.4.4",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -132,6 +133,12 @@ class BondPlugin(Star):
         )
         self._relationships = None
         cmd_cfg = config.get("command") or {}
+        self._self_impression = SelfImpressionService(
+            context,
+            mode={"关闭": "off", "输出关系称谓": "title", "大模型总结": "summary"}.get(
+                cmd_cfg.get("impression_mode", "关闭"), "off"
+            ),
+        )
         self._ranking_limit = int(cmd_cfg.get("ranking_limit", 10))
         self._ranking_access = str(cmd_cfg.get("ranking_access", "all"))
         self._ranking_image = bool(cmd_cfg.get("ranking_image", True))
@@ -407,6 +414,18 @@ class BondPlugin(Star):
             return
         yield event.plain_result(await tools.tool_query_favor(deps.favor, event))
 
+    @filter.command("我的印象")
+    async def _cmd_self_impression(self, event: AstrMessageEvent):
+        """按设置输出自己的关系称谓或当前人设的一句话印象。"""
+        if _group_entry_id(event) is None:
+            yield event.plain_result("请在群聊中查询自己的印象。")
+            return
+        deps = await self._runtime.for_event(event)
+        if deps is not None:
+            yield event.plain_result(
+                await self._self_impression.query(deps.favor, event)
+            )
+
     @filter.command("好感排行")
     async def _cmd_rank(self, event: AstrMessageEvent):
         """查看本群前十名关系称谓，不显示分值。"""
@@ -515,6 +534,7 @@ class BondPlugin(Star):
 
         资料不要求披露或复述，如何使用由当前人格、系统规则和对话语境决定。
         不支持查询其他成员，也不代表发言者对 Bot 或群友之间的关系。
+        发言者询问“我的印象”“对我的感觉”时，优先使用 query_my_impression。
 
         Args:
             target(str): 仅允许留空或当前发言者的账号，不能用他人姓名代替
@@ -529,6 +549,30 @@ class BondPlugin(Star):
                 status="unavailable", reason="本群未启用关系功能。"
             )
         return await tools.tool_query_favor(deps.favor, event, target, for_llm=True)
+
+    @filter.llm_tool(name="query_my_impression")
+    async def _tool_self_impression(self, event: AstrMessageEvent) -> str:
+        """查询当前 Bot 对发言者本人的印象。
+
+        发言者问“你对我有什么印象”“你觉得我怎么样”“你对我的感觉如何”时可调用。
+        仅查询本人，不查询其他成员；关闭时不可用。返回已按设置生成的答复，
+        转达该答复即可，不补充具体分值、私人证据或其他群资料。
+        """
+        if _group_entry_id(event) is None:
+            return tools.query_context(
+                status="unavailable", reason="请在群聊中查询自己的印象。"
+            )
+        deps = await self._runtime.for_event(event)
+        if deps is None:
+            return tools.query_context(
+                status="unavailable", reason="本群未启用关系功能。"
+            )
+        if self._self_impression.mode == "off":
+            return tools.query_context(
+                status="unavailable", reason="我的印象功能未开启。"
+            )
+        reply = await self._self_impression.query(deps.favor, event)
+        return tools.query_context(object="当前发言者", impression_reply=reply)
 
     @filter.llm_tool(name="query_favor_ranking")
     async def _tool_rank(self, event: AstrMessageEvent) -> str:
