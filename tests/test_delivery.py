@@ -2,6 +2,7 @@
 
 import ast
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -26,7 +27,7 @@ from check_project import check_project  # noqa: E402
 
 @pytest.fixture
 def project(tmp_path):
-    for name in ("metadata.yaml", "main.py", "_conf_schema.json"):
+    for name in ("metadata.yaml", "main.py", "_conf_schema.json", "CHANGELOG.md"):
         shutil.copyfile(ROOT / name, tmp_path / name)
     return tmp_path
 
@@ -280,3 +281,152 @@ def test_runtime_logging_and_task_entrypoints_follow_store_rules():
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr == "create_task":
                     assert relative == "core/taskregistry.py", location
+
+
+@pytest.mark.parametrize("change", ["old", "empty", "mismatch"])
+def test_current_changelog_rejects_extra_missing_or_wrong_version(project, change):
+    path = project / "CHANGELOG.md"
+    version = yaml.safe_load((project / "metadata.yaml").read_text(encoding="utf-8"))[
+        "version"
+    ]
+    if change == "old":
+        path.write_text(
+            path.read_text(encoding="utf-8") + "\n## 0.1.0 — 2026-01-01\nold\n",
+            encoding="utf-8",
+        )
+    elif change == "empty":
+        path.write_text(f"# 更新说明\n\n## {version} — 2026-01-01\n", encoding="utf-8")
+    else:
+        path.write_text("## 9.9.9 — 2026-01-01\nwrong\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="CHANGELOG"):
+        check_project(project)
+
+
+def test_current_changelog_matches_metadata(project):
+    assert (
+        check_project(project)
+        == yaml.safe_load((project / "metadata.yaml").read_text(encoding="utf-8"))[
+            "version"
+        ]
+    )
+
+
+@pytest.mark.parametrize("version, expected", [("0.3.0", ""), ("0.5.5", "v0.5.5")])
+def test_automatic_release_selects_only_version_increase(
+    git_project, monkeypatch, version, expected
+):
+    import prepare_release
+
+    source, run = git_project
+    previous = run("rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(prepare_release, "check_project", lambda root: version)
+    assert prepare_release.select_tag(previous, "main", source.parent) == expected
+
+
+@pytest.mark.parametrize("version", ["0.2.0", "0.5.5-beta"])
+def test_automatic_release_rejects_rollback_and_prerelease(
+    git_project, monkeypatch, version
+):
+    import prepare_release
+
+    source, run = git_project
+    previous = run("rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(prepare_release, "check_project", lambda root: version)
+    with pytest.raises(ValueError):
+        prepare_release.select_tag(previous, "main", source.parent)
+
+
+def test_automatic_release_rejects_missing_previous_commit(project):
+    from prepare_release import select_tag
+
+    with pytest.raises(ValueError, match="前一次 main"):
+        select_tag("0" * 40, "main", project)
+    with pytest.raises(subprocess.CalledProcessError):
+        select_tag("a" * 40, "main", project)
+
+
+def test_release_workflow_requires_ci_and_retains_immutable_draft_publish():
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    release = yaml.safe_load(
+        (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    )
+    call = ci["jobs"]["release"]
+    assert call["needs"] == ["test", "framework"]
+    assert (
+        call["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    )
+    assert call["uses"] == "./.github/workflows/release.yml"
+    assert call["with"]["previous-ref"] == "${{ github.event.before }}"
+    assert release["jobs"]["publish"]["needs"] == "build"
+    assert release["permissions"] == {"contents": "read"}
+    assert release["jobs"]["publish"]["permissions"] == {"contents": "write"}
+    assert release["jobs"]["publish"]["if"] == "needs.build.outputs.tag != ''"
+
+
+@pytest.mark.parametrize(
+    "failure", ["", "checksum", "tag", "validate", "push", "remote", "create"]
+)
+def test_release_stops_at_failed_boundary_before_publication(tmp_path, failure):
+    bash = shutil.which("bash")
+    if not bash and os.name == "nt":
+        bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe")
+    if not bash or not Path(bash).is_file():
+        pytest.skip("需要 Bash 验证发布脚本")
+    mock_bin = tmp_path / "bin"
+    mock_bin.mkdir()
+    (tmp_path / "release").mkdir()
+    call_log = tmp_path / "calls.txt"
+    fake = r"""#!/usr/bin/env bash
+name=$(basename "$0")
+printf '%s %s\n' "$name" "$*" >> "$CALL_LOG"
+case "$name:$*" in
+  sha256sum:*) [[ "$FAILURE" != checksum ]] || exit 1 ;;
+  python:*) [[ "$FAILURE" != validate ]] || exit 1 ;;
+  git:*' tag -a '*) [[ "$FAILURE" != tag ]] || exit 1 ;;
+  git:*' push origin '*) [[ "$FAILURE" != push ]] || exit 1 ;;
+  git:rev-parse*) echo expected-object ;;
+  gh:api*) if [[ "$FAILURE" == remote ]]; then echo changed-object; else echo expected-object; fi ;;
+  gh:'release create '*) [[ "$FAILURE" != create ]] || exit 1 ;;
+esac
+exit 0
+"""
+    for name in ("sha256sum", "python", "git", "gh"):
+        executable = mock_bin / name
+        executable.write_text(fake, encoding="utf-8", newline="\n")
+        executable.chmod(0o755)
+    env = {
+        **os.environ,
+        "FAILURE": failure,
+        "CALL_LOG": call_log.as_posix(),
+        "TAG_INPUT": "v0.5.5",
+        "TAG_OBJECT": "",
+        "AUTOMATIC": "true",
+        "GITHUB_REPOSITORY": "synthetic/bond",
+    }
+    result = subprocess.run(
+        [
+            bash,
+            "-c",
+            'export PATH="$(cd "$1" && pwd):$PATH"; cd "$2"; "$BASH" "$3"',
+            "--",
+            mock_bin.as_posix(),
+            tmp_path.as_posix(),
+            (ROOT / ".github/release.sh").as_posix(),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    calls = call_log.read_text(encoding="utf-8")
+    if failure:
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "gh release edit" not in calls
+        if failure != "create":
+            assert "gh release create" not in calls
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "--verify-tag --draft" in calls
+        assert (
+            calls.splitlines()[-1]
+            == "gh release edit v0.5.5 --repo synthetic/bond --draft=false"
+        )
