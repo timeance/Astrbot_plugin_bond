@@ -246,10 +246,10 @@ def test_main_route_excludes_private_whitelist_and_bots(tmp_path):
 
 
 def test_setting_default_and_validation():
-    assert snapshot({})["values"]["passive_familiarity.enabled"] is False
-    validate_patch({"passive_familiarity.enabled": True})
+    assert snapshot({})["values"]["passive_familiarity"] is True
+    validate_patch({"passive_familiarity": True})
     with pytest.raises(ValueError):
-        validate_patch({"passive_familiarity.enabled": "true"})
+        validate_patch({"passive_familiarity": "true"})
 
 
 def test_large_batch_yields_to_other_tasks():
@@ -376,3 +376,21 @@ def test_listener_rejects_mismatched_bot_and_freezes_mutable_event(tmp_path):
         patch("time.time", return_value=NOW),
     ):
         asyncio.run(run(listener, components))
+
+
+@pytest.mark.parametrize("minutes", [1, 20])
+def test_configured_activity_window_preserves_boundary(minutes):
+    from astrbot_plugin_bond.core.passive_familiarity import PassiveFamiliarityConfig
+
+    service = PassiveActivity(
+        "10001", config=PassiveFamiliarityConfig(window_minutes=minutes)
+    )
+    with patch("time.time", return_value=NOW):
+        observe(service)
+    with patch("time.time", return_value=NOW + minutes * 60):
+        assert observe(
+            service, user="8003", mid="boundary", mentioned=True
+        ).members == (("8001", NOW),)
+    with patch("time.time", return_value=NOW + minutes * 60 + 0.01):
+        batch = observe(service, user="8004", mid="outside", mentioned=True)
+        assert all(user != "8001" for user, _ in batch.members)

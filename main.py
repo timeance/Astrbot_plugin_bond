@@ -32,6 +32,7 @@ from .api.listeners import (
     on_llm_response,
 )
 from .core.config_migrations import migrate_saved_defaults
+from .core.passive_familiarity import PassiveFamiliarityConfig
 from .core.identity import parse_master_ids
 from .core.judge_parse import DEFAULT_ATTITUDE_DELTAS
 from .core.level_economy import EconomyConfig
@@ -83,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.5.6",
+    "0.5.7",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -201,6 +202,9 @@ class BondPlugin(Star):
                 for key, default in DEFAULT_DAILY_CAPS.items()
             },
         )
+        passive_rules = PassiveFamiliarityConfig.from_config(
+            config.get("passive_familiarity_rules")
+        )
         favor = FavorService(
             storage,
             levels,
@@ -224,6 +228,7 @@ class BondPlugin(Star):
             trust_half_life=float(decay_cfg.get("trust_half_life", 60)),
             trust_baseline=float(decay_cfg.get("trust_baseline", 20)),
             familiarity_growth=config.get("familiarity_growth"),
+            passive_familiarity=passive_rules,
             decay_floor_enabled=bool(decay_cfg.get("floor_enabled", True)),
             relationships=relationships,
             economy=eco,
@@ -310,7 +315,8 @@ class BondPlugin(Star):
         return Deps(
             passive_activity=PassiveActivity(
                 storage.bot_id,
-                enabled=(config.get("passive_familiarity") or {}).get("enabled", False),
+                enabled=config.get("passive_familiarity", True),
+                config=passive_rules,
             ),
             assessment=assessment,
             prompts=self._prompts,

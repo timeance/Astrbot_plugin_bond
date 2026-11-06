@@ -10,6 +10,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 
 from ..core.scope import is_account_id
+from ..core.passive_familiarity import PassiveFamiliarityConfig
 
 
 @dataclass(frozen=True)
@@ -23,14 +24,20 @@ class ActivityBatch:
 class PassiveActivity:
     """每个 Bot/空间一个轻量缓存；冷却、额度和去重由持久化事务裁决。"""
 
-    WINDOW = 600.0
     MAX_MEMBERS = 4096
     MAX_MESSAGES = 8192
     MAX_PENDING = 16
 
-    def __init__(self, bot_id: str, *, enabled: bool = False):
+    def __init__(
+        self,
+        bot_id: str,
+        *,
+        enabled: bool = True,
+        config: PassiveFamiliarityConfig | None = None,
+    ):
         self.bot_id = bot_id
         self.enabled = enabled is True
+        self._window_sec = (config or PassiveFamiliarityConfig()).window_minutes * 60
         self._members: OrderedDict[tuple[str, str], float] = OrderedDict()
         self._messages: OrderedDict[tuple[str, str, str, str], float] = OrderedDict()
         self._pending: dict[str, OrderedDict[str, tuple[str, float, float]]] = {}
@@ -61,7 +68,7 @@ class PassiveActivity:
             self._messages.clear()
         self._last_time = now
         for cache in (self._members, self._messages):
-            while cache and next(iter(cache.values())) < now - self.WINDOW:
+            while cache and next(iter(cache.values())) < now - self._window_sec:
                 cache.popitem(last=False)
         # 缺失消息编号仍可记录在场，但不能作为可靠、可重试的奖励触发。
         identifiable = (

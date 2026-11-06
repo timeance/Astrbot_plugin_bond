@@ -165,14 +165,39 @@
     "hint": "用于主人标记和仅主人查榜，不授予管理权限，也不免除评估。多个 QQ 用英文逗号分隔。"
   },
   "passive_familiarity": {
-    "type": "object",
+    "type": "bool",
+    "default": true,
     "description": "眼熟模式",
+    "hint": "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
+  },
+  "passive_familiarity_rules": {
+    "type": "object",
+    "description": "眼熟模式参数",
+    "invisible": true,
     "items": {
-      "enabled": {
-        "type": "bool",
-        "default": false,
-        "description": "眼熟模式",
-        "hint": "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
+      "amount": {
+        "type": "float",
+        "default": 0.3,
+        "description": "每次被动增加的熟悉度",
+        "hint": "范围 0～100；每位符合条件的成员每次最多增加此数，仍受被动上限和每日熟悉度额度限制。0 停止加分。"
+      },
+      "ceiling": {
+        "type": "float",
+        "default": 60,
+        "description": "被动增加熟悉度上限",
+        "hint": "范围 0～100；被动增长最多达到此值，已有更高分数不降低。这不是衰减下限。"
+      },
+      "cooldown_minutes": {
+        "type": "int",
+        "default": 30,
+        "description": "被动增长间隔（分钟）",
+        "hint": "至少 1 分钟；同一成员两次被动加分的最短间隔。仍由有人 @ Bot 触发检查，不是定时扫描。"
+      },
+      "window_minutes": {
+        "type": "int",
+        "default": 10,
+        "description": "活跃检查范围（分钟）",
+        "hint": "至少 1 分钟；有人 @ Bot 时，检查同群最近这段时间发过言的其他成员。只缓存身份和收件时间，不保存普通群聊原文。"
       }
     }
   },
