@@ -387,11 +387,9 @@ class DiagnosticRecorder:
                 except json.JSONDecodeError:
                     # 括号、表情和 Markdown 链接也可能以 { 或 [ 开头。
                     # 残缺 JSON 含敏感字段时仍省略，避免退回文本过滤后漏出值。
-                    # 连无冒号或未闭合的引号片段也一次消费，避免反复扫描。
-                    quoted = r'("(?:\\.|[^"\\])*(?:"|\\?$))(\s*:)?'
-                    for key in re.finditer(quoted, text):
-                        if key[2] and denied.search(json.loads(key[1])):
-                            raise ValueError("残缺 JSON 含敏感字段")
+                    # 不尝试恢复残缺 JSON；字段语法（含转义引号）出现即省略。
+                    if re.search(r'(?:"|\\u0022)\s*:', text):
+                        raise ValueError("残缺 JSON 含字段语法")
                     return filter_text(text)
                 cleaned = redact(parsed, depth)
                 return (

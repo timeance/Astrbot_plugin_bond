@@ -369,8 +369,16 @@ def test_empty_nested_containers_consume_budget_and_survive_export(tmp_path):
     [
         json.dumps({"password": 123456, "text": "x" * 32768}),
         '{"password":123456,',
+        '{"topic":"hello",',
+        json.dumps({"payload": json.dumps({"secret": {"value": "synthetic-private"}})})[
+            :-1
+        ],
         '{"secret":{"value":"synthetic-private"},',
         r'{"\u0070assword":123456,',
+        '{"text":"oops, "secret":{"value":"synthetic-private"},',
+        r'{"text":"oops, "\u0073ecret":{"value":"synthetic-private"},',
+        r'{"text":"oops, "api\/key":{"value":"synthetic-private"},',
+        r'{"text":"oops, "api\"key":{"value":"synthetic-private"},',
         "[" * 40 + "0" + "]" * 40,
         json.dumps([[]] * 5000),
     ],
@@ -485,7 +493,7 @@ def test_tiny_json_budget_keeps_snapshot_idempotent(monkeypatch, budget, text):
         ("[捂脸]这也太离谱了", "[捂脸]这也太离谱了"),
         ("  [捂脸]这也太离谱了", "  [捂脸]这也太离谱了"),
         ("{注意}先别点", "{注意}先别点"),
-        ('{"topic":"hello",', '{"topic":"hello",'),
+        ('[捂脸]他说"别急"', '[捂脸]他说"别急"'),
         ("[1] 选第一项", "[1] 选第一项"),
         ("(普通括号)这是玩笑", "(普通括号)这是玩笑"),
         (
