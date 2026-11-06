@@ -597,3 +597,73 @@ def test_maintenance_diagnostics_use_committed_transaction_decision(db, tmp_path
             await recorder.close()
 
     run(check())
+
+
+@pytest.mark.parametrize("dimension", ["familiarity", "affinity", "trust"])
+@pytest.mark.parametrize(
+    "requested, cap, expected_reason",
+    [(0.3, 0, "rule_zero"), (0, 1, "original_zero")],
+)
+def test_zero_event_cap_preserves_original_intent_in_diagnostics(
+    db, tmp_path, dimension, requested, cap, expected_reason
+):
+    from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+    from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+
+    async def check():
+        recorder = DiagnosticRecorder(
+            tmp_path / "diagnostics", TaskRegistry(), enabled=True
+        )
+        configured = dict.fromkeys(("familiarity", "affinity", "trust"), 0)
+        configured[dimension] = requested
+        policy = RelationPolicy(
+            rules={"friendly": configured}, event_caps={"friendly": {dimension: cap}}
+        )
+        try:
+            with patch("time.time", return_value=START):
+                svc = service(db, relation_policy=policy, diagnostics=recorder)
+                await svc.set_relation(
+                    "123",
+                    "456",
+                    familiarity=80,
+                    affinity=80,
+                    trust=-80,
+                    event_id="seed",
+                )
+                stored_before = await db.get("123", "456")
+            with patch("time.time", return_value=START + 4 * DAY):
+                day = svc._today().isoformat()
+                usage_before = await db.daily_usage("123", "456", day)
+                result = await svc.apply_relation_event(
+                    "123",
+                    "456",
+                    "friendly",
+                    intensity=2,
+                    event_id="zero-rule",
+                    cooldown_sec=0,
+                )
+                stored_after = await db.get("123", "456")
+                usage_after = await db.daily_usage("123", "456", day)
+                exported = await recorder.export("10001", "per_group")
+            assert result["skipped"] is None
+            assert result["delta"] == dict.fromkeys(configured, 0)
+            assert stored_after == stored_before  # 分值、维护/结算锚及半衰期都不动。
+            assert usage_after == usage_before
+            detail = result["maintenance"]
+            assert detail["intent"][dimension] == pytest.approx(requested * 2)
+            assert (
+                detail["adjusted"] == detail["allowed"] == dict.fromkeys(configured, 0)
+            )
+            assert detail["maintenance_reason"][dimension] == expected_reason
+            assert not any(detail["maintenance_qualified"].values())
+            assert not any(detail["maintenance_applied"].values())
+            assert detail["maintenance_before"] == detail["maintenance_after"]
+            fields = exported["rows"][-1]["fields"]
+            for key, value in detail.items():
+                assert fields[key] == value
+            assert exported["missing"]["filtered_fields"] == 0
+            assert exported["missing"]["corrupt_lines"] == 0
+        finally:
+            await recorder.close()
+
+    run(check())

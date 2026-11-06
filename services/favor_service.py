@@ -572,6 +572,9 @@ class FavorService:
             or cooldown_sec < 0
         ):
             raise ValueError("冷却时间无效")
+        original_intent = self._relation_policy.base_deltas(
+            event_type, intensity, bounded=False
+        )
         base_deltas = self._relation_policy.base_deltas(event_type, intensity)
         repair_factor = (
             await self._repair_factor(group_id, user_id)
@@ -620,6 +623,7 @@ class FavorService:
             decay=self._decay,
             default_favor=self.default_favor,
             transform=transform,
+            original_intent=original_intent,
             day_start=self._day_start(),
             day_end=self._day_end(),
             origin_group_id=str(group_id),

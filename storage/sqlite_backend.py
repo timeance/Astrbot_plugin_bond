@@ -675,6 +675,7 @@ class SQLiteBackend(StorageBackend):
         effective_trust=None,
         effective_familiarity=None,
         transform=None,
+        original_intent=None,
         day_start=None,
         day_end=None,
         origin_group_id="",
@@ -770,7 +771,10 @@ class SQLiteBackend(StorageBackend):
                 used, positive_count = read_usage(
                     conn, group_id, user_id, day, day_start, day_end
                 )
-                original_deltas = dict(deltas)
+                # 原始意图区分配置零值与规则归零；计分仍使用已限幅的 deltas。
+                original_deltas = dict(
+                    deltas if original_intent is None else original_intent
+                )
                 if transform is not None and values is None:
                     deltas = transform(dict(before), positive_count)
                 adjusted = dict(deltas)
