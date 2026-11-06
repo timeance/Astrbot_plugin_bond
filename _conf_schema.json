@@ -1115,7 +1115,25 @@
         "type": "bool",
         "default": false,
         "description": "记录关系诊断",
-        "hint": "本机记录脱敏状态和耗时，不新增原文或模型输出，供管理员导出。保留最多 7 天、20 MB，量大时提前轮转。"
+        "hint": "记录评估与关系变化，按所选详细程度保留诊断内容。"
+      },
+      "detail_level": {
+        "type": "string",
+        "default": "assessment",
+        "options": [
+          "assessment",
+          "raw",
+          "evaluation",
+          "full"
+        ],
+        "description": "诊断详细程度",
+        "hint": "按所选级别记录；完整上下文包含 Bond 观察到的回复请求。"
+      },
+      "max_size_mb": {
+        "type": "int",
+        "default": 100,
+        "description": "诊断容量上限（MB）",
+        "hint": "所有 Bot 和数据空间合计；达到上限后清理旧记录。"
       }
     },
     "hint": "设置本机诊断记录，供管理员排查评估和关系变化。",

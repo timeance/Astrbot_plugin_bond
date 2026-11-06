@@ -16,6 +16,7 @@ from astrbot.api.provider import ProviderRequest
 
 from ..core.assessment import Interaction
 from ..core.taskregistry import TaskRegistry
+from ..services.diagnostic_capture import CURRENT, event_capture, request_content
 from ..services.favor_service import FavorService
 from ..services.impression_service import ImpressionService
 from ..services.inject_service import InjectService
@@ -216,6 +217,11 @@ def _reply_metadata(event):
 
 async def on_llm_response(deps: Deps, event: AstrMessageEvent, response) -> None:
     """使用入场时冻结的服务与身份，不按回复完成时的配置重新选择空间。"""
+    capture = event_capture(deps, event)
+    if capture is not None:
+        capture.content(
+            "response", {"text": getattr(response, "completion_text", None)}
+        )
     binding = getattr(event, "_bond_assessment_binding", None)
     if not isinstance(binding, tuple) or len(binding) != 2 or binding[0] is not deps:
         return
@@ -259,6 +265,11 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
     has_at_bot, is_reply_bot = _chain_flags(event)
     reply_metadata = _reply_metadata(event)
     original_event = event
+    diagnostic_capture = event_capture(deps, original_event)
+    if diagnostic_capture is not None and (has_at_bot or is_reply_bot):
+        diagnostic_capture.content(
+            "chat", {"text": text, "reply_text": reply_metadata.get("reply_text", "")}
+        )
     event = AssessmentEvent(
         str(group_id),
         str(user_id),
@@ -297,6 +308,7 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                 admitted_interaction = None
 
     async def _bg() -> None:
+        diagnostic_token = CURRENT.set(diagnostic_capture)
         try:
             await deps.favor.observe_member(group_id, user_id)
             await deps.favor.update_member_names(
@@ -331,6 +343,9 @@ async def on_group_message(deps: Deps, event: AstrMessageEvent) -> None:
                 "[八千代] 后台评估任务异常（忽略，不影响对话）", exc_info=True
             )
 
+        finally:
+            CURRENT.reset(diagnostic_token)
+
     deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
 
 
@@ -354,6 +369,8 @@ async def on_llm_request(
 
     X2：注入是每次对话的必经路径而非增值功能——任何失败（存储/渲染/
     模板）只 warning 并跳过本次注入，绝不把异常抛进框架钩子打断回复。"""
+    capture = event_capture(deps, event)
+    diagnostic_token = CURRENT.set(capture)
     try:
         # 必须在身份读取和快照尝试之前清理；失败、私聊与关闭注入也适用。
         clear_relation_injection(req)
@@ -362,6 +379,14 @@ async def on_llm_request(
         logger.warning(
             "[八千代] 注入链路异常，本次跳过注入（不影响对话）", exc_info=True
         )
+    finally:
+        if capture is not None:
+            try:
+                if capture.recorder.wants("request"):
+                    capture.content("request", request_content(req))
+            except Exception:
+                pass
+        CURRENT.reset(diagnostic_token)
 
 
 async def _on_llm_request_inner(

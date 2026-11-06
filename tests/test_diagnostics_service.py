@@ -305,7 +305,7 @@ def test_identity_counters_and_configuration_limits_are_bounded(tmp_path):
         recorder = DiagnosticRecorder(
             tmp_path / "logs", TaskRegistry(), True, queue_limit=10**9, max_bytes=10**12
         )
-        assert recorder.max_bytes == 20 * 1024 * 1024
+        assert recorder.max_bytes == DiagnosticRecorder.MAX_BYTES
         assert recorder.queue_limit == 256
         for index in range(recorder.MAX_NAMESPACES + 10):
             emit(recorder, bot=f"synthetic-{index}")

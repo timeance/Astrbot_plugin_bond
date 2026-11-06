@@ -743,3 +743,19 @@ def test_query_settings_share_host_values_and_reject_unknown_impression_mode():
         validate_patch({"command.impression_mode": mode})
     with pytest.raises(ValueError):
         validate_patch({"command.impression_mode": "unknown"})
+
+
+def test_diagnostic_levels_capacity_defaults_and_validation():
+    values = snapshot({})["values"]
+    assert values["diagnostics.enabled"] is False
+    assert values["diagnostics.detail_level"] == "assessment"
+    assert values["diagnostics.max_size_mb"] == 100
+    for level in ("assessment", "raw", "evaluation", "full"):
+        validate_patch({"diagnostics.detail_level": level})
+    for size in (1, 100, 10000):
+        validate_patch({"diagnostics.max_size_mb": size})
+    for invalid in (0, -1, 10001, True, "100", 1.5):
+        with pytest.raises(ValueError):
+            validate_patch({"diagnostics.max_size_mb": invalid})
+    with pytest.raises(ValueError):
+        validate_patch({"diagnostics.detail_level": "unknown"})

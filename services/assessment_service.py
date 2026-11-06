@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass
 from collections import OrderedDict, deque
 
+from .diagnostic_capture import CURRENT, capture_content, interaction_capture
+
 from ..core.assessment import (
     Interaction,
     SYSTEM_PROMPT,
@@ -338,8 +340,13 @@ class AssessmentService:
             )
             return None
         try:
+            capture_content("evaluation", {"tier": tier, "prompt": prompt})
             response = await asyncio.wait_for(
                 provider.text_chat(prompt=prompt), timeout
+            )
+            capture_content(
+                "evaluation",
+                {"tier": tier, "output": getattr(response, "completion_text", None)},
             )
             usage = getattr(response, "usage", None)
             tokens = getattr(usage, "total", None) if usage is not None else None
@@ -366,6 +373,13 @@ class AssessmentService:
                 interaction, directed=directed, admission_state=admission_state
             )
         started, status, trace = time.perf_counter(), "failed", {}
+        capture = interaction_capture(self.favor, interaction)
+        inherited = CURRENT.get() is capture and capture is not None
+        token = CURRENT.set(capture)
+        if not inherited and directed:
+            capture_content(
+                "chat", {"text": interaction.text, "reply_text": interaction.reply_text}
+            )
         try:
             status = await self._assess(
                 interaction,
@@ -387,6 +401,7 @@ class AssessmentService:
                 elapsed_ms=(time.perf_counter() - started) * 1000,
                 **trace,
             )
+            CURRENT.reset(token)
 
     async def _assess(
         self,

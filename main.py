@@ -83,7 +83,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.5.0",
+    "0.5.1",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -120,6 +120,11 @@ class BondPlugin(Star):
             data_dir / "diagnostics",
             self._registry,
             enabled=(config.get("diagnostics") or {}).get("enabled", False),
+            detail_level=(config.get("diagnostics") or {}).get(
+                "detail_level", "assessment"
+            ),
+            max_bytes=(config.get("diagnostics") or {}).get("max_size_mb", 100)
+            * 1_000_000,
         )
         # 所有 bundle 使用本次加载时的同一模型配置；面板保存后统一重载生效。
         self._assessment_values = dict(config.get("assessment") or {})
@@ -320,6 +325,7 @@ class BondPlugin(Star):
         )
 
     async def initialize(self) -> None:
+        await self._diagnostics.start()
         self._runtime.modes()
         # 重载时结算全部既有空间，不等待成员再次出现。
         for bot_id in self._storage.known_bot_ids():
@@ -407,6 +413,9 @@ class BondPlugin(Star):
     async def _on_llm_resp(self, event: AstrMessageEvent, response: LLMResponse):
         binding = getattr(event, "_bond_assessment_binding", None)
         if not isinstance(binding, tuple) or len(binding) != 2:
+            from .services.diagnostic_capture import record_bound_response
+
+            record_bound_response(event, response)
             return
         try:
             await on_llm_response(binding[0], event, response)

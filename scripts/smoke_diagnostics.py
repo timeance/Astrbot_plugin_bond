@@ -22,6 +22,39 @@ async def check(root, runtime):
 
     schema = json.loads((root / "_conf_schema.json").read_text(encoding="utf-8"))
     assert schema["diagnostics"]["items"]["enabled"]["default"] is False
+    assert schema["diagnostics"]["items"]["detail_level"]["default"] == "assessment"
+    # 宿主在装配插件前补全 schema 默认值；升级旧开关不能顺带开启原文采集。
+    for level in (None, "raw", "evaluation", "full"):
+        old = {"diagnostics": {"enabled": True}}
+        if level is not None:
+            old["diagnostics"]["detail_level"] = level
+        path = runtime / f"legacy-{level or 'missing'}.json"
+        path.write_text(json.dumps(old), encoding="utf-8")
+        legacy = AstrBotConfig(str(path), schema=schema)
+        expected = level or "assessment"
+        assert legacy["diagnostics"]["detail_level"] == expected
+        assert (
+            json.loads(path.read_text(encoding="utf-8-sig"))["diagnostics"][
+                "detail_level"
+            ]
+            == expected
+        )
+        probe = BondPlugin(_context(Context, legacy), legacy)
+        try:
+            assert probe._diagnostics.detail_level == expected
+            assert probe._diagnostics.wants("chat") == (level is not None)
+            assert probe._diagnostics.wants("request") == (level == "full")
+        finally:
+            await probe.terminate()
+        if level is None:
+            # 不经宿主补全的调用同样使用保守默认值。
+            legacy["diagnostics"].pop("detail_level")
+            probe = BondPlugin(_context(Context, legacy), legacy)
+            try:
+                assert probe._diagnostics.detail_level == "assessment"
+                assert not probe._diagnostics.wants("chat")
+            finally:
+                await probe.terminate()
     config = AstrBotConfig(str(runtime / "config.json"), schema=schema)
     config["diagnostics"]["enabled"] = True
     config["inject"]["enabled"] = True
@@ -62,7 +95,7 @@ async def check(root, runtime):
                         get_sender_id=lambda: user,
                         get_self_id=lambda: bot,
                         get_platform_name=lambda: "synthetic",
-                        message_obj=SimpleNamespace(message_id=f"diag-{bot}-{mode}"),
+                        message_obj=SimpleNamespace(message_id=f"render-{bot}-{mode}"),
                     ),
                     req,
                 )
@@ -136,7 +169,7 @@ async def check(root, runtime):
     finally:
         await plugin.terminate()
     print(
-        "PASS diagnostics: 2 Bot/2 scope、真实配置重载、脱敏导出、认证拒绝、选择性清除、正式状态不变、关闭后历史管理。"
+        "PASS diagnostics: 2 Bot/2 scope、旧配置默认档位与显式选择、真实配置重载、脱敏导出、认证拒绝、选择性清除、正式状态不变、关闭后历史管理。"
     )
     print("LIMIT: Quart认证上下文为合成，不是完整HTTP登录/浏览器或真实聊天验收。")
 

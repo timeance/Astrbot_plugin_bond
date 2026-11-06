@@ -340,11 +340,12 @@ class World:
             and c["text"] == event.message_str
             for c in self.calls
         )
-        last_log_id = (
-            deps.favor._storage._c()
-            .execute("SELECT COALESCE(MAX(id),0) FROM favor_log")
-            .fetchone()[0]
-        )
+        with deps.favor._storage._lock:
+            last_log_id = (
+                deps.favor._storage._c()
+                .execute("SELECT COALESCE(MAX(id),0) FROM favor_log")
+                .fetchone()[0]
+            )
         started = time.perf_counter()
         async for _ in self.hook(self.plugin, event):
             pass
@@ -375,14 +376,15 @@ class World:
         for row in matching:
             for dimension in DIMENSIONS:
                 delta[dimension] += row["relation_delta"].get(dimension, 0)
-        status_row = (
-            deps.favor._storage._c()
-            .execute(
-                "SELECT status FROM assessment_attempt WHERE event_id=?",
-                (interaction.event_id,),
+        with deps.favor._storage._lock:
+            status_row = (
+                deps.favor._storage._c()
+                .execute(
+                    "SELECT status FROM assessment_attempt WHERE event_id=?",
+                    (interaction.event_id,),
+                )
+                .fetchone()
             )
-            .fetchone()
-        )
         changed = any(delta.values())
         gold = step["gold"]
         self.rows.append(
@@ -534,9 +536,15 @@ class World:
             for r in self.rows
         }
         for (bot, mode), store in self.router._backends.items():
-            for row in store._c().execute(
-                "SELECT event_id,group_id,user_id FROM favor_log WHERE source='judge'"
-            ):
+            with store._lock:
+                persisted = (
+                    store._c()
+                    .execute(
+                        "SELECT event_id,group_id,user_id FROM favor_log WHERE source='judge'"
+                    )
+                    .fetchall()
+                )
+            for row in persisted:
                 actual = (bot, mode, row[1], row[2])
                 assert expected.get(row[0]) == actual, (
                     "发现未跟踪或错主体持久化",

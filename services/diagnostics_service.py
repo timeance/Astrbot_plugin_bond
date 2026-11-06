@@ -1,7 +1,7 @@
-"""默认关闭的脱敏/代号化诊断；一个专用根目录、一个事件循环、一个 writer。
+"""分级诊断；一个专用根目录、一个事件循环、一个 writer。
 
 路径中的 Bot/模式摘要仅用于历史定位，不导出。行内身份使用每次记录会话
-的随机 HMAC 盐；不读取消息或关系库。统计不持久化，历史缺口明确为未知。
+的随机 HMAC 盐；详细内容仅由观察点显式提供。统计不持久化，历史缺口明确为未知。
 """
 
 from __future__ import annotations
@@ -19,11 +19,16 @@ from pathlib import Path
 
 
 class DiagnosticRecorder:
-    VERSION = 1
-    MAX_BYTES, MAX_LINE, MAX_FILES, MAX_NAMESPACES = 20 * 1024 * 1024, 4096, 512, 128
+    VERSION = 2
+    MAX_BYTES, MAX_LINE, MAX_FILES, MAX_NAMESPACES = 10_000_000_000, 196608, 65536, 128
+    MAX_QUEUE_BYTES, MAX_EXPORT_BYTES = 8_000_000, 16_000_000
+    CONTENT_BYTES = 128_000
+    MAINTENANCE_SECONDS = 3600
+    LEVELS = ("assessment", "raw", "evaluation", "full")
+    STAGES = {"chat": 1, "response": 1, "evaluation": 2, "request": 3}
     SEGMENT_BYTES, MAX_EXPORT_ROWS = 256 * 1024, 32768
     MODES = ("per_group", "global")
-    KINDS = frozenset("assessment call relation render entry".split())
+    KINDS = frozenset("assessment call relation render entry content".split())
     ENUMS = {
         "status": frozenset(
             "queued started ok success accepted skipped failed rejected disabled cancelled applied unchanged invalid timeout abstained temporary busy filtered duplicate_or_cooldown committed duplicate cooldown injected budget".split()
@@ -39,6 +44,7 @@ class DiagnosticRecorder:
     }
     PATTERNS = {
         "event_id": r"[0-9a-f]{16,128}",
+        "trace_id": r"[0-9a-f]{16,128}",
         "term_before": r"(?:r[0-9]{2}|legacy)",
         "term_after": r"(?:r[0-9]{2}|legacy)",
         "policy_version": r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}",
@@ -70,13 +76,20 @@ class DiagnosticRecorder:
         registry,
         enabled=False,
         *,
-        max_bytes=20 * 1024 * 1024,
+        max_bytes=100_000_000,
+        detail_level="assessment",
         retention_days=7,
         clock=time.time,
         queue_limit=256,
     ):
         self.root, self.registry = Path(os.path.abspath(root)), registry
         self.enabled, self._closed = bool(enabled), False
+        self.detail_level = (
+            detail_level if detail_level in self.LEVELS else "assessment"
+        )
+        self._generations = {}
+        self._maintenance_task = None
+        self._maintenance_stop = asyncio.Event()
         self.max_bytes = max(1, min(int(max_bytes), self.MAX_BYTES))
         self.retention = max(0, min(float(retention_days), 7)) * 86400
         self.queue_limit = max(1, min(int(queue_limit), 256))
@@ -222,13 +235,28 @@ class DiagnosticRecorder:
             selector = None
         self._reject(selector, "invalid")
 
-    def emit(self, bot_id, scope_mode, group_id, user_id, kind, **fields):
+    def emit(
+        self,
+        bot_id,
+        scope_mode,
+        group_id,
+        user_id,
+        kind,
+        *,
+        generation=None,
+        _content=None,
+        **fields,
+    ):
         """同步无磁盘 IO；身份来自可信事件，返回是否入队。"""
         if not self.enabled:
             return False
         selector = None
         try:
             selector = self._selector(bot_id, scope_mode)
+            if generation is not None and generation != self._generations.get(
+                selector, 0
+            ):
+                return False
             if self._closed:
                 return self._reject(selector, "closed")
             if selector not in self._counts:
@@ -251,8 +279,9 @@ class DiagnosticRecorder:
                 raise ValueError("无效诊断时间")
             namespace = self._tag("namespace", selector)
             partition = self._tag("partition", namespace, group)
-            if "event_id" in clean:
-                clean["event_id"] = self._tag("event", partition, clean["event_id"])
+            for key in ("event_id", "trace_id"):
+                if key in clean:
+                    clean[key] = self._tag("event", partition, clean[key])
             row = dict(
                 version=self.VERSION,
                 session=self.session,
@@ -264,11 +293,21 @@ class DiagnosticRecorder:
                 kind=kind,
                 fields=clean,
             )
+            if _content is not None:
+                row["content"] = _content
             line = (
-                json.dumps(row, separators=(",", ":"), allow_nan=False) + "\n"
+                json.dumps(
+                    row, separators=(",", ":"), allow_nan=False, ensure_ascii=False
+                )
+                + "\n"
             ).encode()
             if len(line) > min(self.MAX_LINE, self.max_bytes):
                 raise ValueError("诊断行过大")
+            if (
+                sum(len(item[1]) for item in self._queue) + len(line)
+                > self.MAX_QUEUE_BYTES
+            ):
+                return self._reject(selector, "queue_full")
             loop = asyncio.get_running_loop()
             if self._loop is not None and loop is not self._loop:
                 raise ValueError("诊断事件循环不同")
@@ -286,6 +325,238 @@ class DiagnosticRecorder:
             return True
         except Exception:
             return self._reject(selector, "invalid")
+
+    def capture_token(self, bot_id, mode):
+        return self._generations.get(self._selector(bot_id, mode), 0)
+
+    def wants(self, stage):
+        return (
+            self.enabled
+            and not self._closed
+            and self.LEVELS.index(self.detail_level) >= self.STAGES.get(stage, 99)
+        )
+
+    @classmethod
+    def _content_snapshot(cls, content):
+        """只复制有界 JSON 数据，不调用任意对象的字符串化方法。"""
+        remaining = cls.CONTENT_BYTES
+        truncated = False
+        omitted = False
+        denied = re.compile(
+            r"(?:api.?key|authorization|credential|password|secret|access.?token|refresh.?token|cookie|base64|image.?url|audio|video|file.?path|local.?path)",
+            re.I,
+        )
+        credential = re.compile(
+            r"(?i)(\b(?:Bearer)\s+)[A-Za-z0-9._~+/=-]+|\bsk-[A-Za-z0-9_-]{12,}|(\b(?:api[_-]?key|password|access_token|refresh_token)\s*[:=]\s*)[^\s,;]+"
+        )
+
+        # 工具结果常把 JSON 对象放在 content 字符串中；保留字段和合法 JSON 引号。
+        quoted_credential = re.compile(
+            r'(?i)("(?:api.?key|authorization|credential|password|secret|access.?token|refresh.?token|cookie)"\s*:\s*)"(?:\\.|[^"\\])*"'
+        )
+
+        def filter_text(value):
+            value = quoted_credential.sub(
+                lambda match: match[1] + '"[redacted]"', value
+            )
+            value = credential.sub("[redacted]", value)
+            value = re.sub(r"data:[^\s]+", "[media omitted]", value)
+            return re.sub(
+                r'https?://[^\s<>"]+',
+                lambda m: m[0].split("?")[0].split("#")[0] if "?" in m[0] else m[0],
+                value,
+            )
+
+        def redact_json(value):
+            nonlocal truncated, omitted
+            # 所有再次编码的 JSON 共用同一深度、节点和大小限制。
+            nodes = 4096
+
+            def redact_text(text, depth=0):
+                stripped = text.lstrip()
+                if stripped.startswith(
+                    ("[redacted]", "[media omitted]", "[JSON content omitted]")
+                ):
+                    return filter_text(text)
+                if not stripped.startswith(("{", "[")):
+                    return filter_text(text)
+                if len(text) > 32768:
+                    raise ValueError("JSON 内容过大")
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    # 括号、表情和 Markdown 链接也可能以 { 或 [ 开头。
+                    # 残缺 JSON 含敏感字段时仍省略，避免退回文本过滤后漏出值。
+                    # 不尝试恢复残缺 JSON；字段语法（含转义引号）出现即省略。
+                    if re.search(r'(?:"|\\u0022)\s*:', text):
+                        raise ValueError("残缺 JSON 含字段语法")
+                    return filter_text(text)
+                cleaned = redact(parsed, depth)
+                return (
+                    json.dumps(cleaned, ensure_ascii=False, allow_nan=False)
+                    if cleaned != parsed
+                    else text
+                )
+
+            def redact(item, depth=0):
+                nonlocal nodes
+                nodes -= 1
+                if nodes < 0 or depth > 8:
+                    raise ValueError("JSON 内容过大")
+                if type(item) is dict:
+                    return {
+                        key: (
+                            "[redacted]"
+                            if denied.search(key)
+                            else redact(child, depth + 1)
+                        )
+                        for key, child in item.items()
+                    }
+                if type(item) is list:
+                    return [redact(child, depth + 1) for child in item]
+                if type(item) is str:
+                    return redact_text(item, depth + 1)
+                return item
+
+            try:
+                result = redact_text(value)
+                if result != value:
+                    omitted = True
+                return result
+            except (ValueError, RecursionError):
+                # 敏感 JSON 解析失败或超限时整段省略，避免漏出敏感字段。
+                truncated = omitted = True
+                return "[JSON content omitted]"
+
+        def copy(value, depth=0):
+            nonlocal remaining, truncated, omitted
+            if remaining <= 0 or depth > 8:
+                truncated = True
+                remaining -= 8
+                return None
+            if type(value) is str:
+                value = redact_json(value)
+                json_value = value.lstrip().startswith(("{", "["))
+                size = min(32768, remaining)
+                if (
+                    json_value
+                    and len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+                    > size
+                ):
+                    truncated = omitted = True
+                    value = "[JSON content omitted]"
+                    if len(json.dumps(value).encode("utf-8")) > size:
+                        value = ""
+                raw = value.encode("utf-8")
+                if len(raw) > size:
+                    truncated = True
+                    value = raw[:size].decode("utf-8", errors="ignore")
+                encoded = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+                while encoded > size and value:
+                    truncated = True
+                    value = value[: max(0, len(value) * size // encoded - 1)]
+                    encoded = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+                remaining -= encoded + 16
+                return value
+            if value is None or type(value) is bool:
+                remaining -= 8
+                return value
+            if type(value) in (int, float):
+                if cls._number(value):
+                    remaining -= 32
+                    return value
+                omitted = True
+                # 替代值与再次检查时的 null 使用相同预算，避免导出重新截断。
+                remaining -= 8
+                return None
+            if type(value) is dict:
+                remaining -= 16
+                result = {}
+                for index, (key, item) in enumerate(value.items()):
+                    if index >= 128 or remaining <= 0:
+                        truncated = True
+                        break
+                    if type(key) is not str or len(key) > 128 or denied.search(key):
+                        omitted = True
+                        continue
+                    remaining -= (
+                        len(json.dumps(key, ensure_ascii=False).encode("utf-8")) + 8
+                    )
+                    result[key] = copy(item, depth + 1)
+                return result
+            if type(value) in (list, tuple):
+                remaining -= 16
+                result = []
+                for index, item in enumerate(value):
+                    if index >= 128 or remaining <= 0:
+                        truncated = True
+                        break
+                    remaining -= 8
+                    result.append(copy(item, depth + 1))
+                return result
+            omitted = True
+            remaining -= 8
+            return None
+
+        payload = copy(content)
+        return dict(data=payload, truncated=truncated, omitted=omitted)
+
+    def emit_content(
+        self,
+        bot_id,
+        mode,
+        group_id,
+        user_id,
+        *,
+        trace_id,
+        stage,
+        content,
+        generation=None,
+    ):
+        if not self.wants(stage):
+            return False
+        try:
+            snapshot = self._content_snapshot(content)
+            snapshot["stage"] = stage
+            return self.emit(
+                bot_id,
+                mode,
+                group_id,
+                user_id,
+                "content",
+                trace_id=trace_id,
+                generation=generation,
+                _content=snapshot,
+            )
+        except Exception:
+            self.note_failure(bot_id, mode)
+            return False
+
+    async def start(self):
+        """启动保留期限清理；关闭采集时仍清理已有诊断。"""
+        if self._closed or self._maintenance_task is not None:
+            return
+        await self.maintain()
+        self._maintenance_task = self.registry.spawn(
+            self._maintenance(), name="bond-diagnostics-retention"
+        )
+
+    async def maintain(self):
+        async with self._lock:
+            try:
+                self._merge(await self._disk(self._prune))
+            except Exception:
+                self._note(None, "write_errors")
+
+    async def _maintenance(self):
+        while not self._closed:
+            try:
+                await asyncio.wait_for(
+                    self._maintenance_stop.wait(), timeout=self.MAINTENANCE_SECONDS
+                )
+                break
+            except asyncio.TimeoutError:
+                await self.maintain()
 
     async def _writer(self):
         while not self._closed or self._queue:
@@ -438,6 +709,9 @@ class DiagnosticRecorder:
 
     async def close(self):
         self._closed = True
+        self._maintenance_stop.set()
+        if self._maintenance_task is not None:
+            await asyncio.gather(self._maintenance_task, return_exceptions=True)
         if self.enabled:
             self._wake.set()
             await self.flush()
@@ -470,6 +744,8 @@ class DiagnosticRecorder:
             enabled=self.enabled,
             closed=self._closed,
             version=self.VERSION,
+            detail_level=self.detail_level,
+            max_bytes=self.max_bytes,
             session=self.session,
             namespace=(
                 self._tag("namespace", selector) if selector and self.session else None
@@ -483,11 +759,59 @@ class DiagnosticRecorder:
             namespace_limit=self.MAX_NAMESPACES,
         )
 
+    def _sizes(self, selector):
+        files = self._files()
+        return (sum(f[3] for f in files if f[5] == selector), sum(f[3] for f in files))
+
+    async def status(self, bot_id, mode):
+        result = self.stats(bot_id, mode)
+        selector = self._selector(bot_id, mode)
+        result.update(
+            disk_bytes=None,
+            total_disk_bytes=None,
+            max_bytes=self.max_bytes,
+            detail_level=self.detail_level,
+            size_available=False,
+            queued_bytes=sum(len(line) for ns, line in self._queue if ns == selector),
+            total_queued_bytes=sum(len(line) for _, line in self._queue),
+        )
+        async with self._lock:
+            try:
+                scoped, total = await self._disk(self._sizes, selector)
+                result.update(
+                    disk_bytes=scoped, total_disk_bytes=total, size_available=True
+                )
+            except Exception:
+                pass
+        return result
+
     def _valid_row(self, row, session, mode):
-        if type(row) is not dict or set(row) != self.ROW_KEYS:
+        if type(row) is not dict:
             return False
+        expected = self.ROW_KEYS | (
+            {"content"} if row.get("kind") == "content" else set()
+        )
+        if set(row) != expected:
+            return False
+        if row.get("kind") == "content":
+            content = row.get("content")
+            if (
+                row.get("version") != 2
+                or type(content) is not dict
+                or set(content) != {"stage", "data", "truncated", "omitted"}
+            ):
+                return False
+            if (
+                content["stage"] not in self.STAGES
+                or type(content["truncated"]) is not bool
+                or type(content["omitted"]) is not bool
+            ):
+                return False
+            # 已有快照重新过白名单，拒绝被外部篡改的凭据或对象结构。
+            if self._content_snapshot(content["data"])["data"] != content["data"]:
+                return False
         return (
-            row["version"] == self.VERSION
+            row["version"] in (1, self.VERSION)
             and row["session"] == session
             and row["mode"] == mode
             and type(row["kind"]) is str
@@ -503,6 +827,7 @@ class DiagnosticRecorder:
 
     def _read(self, selector, mode):
         notes, rows = self._prune(), deque(maxlen=self.MAX_EXPORT_ROWS)
+        sizes, total_bytes = deque(maxlen=self.MAX_EXPORT_ROWS), 0
         for file in self._files():
             if file[5] != selector:
                 continue
@@ -513,9 +838,16 @@ class DiagnosticRecorder:
                     row = json.loads(line)
                     if not self._valid_row(row, file[4], mode):
                         raise ValueError("无效诊断行")
-                    if len(rows) == rows.maxlen:
+                    while rows and (
+                        len(rows) == rows.maxlen
+                        or total_bytes + len(line) > self.MAX_EXPORT_BYTES
+                    ):
+                        rows.popleft()
+                        total_bytes -= sizes.popleft()
                         notes[(selector, "export_truncated")] += 1
                     rows.append(row)
+                    sizes.append(len(line))
+                    total_bytes += len(line)
                 except (ValueError, TypeError, OverflowError, RecursionError):
                     notes[(selector, "corrupt_lines")] += 1
         return list(rows), notes
@@ -533,7 +865,7 @@ class DiagnosticRecorder:
                 self._merge(notes)
             except Exception:
                 self._note(selector, "read_errors")
-        stats = self.stats(bot_id, mode)
+        stats = await self.status(bot_id, mode)
         return dict(rows=rows, stats=stats, missing=stats["missing"])
 
     def _erase(self, selector):
@@ -550,6 +882,7 @@ class DiagnosticRecorder:
             self._counts.setdefault(selector, (mode, Counter()))
         succeeded = True
         async with self._lock:
+            self._generations[selector] = self._generations.get(selector, 0) + 1
             pending = sum(1 for ns, _ in self._queue if ns == selector)
             self._queue = deque(
                 (ns, line) for ns, line in self._queue if ns != selector
@@ -560,4 +893,4 @@ class DiagnosticRecorder:
             except Exception:
                 succeeded = False
                 self._note(selector, "write_errors")
-        return dict(self.stats(bot_id, mode), clear_succeeded=succeeded)
+        return dict(await self.status(bot_id, mode), clear_succeeded=succeeded)

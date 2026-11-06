@@ -25,7 +25,10 @@ class Collector:
         self.rows.append(dict(kind=kind, **fields))
 
 
-async def run_case(path, enabled, *, failed=False, disk=False, broken_disk=False):
+async def run_case(
+    path, enabled, *, failed=False, disk=False, broken_disk=False, level="raw"
+):
+
     store = SQLiteBackend(path / "10001" / "group.db")
     await store.init()
     from astrbot_plugin_bond.core.taskregistry import TaskRegistry
@@ -35,7 +38,7 @@ async def run_case(path, enabled, *, failed=False, disk=False, broken_disk=False
         root = path / "diagnostics"
         if broken_disk:
             root.write_text("synthetic blocked directory", encoding="utf-8")
-        sink = DiagnosticRecorder(root, TaskRegistry(), enabled)
+        sink = DiagnosticRecorder(root, TaskRegistry(), enabled, detail_level=level)
     else:
         sink = Collector(enabled)
     favor = FavorService(store, LevelTable.from_config(None), diagnostics=sink)
@@ -93,6 +96,7 @@ async def run_case(path, enabled, *, failed=False, disk=False, broken_disk=False
             ],
             rows=rows,
             diagnostics_stats=stats,
+            exported=exported if disk else None,
         )
     finally:
         if disk:
@@ -239,5 +243,82 @@ def test_global_reset_preserves_origin_and_undo_never_links_unknown_group(tmp_pa
         finally:
             await sink.close()
             await store.close()
+
+    asyncio.run(run())
+
+
+def test_four_levels_capture_only_selected_inputs_and_same_business(tmp_path):
+    async def run():
+        results = {}
+        for level in ("assessment", "raw", "evaluation", "full"):
+            results[level] = await run_case(
+                tmp_path / level, True, disk=True, level=level
+            )
+        for level, result in results.items():
+            assert result["state"] == results["assessment"]["state"]
+            assert result["calls"] == results["assessment"]["calls"]
+            content = [r for r in result["exported"]["rows"] if r["kind"] == "content"]
+            stages = {r["content"]["stage"] for r in content}
+            assert ("chat" in stages) == (level != "assessment")
+            assert ("evaluation" in stages) == (level in ("evaluation", "full"))
+            traces = {r["fields"].get("trace_id") for r in result["exported"]["rows"]}
+            assert len(traces) == 1 and None not in traces
+            if level in ("evaluation", "full"):
+                prompts = [
+                    r["content"]["data"]["prompt"]
+                    for r in content
+                    if "prompt" in r["content"]["data"]
+                ]
+                assert prompts == result["calls"]
+
+    asyncio.run(run())
+
+
+def test_clear_during_model_call_keeps_relation_but_not_old_diagnostics(tmp_path):
+    async def run():
+        from astrbot_plugin_bond.services.diagnostics_service import DiagnosticRecorder
+        from astrbot_plugin_bond.core.taskregistry import TaskRegistry
+
+        store = SQLiteBackend(tmp_path / "10001" / "group.db")
+        await store.init()
+        sink = DiagnosticRecorder(
+            tmp_path / "diagnostics", TaskRegistry(), True, detail_level="full"
+        )
+        favor = FavorService(store, LevelTable.from_config(None), diagnostics=sink)
+        started, proceed = asyncio.Event(), asyncio.Event()
+
+        async def chat(prompt):
+            started.set()
+            await proceed.wait()
+            return SimpleNamespace(
+                completion_text=json.dumps(
+                    dict(event_type="thanks", confidence=0.95, evidence="谢谢")
+                )
+            )
+
+        async def stores():
+            return [store]
+
+        assessment = AssessmentService(
+            store,
+            favor,
+            SimpleNamespace(
+                get_provider_by_id=lambda _: SimpleNamespace(text_chat=chat)
+            ),
+            AssessmentConfig(enabled=True, small_provider_id="small"),
+            AssessmentCapacity(),
+            stores,
+        )
+        interaction = Interaction("10001", "20001", "30001", "test", "m1", "谢谢")
+        task = asyncio.create_task(assessment.assess(interaction, directed=True))
+        await asyncio.wait_for(started.wait(), 3)
+        await sink.clear("10001", "per_group")
+        proceed.set()
+        assert await task == "accepted"
+        assert (await favor.get_relation("20001", "30001")).affinity > 0
+        assert await favor.query_logs("20001", "30001")
+        assert (await sink.export("10001", "per_group"))["rows"] == []
+        await sink.close()
+        await store.close()
 
     asyncio.run(run())

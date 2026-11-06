@@ -740,12 +740,13 @@ class PageApi:
                     {
                         "success": True,
                         "diagnostics": await recorder.export(bot_id, mode),
+                        "status": await recorder.status(bot_id, mode),
                     }
                 )
             elif request.method != "GET" or action != "status":
                 raise _PageRequestError
             return self._response(
-                {"success": True, "diagnostics": recorder.stats(bot_id, mode)}
+                {"success": True, "diagnostics": await recorder.status(bot_id, mode)}
             )
 
         return await self._invoke(run)

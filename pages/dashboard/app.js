@@ -126,37 +126,54 @@ createApp({
     const diagnosticNotice = ref("");
     const diagnosticDownload = ref("");
     const diagnosticConfirm = ref(false);
+    const diagnosticSize = (bytes) => typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 0
+      ? `${(bytes / 1000000).toFixed(2)} MB` : "未知";
+    let diagnosticRefreshTimer = null;
+    let diagnosticDisposed = false;
+    const pollDiagnostics = async () => {
+      if (diagnosticDisposed) return;
+      if (tab.value === "settings" && !diagnosticConfirm.value) await diagnosticRequest("status", true);
+      if (!diagnosticDisposed) diagnosticRefreshTimer = setTimeout(pollDiagnostics, 10000);
+    };
     const releaseDiagnosticDownload = () => {
       if (diagnosticDownload.value) URL.revokeObjectURL(diagnosticDownload.value);
       diagnosticDownload.value = "";
     };
-    const diagnosticRequest = async (action = "status") => {
+    const diagnosticRequest = async (action = "status", quiet = false) => {
       const snapshot = scopeSnapshot(), revision = scopeRevision.value;
       if (!snapshot || diagnosticLoading.value) return;
       if (action === "clear" && !diagnosticConfirm.value) { diagnosticConfirm.value = true; return; }
-      diagnosticLoading.value = true; diagnosticNotice.value = ""; diagnosticConfirm.value = false;
+      diagnosticLoading.value = true; if (!quiet) diagnosticNotice.value = ""; diagnosticConfirm.value = false;
       try {
         const data = action === "clear"
           ? await scopedPost("diagnostics", {action}, snapshot)
           : await scopedGet("diagnostics", {action}, snapshot);
         if (!isCurrentScope(snapshot, revision)) return;
         if (!data.success) throw new Error(data.error || "诊断操作失败");
-        releaseDiagnosticDownload();
+        if (action !== "status") releaseDiagnosticDownload();
         if (action === "export") {
           diagnosticDownload.value = URL.createObjectURL(new Blob(
             [JSON.stringify(data.diagnostics, null, 2)], {type:"application/json"}));
           diagnosticNotice.value = "诊断记录已准备好，可以下载查看。";
+          diagnosticStats.value = data.status || diagnosticStats.value;
         } else {
           diagnosticStats.value = data.diagnostics;
-          diagnosticNotice.value = action === "clear" ? "当前 Bot 和数据空间的诊断记录已清除，关系数据保留。" : "";
+          if (!quiet) diagnosticNotice.value = action === "clear" ? "诊断记录已清除。" : "";
         }
       } catch (error) {
-        if (isCurrentScope(snapshot, revision)) diagnosticNotice.value = String(error);
+        if (isCurrentScope(snapshot, revision)) {
+          diagnosticStats.value = null;
+          if (!quiet) diagnosticNotice.value = String(error);
+        }
       } finally {
         if (isCurrentScope(snapshot, revision)) diagnosticLoading.value = false;
       }
     };
-    onUnmounted(releaseDiagnosticDownload);
+    onUnmounted(() => {
+      diagnosticDisposed = true;
+      clearTimeout(diagnosticRefreshTimer);
+      releaseDiagnosticDownload();
+    });
     const detailSettings = ref(null);
     const detailValues = ref({});
     const detailLoading = ref(false);
@@ -208,7 +225,7 @@ createApp({
       if (selected && !options.some(option => option.id === selected)) options.push({id: selected, label: `${selected}（暂不可用）`});
       return options;
     };
-    const loadSettings = () => settingsRequest();
+    const loadSettings = () => settingsSaving ? Promise.resolve() : Promise.all([settingsRequest(), diagnosticRequest("status")]);
     const saveSettings = () => settingsRequest(true);
     const restoreSectionDefaults = (group) => {
       if (detailLoading.value || !detailSettings.value || group === "basic") return;
@@ -940,6 +957,7 @@ createApp({
         if (tab.value === "logs") await fetchLogs();
         if (tab.value === "prompts") await loadPrompts(snapshot);
         if (tab.value === "evaluation") await loadEvaluation(snapshot);
+        if (tab.value === "settings") await diagnosticRequest("status");
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) {
           errorMsg.value = String(e);
@@ -1203,7 +1221,10 @@ createApp({
       if (t === "users") { resetUserPage(); fetchTodaySummary(); }
       if (t === "prompts") loadPrompts();
       if (t === "evaluation") loadEvaluation();
-      if (t === "settings" && !detailSettings.value && !detailLoading.value) loadSettings();
+      if (t === "settings") {
+        if (!detailSettings.value && !detailLoading.value) loadSettings();
+        else diagnosticRequest("status");
+      }
     };
 
     const handleKeydown = (e) => {
@@ -1215,6 +1236,7 @@ createApp({
     };
 
     onMounted(async () => {
+      diagnosticRefreshTimer = setTimeout(pollDiagnostics, 10000);
       if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
         window.addEventListener("keydown", handleKeydown);
       }
@@ -1259,7 +1281,7 @@ createApp({
       displayReason, displayStatus, detailSettings, detailValues, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
       restoreSectionDefaults, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions,
       evaluationFields, restoreEvaluationDefaults,
-      diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest,
+      diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest, diagnosticSize,
     };
   },
   template: `
@@ -1682,21 +1704,23 @@ createApp({
               </select>
               <p v-if="!detailSettings.providers?.length" class="xx-help" :id="'provider-hint-' + field.path">暂无可用模型，请先在 AstrBot 配置文本模型。</p>
             </div>
-            <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用"})[option] || option }}</option></select>
-            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
+            <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading || (field.path === 'diagnostics.detail_level' && !detailValues['diagnostics.enabled'])"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用",assessment:"评估记录",raw:"原文+评估",evaluation:"评估上下文",full:"完整上下文"})[option] || option }}</option></select>
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path === 'diagnostics.max_size_mb' ? 1 : field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path === 'diagnostics.max_size_mb' ? 10000 : field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
             <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="(detailValues[field.path] || []).join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :placeholder="field.path === 'master_ids' ? listPlaceholder(field.path) : ''">
           </div>
         </details>
         <div class="xx-form-card">
           <h4>当前空间的诊断记录</h4>
-          <p class="xx-help">开启“关系诊断记录”后可导出本空间的运行记录。最多保留7天、合计20MB，不保存聊天原文，不自动上传。</p>
+          <p class="xx-help">按所选详细程度记录，可导出或清除。</p>
           <div class="xx-actions" style="margin-top: 12px;">
             <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
             <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
             <button class="xx-btn" :class="diagnosticConfirm ? 'xx-btn-danger' : 'xx-btn-mini'" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
-            <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn xx-btn-primary">下载脱敏记录</a>
+            <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn xx-btn-primary">下载诊断记录</a>
           </div>
+          <p class="xx-help">诊断记录占用：当前空间 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.disk_bytes : null) }} · 全部 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.total_disk_bytes : null) }} / {{ diagnosticSize(diagnosticStats?.max_bytes) }}</p>
+          <p v-if="diagnosticStats?.size_available && diagnosticStats.total_disk_bytes >= diagnosticStats.max_bytes * 0.9" class="xx-help">接近容量上限，旧记录将自动清理。</p>
           <p v-if="diagnosticNotice" class="xx-help" role="status">{{ diagnosticNotice }}</p>
           <dl v-if="diagnosticStats" class="xx-runtime-list" style="margin-top: 12px;">
             <div><dt>当前记录开关</dt><dd>{{ diagnosticStats.enabled ? "已开启" : "已关闭" }}</dd></div>

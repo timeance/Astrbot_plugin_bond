@@ -506,7 +506,7 @@ test('rule and assessment controls keep a single entry and explain saved versus 
  assert.match(source,/<table class="xx-table" aria-label="当前关系设置">/);
  assert.match(source,/activeRuleSummary\[cap.key\]/);
  assert.match(source,/activeRuleSummary.baselines\[cap.key\]/);
- assert.match(source,/:max="field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
+ assert.match(source,/field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
  assert.match(source,/历史不再计分/);assert.match(source,/不同互动可分别评分/);
  assert.match(source,/保存并重载|保存后重载/);
  assert.doesNotMatch(source,/<details open|:open="group.group/);
@@ -757,4 +757,37 @@ test('overview impression columns retain status, handle empty rows and constrain
  const css=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.css'),'utf8');
  assert.match(css,/\.xx-overview-table\.is-impressions\s*\{[^}]*table-layout: fixed;[^}]*min-width: 900px;/);
  assert.match(css,/\.xx-overview-impression\s*\{[^}]*-webkit-line-clamp: 2;[^}]*overflow: hidden;[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;/);
+});
+
+test('diagnostic sizes use decimal MB and keep unknown distinct from zero',()=>{
+ const {ui}=harness();
+ assert.equal(ui.diagnosticSize(100000000),'100.00 MB');
+ assert.equal(ui.diagnosticSize(0),'0.00 MB');
+ for(const value of [null,undefined,NaN,-1,'100'])assert.equal(ui.diagnosticSize(value),'未知');
+});
+
+test('diagnostic status refresh preserves prepared download',async()=>{
+ const {ui,pendingGets}=harness({URL:{createObjectURL:()=> 'blob:diagnostic',revokeObjectURL:()=>{}},Blob:class{}},['diagnostics']);
+ const request=ui.diagnosticRequest('status');
+ ui.diagnosticDownload.value='blob:diagnostic';
+ pendingGets[0].resolve({success:true,diagnostics:{size_available:true,disk_bytes:42,total_disk_bytes:100,max_bytes:100000000}});
+ await request;
+ assert.equal(ui.diagnosticStats.value.disk_bytes,42);
+ assert.equal(ui.diagnosticDownload.value,'blob:diagnostic');
+});
+
+test('failed diagnostic size read removes stale usage',async()=>{
+ const {ui,pendingGets}=harness({},['diagnostics']);
+ ui.diagnosticStats.value={disk_bytes:50};
+ const request=ui.diagnosticRequest('status');
+ pendingGets[0].resolve({success:false,error:'读取失败'});await request;
+ assert.equal(ui.diagnosticStats.value,null);
+ assert.match(ui.diagnosticNotice.value,/读取失败/);
+});
+
+test('diagnostic labels and compact usage remain in settings',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ for(const label of ['评估记录','原文+评估','评估上下文','完整上下文','诊断记录占用'])assert.ok(source.includes(label));
+ assert.ok(!source.includes('下载脱敏记录'));
+ assert.ok(!source.includes('不保存聊天原文'));
 });
