@@ -1121,12 +1121,12 @@
   },
   "diagnostics": {
     "type": "object",
-    "description": "关系诊断",
+    "description": "系统诊断",
     "items": {
       "enabled": {
         "type": "bool",
         "default": false,
-        "description": "记录关系诊断",
+        "description": "记录系统诊断",
         "hint": "记录评估与关系变化，按所选详细程度保留诊断内容。"
       },
       "detail_level": {

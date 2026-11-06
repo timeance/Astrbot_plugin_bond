@@ -798,3 +798,60 @@ test('passive familiarity has a clear audit source label',()=>{
  assert.equal(ui.sourceLabel('passive_familiarity'),'群聊活跃');
  assert.equal(ui.sourceLabel('judge'),'评估');
 });
+
+
+test('settings reminders follow the draft and saved runtime difference across save results',async()=>{
+ const {ui,pending,pendingGets}=harness({},['settings']);
+ const initial={'inject.enabled':false};
+ ui.detailSettings.value={revision:'initial',values:{...initial},active_values:{...initial},fields:[]};
+ ui.detailValues.value={...initial};
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,false);
+ ui.detailValues.value['inject.enabled']=true;
+ assert.equal(ui.detailDirty.value,true);
+ const failed=ui.saveSettings();
+ assert.equal(ui.detailDirty.value,true);
+ pending[0].resolve({success:false,error:'保存失败'});await failed;
+ assert.equal(ui.detailDirty.value,true);assert.equal(ui.detailNeedsReload.value,false);
+ const saved=ui.saveSettings();
+ pending[1].resolve({success:true,revision:'saved',values:{'inject.enabled':true},active_values:{...initial},fields:[]});await saved;
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,true);
+ ui.detailValues.value['inject.enabled']=false;assert.equal(ui.detailDirty.value,true);
+ ui.detailValues.value['inject.enabled']=true;assert.equal(ui.detailDirty.value,false);
+ const refresh=ui.loadSettings();
+ pendingGets[0].resolve({success:true,revision:'reloaded',values:{'inject.enabled':true},active_values:{'inject.enabled':true},fields:[]});await refresh;
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,false);
+});
+
+test('list drafts update reminders while preserving typed separators and revert cleanly',async()=>{
+ const {ui,pendingGets}=harness({},['settings']);
+ ui.detailSettings.value={revision:'list',values:{group_whitelist:['10001']},fields:[]};
+ ui.detailValues.value={group_whitelist:['10001']};
+ ui.updateListSetting('group_whitelist','10001, ');
+ assert.equal(ui.listInputs.value.group_whitelist,'10001, ');assert.equal(ui.detailDirty.value,false);
+ ui.updateListSetting('group_whitelist','10001, 20002');assert.equal(ui.detailDirty.value,true);
+ ui.updateListSetting('group_whitelist','10001');assert.equal(ui.detailDirty.value,false);
+ ui.updateListSetting('group_whitelist','20002');assert.equal(ui.detailDirty.value,true);
+ const refresh=ui.loadSettings();
+ pendingGets[0].resolve({success:true,revision:'list-refreshed',values:{group_whitelist:['10001']},fields:[]});await refresh;
+ assert.equal(ui.detailDirty.value,false);assert.equal(Object.keys(ui.listInputs.value).length,0);
+});
+
+test('evaluation reminders distinguish saved parameters from active values and failed saves',async()=>{
+ const {ui,pending,pendingGets}=harness({},['models']);
+ const load=ui.loadEvaluation();
+ pendingGets[0].resolve({success:true,revision:'r1',configured:{context_turns:8},active:{context_turns:6},max_concurrent_assessments:2,active_max_concurrent_assessments:2});await load;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,true);
+ ui.modelConfig.value.context_turns=9;assert.equal(ui.evaluationDirty.value,true);
+ ui.modelConfig.value.context_turns=8;assert.equal(ui.evaluationDirty.value,false);
+ ui.maxConcurrentAssessments.value=3;assert.equal(ui.evaluationDirty.value,true);
+ const failed=ui.saveModels();
+ pending[0].resolve({success:false,error:'保存失败'});await failed;
+ assert.equal(ui.evaluationDirty.value,true);
+ const saved=ui.saveModels();
+ pending[1].resolve({success:true,revision:'r2',restart_required:true});await saved;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,true);
+ const refresh=ui.loadEvaluation();
+ pendingGets[1].resolve({success:true,revision:'r3',configured:{context_turns:8},active:{context_turns:8},max_concurrent_assessments:3,active_max_concurrent_assessments:3});await refresh;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,false);
+ ui.restoreEvaluationDefaults();assert.equal(ui.evaluationDirty.value,true);
+});

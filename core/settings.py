@@ -66,7 +66,7 @@ SECTIONS = {
         ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
     ),
     "commands": ("查询与排行", ["command", "render.font_path"]),
-    "diagnostics": ("关系诊断", ["diagnostics"]),
+    "diagnostics": ("系统诊断", ["diagnostics"]),
 }
 LABELS = {
     "assessment.enabled": (
@@ -106,7 +106,7 @@ LABELS = {
         "图片最多展示 10 人的昵称、头像和关系，不显示分值。头像由 QQ 提供，生成图片失败时改用文字。",
     ),
     "diagnostics.enabled": (
-        "记录关系诊断",
+        "记录系统诊断",
         "记录评估与关系变化，按所选详细程度保留诊断内容。",
     ),
     "diagnostics.detail_level": (

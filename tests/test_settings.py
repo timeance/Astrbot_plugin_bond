@@ -752,7 +752,11 @@ def test_query_settings_share_host_values_and_reject_unknown_impression_mode():
 
 
 def test_diagnostic_levels_capacity_defaults_and_validation():
-    values = snapshot({})["values"]
+    data = snapshot({})
+    values = data["values"]
+    assert all(
+        f["title"] == "系统诊断" for f in data["fields"] if f["group"] == "diagnostics"
+    )
     assert values["diagnostics.enabled"] is False
     assert values["diagnostics.detail_level"] == "assessment"
     assert values["diagnostics.max_size_mb"] == 100
