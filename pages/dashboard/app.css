@@ -1945,3 +1945,10 @@ details.xx-form-card[open] > summary::after {
   min-height: 14px;
 }
 .xx-passive-overflow { padding-bottom: 14px; }
+.xx-passive-column .xx-tag {
+  display: inline;
+  padding: 0 4px;
+  border: 0;
+  line-height: inherit;
+  vertical-align: baseline;
+}
