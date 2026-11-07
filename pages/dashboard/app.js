@@ -209,7 +209,9 @@ createApp({
         detailSettings.value = data;
         detailValues.value = {...data.values};
         listInputs.value = {};
-        if (save) detailNotice.value = "设置已保存，重载插件后生效。";
+        if (save && !detailNeedsReload.value) {
+          detailNotice.value = data.active_values ? "设置已保存，当前设置已生效。" : "设置已保存。";
+        }
       } catch(error) {
         if (requestId === settingsRequestId) {
           detailNotice.value = String(error);
@@ -953,9 +955,7 @@ createApp({
         modelConfig.value = normalizeModelConfig({...modelConfig.value, ...body.config});
         maxConcurrentAssessments.value = body.max_concurrent_assessments;
         savedEvaluation.value = {config: {...body.config}, max_concurrent_assessments: body.max_concurrent_assessments};
-        setModelNotice(data && data.restart_required
-          ? "配置已保存，重载插件后生效。当前生效设置仍显示在右侧。"
-          : "评估配置已保存");
+        if (!evaluationNeedsReload.value) setModelNotice("评估配置已保存，当前设置已生效。");
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) setModelNotice(String(e), true);
       } finally {
@@ -1716,8 +1716,8 @@ createApp({
         </div>
         <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
           <summary>{{ group.title }}</summary>
-          <p v-if="group.group === 'rules'" class="xx-help">
-            <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="关系变化：额度与区间说明" aria-describedby="rules-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="rules-hint">加分和扣分分别累计，时间衰减不占额度。倍率区间按默认分界标注；修改过分界时，以自定义分界为准。</span></span>
+          <p v-if="['familiarity', 'affinity', 'trust'].includes(group.group)" class="xx-help">
+            <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="group.title + '：额度与区间说明'" :aria-describedby="'rules-hint-' + group.group">?</button><span class="xx-help-tooltip" role="tooltip" :id="'rules-hint-' + group.group">加分和扣分分别累计，时间衰减不占额度。倍率区间按默认分界标注；修改过分界时，以自定义分界为准。</span></span>
           </p>
           <button v-if="group.group !== 'basic'" class="xx-btn xx-btn-mini" style="margin-top: 8px;" @click="restoreSectionDefaults(group.group)" :disabled="detailLoading">恢复此区默认设置</button>
           <div v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">

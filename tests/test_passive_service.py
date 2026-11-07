@@ -124,3 +124,43 @@ def test_active_temporary_override_skips_without_consuming_reward(tmp_path):
 
     with patch("time.time", return_value=START):
         asyncio.run(run())
+
+
+def test_custom_passive_amount_ceiling_cooldown_and_window_reach_transaction(tmp_path):
+    from astrbot_plugin_bond.core.passive_familiarity import PassiveFamiliarityConfig
+
+    async def run():
+        db = SQLiteBackend(tmp_path / "10001" / "per_group.db")
+        await db.init()
+        rules = PassiveFamiliarityConfig(
+            amount=1.5, ceiling=2, cooldown_minutes=2, window_minutes=20
+        )
+        svc = FavorService(db, LevelTable.from_config(None), passive_familiarity=rules)
+        with patch("time.time", return_value=START):
+            first = await svc.apply_passive_familiarity(
+                "123", "456", trigger_id="first", observed_at=START - 900
+            )
+            assert first["delta"] == dict(familiarity=1.5, affinity=0, trust=0)
+        with patch("time.time", return_value=START + 119):
+            blocked = await svc.apply_passive_familiarity(
+                "123", "456", trigger_id="early", observed_at=START + 119
+            )
+            assert blocked["skipped"] == "cooldown"
+        with patch("time.time", return_value=START + 120):
+            second = await svc.apply_passive_familiarity(
+                "123", "456", trigger_id="second", observed_at=START + 120
+            )
+            assert second["delta"]["familiarity"] == 0.5
+            assert second["after"]["familiarity"] == 2
+        with patch("time.time", return_value=START + 240):
+            bound = await svc.apply_passive_familiarity(
+                "123", "456", trigger_id="bound", observed_at=START + 240
+            )
+            assert bound["skipped"] == "bound"
+            stale = await svc.apply_passive_familiarity(
+                "123", "789", trigger_id="stale", observed_at=START + 240 - 1200.01
+            )
+            assert stale["skipped"] == "stale"
+        await db.close()
+
+    asyncio.run(run())

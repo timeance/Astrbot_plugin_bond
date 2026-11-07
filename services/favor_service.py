@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 
 from ..core.decay import HALF_LIFE_MIN, decay_target, effective_favor, resolve_half_life
 from ..core.decimal import round1
+from ..core.passive_familiarity import PassiveFamiliarityConfig
 from ..core.identity import is_master as _is_master
 from ..core.levels import LevelTable
 from ..core.level_economy import EconomyConfig, apply as apply_economy
@@ -57,6 +58,7 @@ class FavorService:
         relation_caps=None,
         diagnostics=None,
         familiarity_growth=None,
+        passive_familiarity: PassiveFamiliarityConfig | None = None,
         trust_decay_enabled=False,
         trust_half_life=180.0,
         familiarity_decay_enabled=False,
@@ -97,6 +99,7 @@ class FavorService:
         self._decay_grace_days = float(decay_grace_days)
         self.diagnostics = diagnostics
         self._familiarity_growth = FamiliarityConfig.from_config(familiarity_growth)
+        self._passive_familiarity = passive_familiarity or PassiveFamiliarityConfig()
         self._familiarity_half_life = (
             max(HALF_LIFE_MIN, float(familiarity_half_life))
             if familiarity_decay_enabled
@@ -126,6 +129,7 @@ class FavorService:
                             rules=self._relation_policy.snapshot(),
                             caps=self._relation_caps,
                             familiarity_growth=asdict(self._familiarity_growth),
+                            passive_familiarity=asdict(self._passive_familiarity),
                             trust_decay=[
                                 trust_decay_enabled,
                                 trust_half_life,
@@ -668,7 +672,9 @@ class FavorService:
             or not math.isfinite(observed_at)
             or type(triggered_at) not in (int, float)
             or not math.isfinite(triggered_at)
-            or not 0 <= triggered_at - observed_at <= 600
+            or not 0
+            <= triggered_at - observed_at
+            <= self._passive_familiarity.window_minutes * 60
             or not 0 <= now - triggered_at <= 600
         ):
             self.record_diagnostic(
@@ -688,9 +694,9 @@ class FavorService:
                 event_id="passive:" + trigger_id,
                 day=self._today(now).isoformat(),
                 daily_cap_up=self._relation_caps["familiarity"][0],
-                amount=0.3,
-                ceiling=60.0,
-                cooldown_sec=1800,
+                amount=self._passive_familiarity.amount,
+                ceiling=self._passive_familiarity.ceiling,
+                cooldown_sec=self._passive_familiarity.cooldown_minutes * 60,
                 expected_revision=state["revision"],
                 day_start=self._day_start(now),
                 day_end=self._day_end(now),

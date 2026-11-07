@@ -26,12 +26,17 @@ _MASTER_GUIDANCE_V124 = {
 
 
 def migrate_saved_defaults(cfg: dict) -> list:
-    """把与旧默认逐字一致的已存值迁移到新默认。
+    """迁移旧默认及已知配置结构，保留用户的开关选择。
 
-    返回被迁移的配置键路径（`levels.<档>.master_guidance`）；空列表＝无需
-    迁移。存值与旧默认不一致（用户自定义过）或键不存在时一律不动。
+    返回被迁移的配置键路径；空列表＝无需
+    迁移。态度指引只替换与旧默认逐字一致的值；眼熟开关仅转换结构，不改变真假值。
     """
     changed = []
+    # 0.5.7 将嵌套开关改为普通配置行，保留存量用户的明确选择。
+    passive = cfg.get("passive_familiarity")
+    if isinstance(passive, dict) and type(passive.get("enabled")) is bool:
+        cfg["passive_familiarity"] = passive["enabled"]
+        changed.append("passive_familiarity")
     levels = cfg.get("levels")
     if not isinstance(levels, dict):
         return changed
