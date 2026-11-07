@@ -825,12 +825,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .xx-log-delta-familiarity { color: var(--xx-sage); }
 .xx-log-delta-affinity { color: var(--xx-warm); }
 .xx-log-delta-trust { color: var(--xx-plum); }
-.xx-passive-preview {
-  display: grid;
-  gap: 5px;
-  min-width: 220px;
-  max-width: 420px;
-}
 .xx-passive-member-line {
   display: flex;
   align-items: baseline;
@@ -1936,3 +1930,18 @@ details.xx-form-card[open] > summary::after {
   padding-top: 14px;
   border-top: 1px solid var(--xx-line);
 }
+
+/* 被动流水保持原有八列，三列内的成员逐行对齐。 */
+.xx-passive-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 16px;
+}
+.xx-passive-column > span { min-height: 16px; }
+.xx-passive-column > .xx-passive-more {
+  font-size: calc(1em - 2px);
+  line-height: 14px;
+  min-height: 14px;
+}
+.xx-passive-overflow { padding-bottom: 14px; }
