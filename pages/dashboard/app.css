@@ -825,6 +825,46 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .xx-log-delta-familiarity { color: var(--xx-sage); }
 .xx-log-delta-affinity { color: var(--xx-warm); }
 .xx-log-delta-trust { color: var(--xx-plum); }
+.xx-passive-preview {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+  max-width: 420px;
+}
+.xx-passive-member-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.xx-log-qq {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.xx-passive-member-line > .xx-log-delta {
+  flex-shrink: 0;
+}
+.xx-passive-member-line .xx-tag { margin-left: 6px; }
+.xx-log-meta { align-items: flex-start; }
+.xx-log-meta-lines {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.xx-passive-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.xx-passive-members > li {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--xx-line);
+}
+.xx-passive-members > li:last-child { border-bottom: 0; }
 
 /* ---------- 涨跌：语义色温 + 符号 ---------- */
 .xx-up { color: var(--xx-warm); font-weight: 700; }

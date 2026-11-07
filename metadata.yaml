@@ -2,7 +2,7 @@ name: astrbot_plugin_bond
 display_name: Bond 关系好感系统
 short_desc: 按 Bot 隔离的三维关系与成员印象
 desc: 保存熟悉度、亲近度、信任度与成员印象，支持分级评估、人格适配及管理面板。
-version: 0.5.7
+version: 0.5.9
 author: yiwuerxin, Timeance
 repo: https://github.com/timeance/Astrbot_plugin_bond
 tags:

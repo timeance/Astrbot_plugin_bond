@@ -1000,6 +1000,7 @@ class FavorService:
         fuzzy: bool = False,
         dimension: str | None = None,
         source: str | None = None,
+        group_passive: bool = False,
     ) -> list[dict]:
         """流水查询透传（注入链路一次拉取，milestone/recent_events 共用）。
 
@@ -1016,6 +1017,7 @@ class FavorService:
             fuzzy=fuzzy,
             dimension=dimension,
             source=source,
+            group_passive=group_passive,
         )
 
     async def recent_events(

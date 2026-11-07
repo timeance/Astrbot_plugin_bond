@@ -374,6 +374,8 @@ createApp({
       groups.value = [];
       filterGroup.value = "";
       selectedLog.value = null;
+      selectedLogGroup.value = null;
+      undoRequestId += 1;
       memberDetail.value = null;
       undoPreview.value = null;
       restorePreview.value = null;
@@ -413,15 +415,14 @@ createApp({
     };
     const fmtNum = (v) => {
       const n = Number(v || 0);
-      return Number.isInteger(n) ? String(n) : n.toFixed(1);
+      return String(Number(n.toFixed(1)));
     };
     const fmtOptionalNum = (v) => (v == null || v === "" ? "-" : fmtNum(v));
     const fmtSignedNum = (v) => {
       if (v == null || v === "") return "-";
       const n = Number(v);
       if (!Number.isFinite(n)) return "-";
-      const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
-      return n > 0 ? `+${s}` : s;
+      return fmtDelta(n);
     };
     const dimBarStyle = (dim, val) => {
       const n = Number(val);
@@ -450,8 +451,8 @@ createApp({
     const fmtKnownDelta = (value) => value == null ? "未知" : fmtDelta(value);
     const fmtDelta = (v) => {
       const n = Number(v || 0);
-      const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
-      return n > 0 ? `+${s}` : s;
+      const s = fmtNum(n);
+      return Number(s) > 0 ? `+${s}` : s;
     };
     const fmtIdle = (d) =>
       d == null ? "从未" : d <= 0 ? "今天" : d === 1 ? "昨天" : `${d}天前`;
@@ -533,8 +534,24 @@ createApp({
     const SOURCE_LABEL = { rule: "规则", judge: "评估", passive_familiarity: "群聊活跃", admin: "管理员", admin_profile: "管理员资料", tool: "工具", api: "API", set: "设定", undo: "撤销" };
     const sourceLabel = (s) => SOURCE_LABEL[s] || s || "-";
 
+    const isPassiveLog = (row) => row.source === "passive_familiarity";
+    const isPassiveGroup = (row) => isPassiveLog(row) && Array.isArray(row.members) && row.members.length > 0;
+    const passiveLogMembers = (row) => isPassiveGroup(row) ? row.members : [row];
+    const passiveLogPreview = (row) => passiveLogMembers(row).slice(0, 3);
+    const passiveLogDelta = (row) => logDeltaParts(row, "familiarity")[0].value;
+    const logGroupLabel = (row) => {
+      const id = row.origin_group_id || row.group_id;
+      return id && id !== "__global__" ? String(id) : "来源群未知";
+    };
+    const isLogReversed = (row) => isPassiveGroup(row)
+      ? row.members.every(member => member.reversed) : Boolean(row.reversed);
+
     const undoPreview = ref(null);
+    let undoRequestId = 0;
     const openUndo = async (r) => {
+      // 合并条目的 id 仅是代表记录，撤销必须针对一个原始成员记录。
+      if (isPassiveGroup(r) || r.reversed || r.source === "admin_profile") return;
+      const requestId = ++undoRequestId;
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       if (!snapshot) return;
@@ -542,17 +559,19 @@ createApp({
       errorMsg.value = "";
       try {
         const data = await scopedPost("undo", { id: r.id, dry: "1" }, snapshot);
-        if (!isCurrentScope(snapshot, revision)) return;
+        if (requestId !== undoRequestId || !isCurrentScope(snapshot, revision)) return;
         if (data && data.success === false) {
           errorMsg.value = data.error || "无法撤销";
           return;
         }
-        undoPreview.value = { ...(data.preview || {}), id: r.id, snapshot, revision };
+        selectedLog.value = null;
+        selectedLogGroup.value = null;
+        undoPreview.value = { ...(data.preview || {}), id: r.id, log: r, snapshot, revision };
       } catch (e) {
-        if (isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
+        if (requestId === undoRequestId && isCurrentScope(snapshot, revision)) errorMsg.value = String(e);
       }
     };
-    const closeUndo = () => { undoPreview.value = null; restoreTriggerFocus(); };
+    const closeUndo = () => { undoRequestId += 1; undoPreview.value = null; restoreTriggerFocus(); };
     const confirmUndo = async () => {
       const preview = undoPreview.value;
       undoPreview.value = null;
@@ -573,8 +592,31 @@ createApp({
     };
 
     const selectedLog = ref(null);
-    const showDetail = (r) => { rememberTrigger(); selectedLog.value = r; };
-    const closeDetail = () => { selectedLog.value = null; restoreTriggerFocus(); };
+    const selectedLogGroup = ref(null);
+    const showDetail = (r) => {
+      undoRequestId += 1;
+      rememberTrigger();
+      selectedLogGroup.value = null;
+      selectedLog.value = r;
+    };
+    const showLogMember = (member) => {
+      if (!selectedLog.value || !isPassiveGroup(selectedLog.value) || !selectedLog.value.members.includes(member)) return;
+      undoRequestId += 1;
+      selectedLogGroup.value = selectedLog.value;
+      selectedLog.value = member;
+    };
+    const backToLogGroup = () => {
+      if (!selectedLogGroup.value) return;
+      undoRequestId += 1;
+      selectedLog.value = selectedLogGroup.value;
+      selectedLogGroup.value = null;
+    };
+    const closeDetail = () => {
+      undoRequestId += 1;
+      selectedLog.value = null;
+      selectedLogGroup.value = null;
+      restoreTriggerFocus();
+    };
 
     // 成员详情弹窗（印象/标签/近期评审）
     const memberDetail = ref(null);
@@ -1290,7 +1332,8 @@ createApp({
       scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
       fmtTime, fmtNum, fmtOptionalNum, fmtSignedNum, dimBarStyle, fmtDelta, fmtIdle, fmtUser, sourceLabel,
       undoPreview, openUndo, closeUndo, confirmUndo,
-      selectedLog, showDetail, closeDetail,
+      selectedLog, selectedLogGroup, showDetail, showLogMember, backToLogGroup, closeDetail,
+      isPassiveLog, isPassiveGroup, passiveLogMembers, passiveLogPreview, passiveLogDelta, logGroupLabel, isLogReversed,
       memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
       relationEditMode, temporaryMinutes, endTemporary, relationForm, profileForm, openMember, closeMember, refreshNames, saveRelation, saveProfile, refreshImpression,
       fetchBots, selectBot, applyMode, backupScope, prepareRestore,
@@ -1522,19 +1565,32 @@ createApp({
             <tr v-if="!logs.length">
               <td colspan="8" class="xx-empty">{{ loading ? "加载中…" : "暂无记录" }}</td>
             </tr>
-            <tr v-for="r in logs" :key="r.id" :class="{ 'xx-reversed': r.reversed }">
+            <tr v-for="r in logs" :key="r.id" :class="{ 'xx-reversed': isLogReversed(r) }">
               <td class="xx-mono">{{ fmtTime(r.ts) }}</td>
-              <td class="xx-mono">{{ r.group_id }}</td>
-              <td class="xx-mono">{{ r.user_id }}</td>
-              <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" class="xx-log-delta" :class="'xx-log-delta-' + change.key">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
-              <td class="xx-mono">{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</td>
+              <td class="xx-mono">{{ logGroupLabel(r) }}</td>
+              <td v-if="isPassiveLog(r)" colspan="3" class="xx-passive-cell">
+                <div class="xx-passive-preview">
+                  <div v-for="member in passiveLogPreview(r)" :key="member.id" class="xx-passive-member-line">
+                    <span class="xx-mono xx-log-qq">{{ member.user_id }}</span>
+                    <span class="xx-log-delta xx-log-delta-familiarity">熟悉度 {{ fmtKnownDelta(passiveLogDelta(member)) }}<span v-if="member.reversed" class="xx-tag xx-muted">已撤销</span></span>
+                  </div>
+                  <span v-if="passiveLogMembers(r).length > 3" class="xx-muted-text">还有 {{ passiveLogMembers(r).length - 3 }} 人</span>
+                </div>
+              </td>
+              <template v-else>
+                <td class="xx-mono">{{ r.user_id }}</td>
+                <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" class="xx-log-delta" :class="'xx-log-delta-' + change.key">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
+                <td class="xx-mono">{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</td>
+              </template>
               <td class="xx-reason-cell" :title="displayReason(r.reason)">{{ displayReason(r.reason) }}</td>
               <td><span class="xx-tag">{{ sourceLabel(r.source) }}</span></td>
               <td class="xx-actions">
                 <button class="xx-btn xx-btn-mini" @click="showDetail(r)">详情</button>
-                <span v-if="r.reversed" class="xx-tag xx-muted">已撤销</span>
-                <span v-else-if="r.source === 'admin_profile'" class="xx-tag xx-muted">资料变更不可撤销</span>
-                <button v-else class="xx-btn xx-btn-undo" @click="openUndo(r)" :disabled="loading">撤销</button>
+                <template v-if="!isPassiveGroup(r)">
+                  <span v-if="r.reversed" class="xx-tag xx-muted">已撤销</span>
+                  <span v-else-if="r.source === 'admin_profile'" class="xx-tag xx-muted">资料变更不可撤销</span>
+                  <button v-else class="xx-btn xx-btn-undo" @click="openUndo(r)" :disabled="loading">撤销</button>
+                </template>
               </td>
             </tr>
           </tbody>
@@ -1767,14 +1823,40 @@ createApp({
             <span id="xx-log-modal-title">变动详情</span>
             <button type="button" class="xx-modal-close" aria-label="关闭变动详情" @click="closeDetail">×</button>
           </header>
-          <div class="xx-modal-meta xx-mono">
-            <span>{{ fmtTime(selectedLog.ts) }} · 群 {{ selectedLog.group_id }} · QQ {{ selectedLog.user_id }}
-              <span v-for="change in logDeltaParts(selectedLog, 'all')" :key="change.key"> · {{ change.label }} {{ fmtKnownDelta(change.value) }}</span>
-              · 亲近度 {{ fmtOptionalNum(selectedLog.favor_before) }} → {{ fmtOptionalNum(selectedLog.favor_after) }}
-            </span>
+          <div class="xx-modal-meta xx-log-meta">
+            <div class="xx-log-meta-lines xx-mono">
+              <span>时间：{{ fmtTime(selectedLog.ts) }}</span>
+              <span>群：{{ logGroupLabel(selectedLog) }}</span>
+              <span>QQ：{{ isPassiveGroup(selectedLog) ? '共 ' + selectedLog.members.length + ' 人，见下方列表' : selectedLog.user_id }}</span>
+              <span v-if="!isPassiveGroup(selectedLog)">记录：#{{ selectedLog.id }}</span>
+              <template v-if="isPassiveLog(selectedLog)">
+                <span v-if="!isPassiveGroup(selectedLog)" class="xx-log-delta-familiarity">熟悉度 {{ fmtKnownDelta(passiveLogDelta(selectedLog)) }}</span>
+              </template>
+              <template v-else>
+                <span v-for="change in logDeltaParts(selectedLog, 'all')" :key="change.key">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span>
+                <span>亲近度前后：{{ fmtOptionalNum(selectedLog.favor_before) }} → {{ fmtOptionalNum(selectedLog.favor_after) }}</span>
+              </template>
+            </div>
             <span class="xx-tag">{{ sourceLabel(selectedLog.source) }}</span>
           </div>
-          <section class="xx-modal-section">
+          <p v-if="errorMsg" class="xx-status xx-status-error" role="alert">{{ errorMsg }}</p>
+          <section v-if="isPassiveGroup(selectedLog)" class="xx-modal-section">
+            <h4>QQ（{{ selectedLog.members.length }} 人）</h4>
+            <ul class="xx-passive-members">
+              <li v-for="member in selectedLog.members" :key="member.id">
+                <div class="xx-passive-member-line">
+                  <span class="xx-mono xx-log-qq">{{ member.user_id }}</span>
+                  <span class="xx-log-delta xx-log-delta-familiarity">熟悉度 {{ fmtKnownDelta(passiveLogDelta(member)) }}</span>
+                </div>
+                <div class="xx-actions">
+                  <button type="button" class="xx-btn xx-btn-mini" @click="showLogMember(member)">记录详情</button>
+                  <span v-if="member.reversed" class="xx-tag xx-muted">已撤销</span>
+                  <button v-else type="button" class="xx-btn xx-btn-undo" @click="openUndo(member)" :disabled="loading" :aria-label="'撤销 QQ ' + member.user_id + ' 的记录 #' + member.id">撤销</button>
+                </div>
+              </li>
+            </ul>
+          </section>
+          <section v-if="!isPassiveLog(selectedLog)" class="xx-modal-section">
             <h4>用户发言</h4>
             <p class="xx-modal-text">{{ selectedLog.message || "（没有相关发言）" }}</p>
           </section>
@@ -1783,6 +1865,11 @@ createApp({
             <p class="xx-modal-text">{{ displayReason(selectedLog.reason) }}</p>
           </section>
           <div class="xx-modal-actions">
+            <button v-if="selectedLogGroup" type="button" class="xx-btn xx-btn-mini" @click="backToLogGroup">返回组</button>
+            <template v-if="isPassiveLog(selectedLog) && !isPassiveGroup(selectedLog)">
+              <span v-if="selectedLog.reversed" class="xx-tag xx-muted">已撤销</span>
+              <button v-else type="button" class="xx-btn xx-btn-undo" @click="openUndo(selectedLog)" :disabled="loading">撤销此记录</button>
+            </template>
             <button type="button" class="xx-btn xx-btn-mini" @click="closeDetail">关闭</button>
           </div>
         </div>
@@ -1883,11 +1970,12 @@ createApp({
             <button type="button" class="xx-modal-close" aria-label="关闭撤销确认" @click="closeUndo">×</button>
           </header>
           <section class="xx-modal-section">
-            <p class="xx-modal-text">
+            <p v-if="isPassiveLog(undoPreview.log)" class="xx-modal-text">撤销 QQ {{ undoPreview.log.user_id }} 的熟悉度变动 {{ fmtKnownDelta(passiveLogDelta(undoPreview.log)) }}。</p>
+            <p v-else class="xx-modal-text">
               撤销后 亲近度：<b class="xx-up" style="font-size:17px">{{ fmtNum(undoPreview.after) }}</b>
               <span class="xx-muted-text">（当前 {{ fmtNum(undoPreview.current) }}，本次 {{ fmtDelta(undoPreview.delta) }}）</span>
             </p>
-            <p class="xx-help">将撤销此事件的全部维度，与当前查看筛选无关。</p>
+            <p class="xx-help">{{ isPassiveLog(undoPreview.log) ? "仅撤销这名成员的原始记录，其他成员不受影响。" : "将撤销此事件的全部维度，与当前查看筛选无关。" }}</p>
             <p class="xx-modal-text xx-muted-text" style="margin-top:8px;">原因：{{ displayReason(undoPreview.reason) }}</p>
           </section>
           <div class="xx-modal-actions">

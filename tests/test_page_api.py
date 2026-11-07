@@ -133,7 +133,14 @@ def test_logs_forward_dimension_source_and_limit(page_module, monkeypatch):
     payload, status = asyncio.run(page.handle_logs())
     assert status == 200 and payload["logs"] == [record]
     favor.query_logs.assert_awaited_once_with(
-        "123", None, 30, 0, fuzzy=False, dimension="familiarity", source="judge"
+        "123",
+        None,
+        30,
+        0,
+        fuzzy=False,
+        dimension="familiarity",
+        source="judge",
+        group_passive=True,
     )
 
 

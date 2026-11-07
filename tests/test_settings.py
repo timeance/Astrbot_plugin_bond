@@ -223,13 +223,14 @@ def test_relation_fields_split_dimensions_and_keep_shared_settings_in_basic():
         collect(key, schema[key])
     expected -= {"economy.preset", "decay.grace_days", "decay.maintenance_strategy"}
     assert set(paths) == expected
-    assert groups["familiarity"][:6] == [
+    assert groups["familiarity"][:7] == [
         "relation_daily_caps.familiarity_up",
         "relation_daily_caps.familiarity_down",
         "passive_familiarity_rules.amount",
         "passive_familiarity_rules.ceiling",
         "passive_familiarity_rules.cooldown_minutes",
         "passive_familiarity_rules.window_minutes",
+        "passive_familiarity_rules.member_limit",
     ]
     assert all("trust" in path for path in groups["trust"])
     assert "economy.enabled" in groups["affinity"]
@@ -831,6 +832,11 @@ def test_flat_passive_switch_migrates_saved_choice_once(enabled):
         ("cooldown_minutes", 1.5),
         ("window_minutes", 0),
         ("window_minutes", True),
+        ("member_limit", True),
+        ("member_limit", False),
+        ("member_limit", 3.0),
+        ("member_limit", -1),
+        ("member_limit", 1000001),
     ],
 )
 def test_invalid_passive_parameters_rejected_without_saving(key, value):
@@ -838,7 +844,8 @@ def test_invalid_passive_parameters_rejected_without_saving(key, value):
         validate_patch({"passive_familiarity_rules." + key: value})
 
 
-def test_passive_parameters_save_reload_and_report_pending_runtime_values():
+@pytest.mark.parametrize("member_limit", [0, 3, 1000000])
+def test_passive_parameters_save_reload_and_report_pending_runtime_values(member_limit):
     async def run():
         config = Config(passive_familiarity=False)
         runtime = RuntimeService(None, config, None)
@@ -847,8 +854,11 @@ def test_passive_parameters_save_reload_and_report_pending_runtime_values():
             "passive_familiarity_rules.ceiling": 45,
             "passive_familiarity_rules.cooldown_minutes": 5,
             "passive_familiarity_rules.window_minutes": 15,
+            "passive_familiarity_rules.member_limit": member_limit,
         }
         initial = runtime.detailed_settings()
+        assert initial["values"]["passive_familiarity_rules.window_minutes"] == 10
+        assert initial["values"]["passive_familiarity_rules.member_limit"] == 3
         saved = await runtime.save_detailed_settings(patch, initial["revision"])
         assert config["passive_familiarity"] is False
         assert saved["active_values"] == initial["values"]
