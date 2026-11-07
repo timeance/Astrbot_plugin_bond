@@ -444,7 +444,7 @@ test('editing mode settings keeps the loaded runtime summary unchanged',()=>{
  ui.detailValues.value['economy.enabled']=false;
  assert.equal(ui.activeRuleSummary.value.mode,'基础 ×1');
  assert.equal(ui.activeRuleSummary.value.familiarity,'60 天半衰期');
- assert.equal(ui.activeRuleSummary.value.affinity,'30 天基础半衰期');
+ assert.equal(ui.activeRuleSummary.value.affinity,'30 天半衰期');
  assert.equal(ui.activeRuleSummary.value.trust,'90 天半衰期');
  assert.equal(JSON.stringify(ui.activeRuleSummary.value.baselines),JSON.stringify({familiarity:20,affinity:15,trust:20}));
  assert.equal(ui.detailValues.value['decay.trust_baseline'],20);
