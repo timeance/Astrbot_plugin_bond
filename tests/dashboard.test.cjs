@@ -878,3 +878,173 @@ for(const restartRequired of [true,false]) test(`saving evaluation values matchi
  assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,false);
  assert.equal(ui.modelNoticeError.value,false);assert.equal(ui.modelNotice.value,'评估配置已保存，当前设置已生效。');
 });
+
+
+function passiveGroup(count=5){
+ const members=Array.from({length:count},(_,i)=>({
+  id:801+i,user_id:String(12345000+i),group_id:'__global__',origin_group_id:'22334455',
+  source:'passive_familiarity',ts:1794000000+i,reason:`合成活跃记录 ${i+1}`,
+  relation_delta:{familiarity:0.30000000000000004,affinity:0,trust:0},
+  delta:0,favor_before:8.99999999,favor_after:8.99999999,reversed:i===0,event_id:'synthetic-trigger'
+ }));
+ return {...members[0],members};
+}
+
+test('log numbers round for display, strip trailing zero and negative zero without editing data',()=>{
+ const {ui}=harness();
+ for(const [raw,plain,signed] of [
+  [0,'0','0'],[-0,'0','0'],[-0.04,'0','0'],[0.04,'0','0'],[0.30000000000000004,'0.3','+0.3'],
+  [1.9999999,'2','+2'],[-1.9999999,'-2','-2'],[12.34,'12.3','+12.3'],[-12.34,'-12.3','-12.3']
+ ]){
+  assert.equal(ui.fmtNum(raw),plain);assert.equal(ui.fmtOptionalNum(raw),plain);
+  assert.equal(ui.fmtDelta(raw),signed);assert.equal(ui.fmtSignedNum(raw),signed);
+ }
+ assert.equal(ui.fmtOptionalNum(null),'-');assert.equal(ui.fmtKnownDelta(null),'未知');
+ const row=passiveGroup().members[0];const before=JSON.stringify(row);
+ ui.fmtKnownDelta(ui.passiveLogDelta(row));ui.fmtOptionalNum(row.favor_before);
+ assert.equal(JSON.stringify(row),before);
+ ui.relationForm.value.familiarity=1.234567;
+ ui.detailValues.value={'decay.familiarity_baseline':2.345678};
+ ui.fmtNum(ui.relationForm.value.familiarity);ui.fmtNum(ui.detailValues.value['decay.familiarity_baseline']);
+ assert.equal(ui.relationForm.value.familiarity,1.234567);
+ assert.equal(ui.detailValues.value['decay.familiarity_baseline'],2.345678);
+});
+
+test('passive previews keep at most three original members and retain reversed entries',()=>{
+ const {ui}=harness();
+ for(const count of [1,3,5,120]){
+  const row=passiveGroup(count);const before=JSON.stringify(row);
+  assert.equal(ui.isPassiveGroup(row),true);
+  assert.equal(ui.passiveLogMembers(row),row.members);
+  const preview=ui.passiveLogPreview(row);
+  assert.equal(preview.length,Math.min(count,3));
+  preview.forEach((member,i)=>assert.equal(member,row.members[i]));
+  assert.equal(preview[0].reversed,true);
+  assert.equal(JSON.stringify(row),before);
+ }
+ const legacy={id:901,source:'passive_familiarity',delta:7,relation_delta:{}};
+ assert.equal(ui.isPassiveGroup(legacy),false);assert.equal(ui.passiveLogMembers(legacy)[0],legacy);
+ assert.equal(ui.passiveLogDelta(legacy),null);
+ const undo={...legacy,source:'undo'};
+ assert.equal(ui.isPassiveLog(undo),false);assert.equal(ui.isPassiveGroup(undo),false);
+ assert.equal(ui.isPassiveGroup({...legacy,members:[]}),false);
+});
+
+test('server grouped log pages stay intact without regrouping or dropping matching members',async()=>{
+ const {ui,pendingGets}=harness({},['logs']);
+ const first=passiveGroup();const second={...passiveGroup(2),id:999,origin_group_id:'99887766'};
+ const legacy={...first.members[1],id:1000,event_id:''};
+ const undo={...first.members[2],id:1001,source:'undo'};
+ const rows=[first,second,legacy,undo];
+ const load=ui.fetchLogs();pendingGets[0].resolve({success:true,logs:rows});await load;
+ assert.equal(ui.logs.value,rows);assert.equal(ui.logs.value.length,4);
+ assert.equal(ui.passiveLogMembers(ui.logs.value[0]).length,5);
+ assert.equal(ui.logs.value[2],legacy);assert.equal(ui.logs.value[3],undo);
+});
+
+test('a partially reversed passive group remains active until every original member is reversed',()=>{
+ const {ui}=harness();const row=passiveGroup();
+ assert.equal(row.reversed,true);assert.equal(ui.isLogReversed(row),false);
+ row.members.forEach(member=>member.reversed=true);
+ assert.equal(ui.isLogReversed(row),true);
+ assert.equal(ui.isLogReversed({reversed:false}),false);assert.equal(ui.isLogReversed({reversed:true}),true);
+});
+
+test('log group display prefers real origin and never substitutes the selected group for unknown origin',()=>{
+ const {ui}=harness();ui.filterGroup.value='55667788';
+ for(const [row,expected] of [
+  [{group_id:'__global__',origin_group_id:'11223344'},'11223344'],
+  [{group_id:'22334455',origin_group_id:'11223344'},'11223344'],
+  [{group_id:'22334455',origin_group_id:''},'22334455'],
+  [{group_id:'__global__'},'来源群未知'],[{group_id:'__global__',origin_group_id:null},'来源群未知'],
+  [{},'来源群未知']
+ ]){
+  const before=JSON.stringify(row);assert.equal(ui.logGroupLabel(row),expected);assert.equal(JSON.stringify(row),before);
+ }
+});
+
+test('passive detail drills into the complete original record and returns to the full group',()=>{
+ const {ui,reads,pending}=harness();const group=passiveGroup();
+ ui.showDetail(group);ui.showLogMember({id:'outside-group'});assert.equal(ui.selectedLog.value,group);
+ ui.showLogMember(group.members[4]);assert.equal(ui.selectedLog.value,group.members[4]);
+ assert.equal(ui.selectedLog.value.reason,'合成活跃记录 5');
+ assert.equal(ui.selectedLog.value.ts,group.members[4].ts);assert.equal(ui.selectedLogGroup.value,group);
+ ui.backToLogGroup();assert.equal(ui.selectedLog.value,group);assert.equal(ui.selectedLogGroup.value,null);
+ ui.showLogMember(group.members[1]);ui.closeDetail();
+ assert.equal(ui.selectedLog.value,null);assert.equal(ui.selectedLogGroup.value,null);
+ ui.backToLogGroup();assert.equal(ui.selectedLog.value,null);
+ assert.equal(reads.length,0);assert.equal(pending.length,0);
+});
+
+test('only the chosen raw member can be undone and a successful preview closes the old group detail',async()=>{
+ const {ui,pending,pendingGets}=harness({},['logs']);const group=passiveGroup();
+ ui.selectedMode.value='global';ui.logDimension.value='familiarity';ui.showDetail(group);
+ await ui.openUndo(group);await ui.openUndo(group.members[0]);
+ assert.equal(pending.length,0);assert.equal(ui.selectedLog.value,group);
+ const member=group.members[3];ui.showLogMember(member);
+ const work=ui.openUndo(member);
+ assert.deepEqual(JSON.parse(JSON.stringify(pending[0].params)),{bot_id:'10001',scope_mode:'global',id:member.id,dry:'1'});
+ assert.equal(member.group_id,'__global__');assert.equal(ui.logGroupLabel(member),'22334455');
+ assert.equal(ui.selectedLog.value,member);
+ pending[0].resolve({success:true,preview:{current:9,after:9,delta:0,reason:member.reason}});await work;
+ assert.equal(ui.selectedLog.value,null);assert.equal(ui.selectedLogGroup.value,null);
+ assert.equal(ui.undoPreview.value.log,member);
+ const done=ui.confirmUndo();assert.equal(ui.undoPreview.value,null);
+ assert.deepEqual(JSON.parse(JSON.stringify(pending[1].params)),{bot_id:'10001',scope_mode:'global',id:member.id});
+ pending[1].resolve({success:true});
+ await new Promise(resolve=>setImmediate(resolve));
+ const updated={...group,members:group.members.map(row=>row.id===member.id?{...row,reversed:true}:row)};
+ pendingGets[0].resolve({success:true,logs:[updated]});await done;
+ assert.equal(ui.logs.value[0],updated);assert.equal(updated.members[3].reversed,true);
+ assert.equal(updated.members[1].reversed,false);assert.equal(ui.selectedLog.value,null);
+});
+
+test('failed preview keeps the selected member audit detail available for retry',async()=>{
+ const {ui,pending}=harness();const group=passiveGroup();ui.showDetail(group);ui.showLogMember(group.members[1]);
+ const work=ui.openUndo(group.members[1]);
+ pending[0].resolve({success:false,error:'合成撤销失败'});await work;
+ assert.equal(ui.selectedLog.value,group.members[1]);assert.equal(ui.selectedLogGroup.value,group);
+ assert.equal(ui.undoPreview.value,null);assert.match(ui.errorMsg.value,/合成撤销失败/);
+});
+
+for(const navigation of ['close','member','group','other-detail'])test(`late undo preview cannot overwrite ${navigation} navigation`,async()=>{
+ const {ui,pending}=harness();const group=passiveGroup();ui.showDetail(group);ui.showLogMember(group.members[1]);
+ const work=ui.openUndo(group.members[1]);
+ if(navigation==='close')ui.closeDetail();
+ if(navigation==='member'){ui.backToLogGroup();ui.showLogMember(group.members[2]);}
+ if(navigation==='group')ui.backToLogGroup();
+ if(navigation==='other-detail')ui.showDetail({id:999,source:'judge'});
+ const selected=ui.selectedLog.value;
+ pending[0].resolve({success:true,preview:{current:9,after:9}});await work;
+ assert.equal(ui.undoPreview.value,null);assert.equal(ui.selectedLog.value,selected);
+});
+
+test('only the latest member preview is accepted even when responses arrive in reverse order',async()=>{
+ const {ui,pending}=harness();const group=passiveGroup();ui.showDetail(group);
+ const old=ui.openUndo(group.members[1]);const current=ui.openUndo(group.members[2]);
+ pending[1].resolve({success:true,preview:{current:9,after:9}});await current;
+ pending[0].resolve({success:false,error:'过期错误'});await old;
+ assert.equal(ui.undoPreview.value.id,group.members[2].id);assert.equal(ui.errorMsg.value,'');
+ assert.equal(ui.selectedLog.value,null);
+});
+
+for(const change of ['bot','mode'])test(`scope ${change} change clears passive member navigation and ignores old undo preview`,async()=>{
+ const {ui,pending}=harness();const group=passiveGroup();ui.showDetail(group);ui.showLogMember(group.members[1]);
+ const work=ui.openUndo(group.members[1]);
+ if(change==='bot')ui.selectedBot.value='20002';else ui.selectedMode.value='global';
+ await ui.selectBot();
+ const current={id:1234,source:'judge'};ui.showDetail(current);
+ pending[0].resolve({success:true,preview:{current:9,after:9}});await work;
+ assert.equal(ui.selectedLog.value,current);assert.equal(ui.selectedLogGroup.value,null);assert.equal(ui.undoPreview.value,null);
+});
+
+test('scope changes after confirming a member undo ignore its completion and preserve the new detail',async()=>{
+ const {ui,pending,reads}=harness();const member=passiveGroup().members[1];
+ const preview=ui.openUndo(member);pending[0].resolve({success:true,preview:{current:9,after:9}});await preview;
+ const done=ui.confirmUndo();ui.selectedBot.value='20002';await ui.selectBot();
+ const current={id:1234,source:'judge'};ui.showDetail(current);
+ const count=reads.filter(row=>row.endpoint==='logs').length;
+ pending[1].resolve({success:true});await done;
+ assert.equal(ui.selectedLog.value,current);assert.equal(ui.undoPreview.value,null);
+ assert.equal(reads.filter(row=>row.endpoint==='logs').length,count);
+});

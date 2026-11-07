@@ -322,12 +322,15 @@ class StorageBackend(ABC):
         fuzzy: bool = False,
         dimension: str | None = None,
         source: str | None = None,
+        group_passive: bool = False,
     ) -> list[dict]:
         """查询变动流水（时间倒序）。每条 dict 含 id/group_id/user_id/delta/favor_before/favor_after/reason/source/ts/message/reversed。
 
         user_id 默认**精确匹配**（内部路径——同日衰减/修复期/近期印象/印象
         汇总/里程碑——语义均要求精确；QQ 互为子串时模糊匹配会把他人流水
         算进本人记忆/修复期）。fuzzy=True 仅供 WebUI 搜索框（子串匹配）。
+        group_passive=True 仅供面板：同一触发、存储群和来源群的被动流水合并为
+        members 列表，limit/offset 计算合并后的条目；内部查询默认保留逐人成果。
         """
 
     @abstractmethod

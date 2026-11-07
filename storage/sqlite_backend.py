@@ -1762,8 +1762,8 @@ class SQLiteBackend(StorageBackend):
         fuzzy=False,
         dimension=None,
         source=None,
+        group_passive=False,
     ) -> list[dict]:
-        # X9：流水查询（面板 limit 可达 1000，LIKE 模糊走不了索引）放线程池
         return await asyncio.to_thread(
             self._query_logs_sync,
             group_id,
@@ -1773,6 +1773,7 @@ class SQLiteBackend(StorageBackend):
             fuzzy,
             dimension,
             source,
+            group_passive=group_passive,
         )
 
     def _query_logs_sync(
@@ -1785,10 +1786,11 @@ class SQLiteBackend(StorageBackend):
         dimension=None,
         source=None,
         exclude_passive=False,
+        group_passive=False,
     ) -> list[dict]:
-        sql = (
-            "SELECT id, group_id, user_id, delta, favor_before, favor_after, reason, source, ts, message, reversed, relation_delta, event_id "
-            "FROM favor_log"
+        columns = (
+            "id, group_id, user_id, delta, favor_before, favor_after, reason, "
+            "source, ts, message, reversed, relation_delta, event_id, origin_group_id"
         )
         where: list[str] = []
         args: list = []
@@ -1796,16 +1798,13 @@ class SQLiteBackend(StorageBackend):
             where.append("group_id = ?")
             args.append(group_id)
         if user_id:
-            # X1：默认精确匹配——内部路径（衰减计数/修复期/记忆注入）语义
-            # 要求精确，LIKE 前导通配会把互为子串的 QQ 混进来；fuzzy 仅
-            # 供 WebUI 搜索显式开启（该路径 LIKE 无法走索引，属已知代价）
             if fuzzy:
                 where.append("user_id LIKE ?")
                 args.append(f"%{user_id}%")
             else:
                 where.append("user_id = ?")
                 args.append(user_id)
-        # 维度和来源先于 LIMIT；旧流水只知道亲近度，不补造 F/T 的零值。
+        # 筛选先于合并和分页；旧流水只知道亲近度，不补造 F/T 的零值。
         dimensions = {
             "familiarity": "json_extract(relation_delta, '$.familiarity') != 0",
             "affinity": "COALESCE(json_extract(relation_delta, '$.affinity'), delta) != 0",
@@ -1819,46 +1818,48 @@ class SQLiteBackend(StorageBackend):
             where.append("source = ?")
             args.append(source)
         if exclude_passive:
-            # 被动在场记录用于审计，不挤占语义事件和印象的上下文条数。
             where.append("COALESCE(source, '') != 'passive_familiarity'")
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?"
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        if group_passive:
+            # 触发标识与来源群共同决定展示批次；无标识的旧记录和撤销不猜测归组。
+            bucket = (
+                "CASE WHEN source='passive_familiarity' AND event_id != '' "
+                "THEN 'event:' || event_id ELSE 'row:' || id END"
+            )
+            sql = (
+                f"WITH filtered AS (SELECT {columns}, {bucket} AS bucket FROM favor_log{clause}), "
+                "chosen AS (SELECT group_id, origin_group_id, bucket, MAX(ts) AS latest_ts, MAX(id) AS latest_id "
+                "FROM filtered GROUP BY group_id, origin_group_id, bucket "
+                "ORDER BY latest_ts DESC, latest_id DESC LIMIT ? OFFSET ?) "
+                "SELECT "
+                + ", ".join("f." + col.strip() for col in columns.split(","))
+                + " FROM filtered f JOIN chosen c USING(group_id, origin_group_id, bucket) "
+                "ORDER BY c.latest_ts DESC, c.latest_id DESC, f.ts DESC, f.id DESC"
+            )
+        else:
+            sql = f"SELECT {columns} FROM favor_log{clause} ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?"
         args.extend([int(limit), int(offset)])
         with self._lock:
             rows = self._c().execute(sql, args).fetchall()
-        return [
-            {
-                "id": r[0],
-                "group_id": r[1],
-                "user_id": r[2],
-                "delta": float(r[3]),
-                "favor_before": float(r[4]),
-                "favor_after": float(r[5]),
-                "reason": r[6],
-                "source": r[7],
-                "ts": r[8],
-                "message": r[9] or "",
-                "reversed": bool(r[10]),
-                "relation_delta": json.loads(r[11]),
-                "event_id": r[12],
-            }
-            for r in rows
-        ]
+        records = [self._log_record(row) for row in rows]
+        if not group_passive:
+            return records
+        result: list[dict] = []
+        batches: dict[tuple, dict] = {}
+        for record in records:
+            if record["source"] != "passive_familiarity" or not record["event_id"]:
+                result.append(record)
+                continue
+            key = (record["group_id"], record["origin_group_id"], record["event_id"])
+            if key not in batches:
+                batch = {**record, "members": []}
+                batches[key] = batch
+                result.append(batch)
+            batches[key]["members"].append(record)
+        return result
 
-    async def get_log(self, log_id: int) -> dict | None:
-        with self._lock:
-            row = (
-                self._c()
-                .execute(
-                    "SELECT id, group_id, user_id, delta, favor_before, favor_after, reason, source, ts, message, reversed, relation_delta, event_id "
-                    "FROM favor_log WHERE id=?",
-                    (int(log_id),),
-                )
-                .fetchone()
-            )
-        if row is None:
-            return None
+    @staticmethod
+    def _log_record(row) -> dict:
         return {
             "id": row[0],
             "group_id": row[1],
@@ -1873,7 +1874,21 @@ class SQLiteBackend(StorageBackend):
             "reversed": bool(row[10]),
             "relation_delta": json.loads(row[11]),
             "event_id": row[12],
+            "origin_group_id": row[13],
         }
+
+    async def get_log(self, log_id: int) -> dict | None:
+        with self._lock:
+            row = (
+                self._c()
+                .execute(
+                    "SELECT id, group_id, user_id, delta, favor_before, favor_after, reason, source, ts, message, reversed, relation_delta, event_id, origin_group_id "
+                    "FROM favor_log WHERE id=?",
+                    (int(log_id),),
+                )
+                .fetchone()
+            )
+        return self._log_record(row) if row is not None else None
 
     async def mark_reversed(self, log_id: int) -> None:
         with self._lock:

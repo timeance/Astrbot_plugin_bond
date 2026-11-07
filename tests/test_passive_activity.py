@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from astrbot_plugin_bond.core.passive_familiarity import PassiveFamiliarityConfig
 from astrbot_plugin_bond.core.taskregistry import TaskRegistry
 from astrbot_plugin_bond.core.settings import snapshot, validate_patch
 from astrbot_plugin_bond.services.passive_activity import ActivityBatch, PassiveActivity
@@ -378,12 +379,14 @@ def test_listener_rejects_mismatched_bot_and_freezes_mutable_event(tmp_path):
         asyncio.run(run(listener, components))
 
 
+@pytest.mark.parametrize("member_limit", [0, 3])
 @pytest.mark.parametrize("minutes", [1, 20])
-def test_configured_activity_window_preserves_boundary(minutes):
-    from astrbot_plugin_bond.core.passive_familiarity import PassiveFamiliarityConfig
-
+def test_configured_activity_window_preserves_boundary(minutes, member_limit):
     service = PassiveActivity(
-        "10001", config=PassiveFamiliarityConfig(window_minutes=minutes)
+        "10001",
+        config=PassiveFamiliarityConfig(
+            window_minutes=minutes, member_limit=member_limit
+        ),
     )
     with patch("time.time", return_value=NOW):
         observe(service)
@@ -394,3 +397,78 @@ def test_configured_activity_window_preserves_boundary(minutes):
     with patch("time.time", return_value=NOW + minutes * 60 + 0.01):
         batch = observe(service, user="8004", mid="outside", mentioned=True)
         assert all(user != "8001" for user, _ in batch.members)
+
+
+@pytest.mark.parametrize(
+    "member_limit,expected",
+    [
+        (0, ["8001", "8003", "8004", "8005", "8002"]),
+        (3, ["8004", "8005", "8002"]),
+    ],
+)
+def test_member_limit_uses_last_distinct_speakers_excluding_trigger(
+    member_limit, expected
+):
+    service = PassiveActivity(
+        "10001", config=PassiveFamiliarityConfig(member_limit=member_limit)
+    )
+    with patch("time.time", return_value=NOW):
+        for index, user in enumerate(
+            ["8006", "8001", "8002", "8003", "8004", "8005", "8002"]
+        ):
+            observe(service, user=user, mid=f"m{index}")
+        observe(service, user="8009", group="7002", mid="other-group")
+        batch = observe(service, user="8006", mid="trigger", mentioned=True)
+    assert [user for user, _ in batch.members] == expected
+
+
+def test_member_limit_is_applied_before_ignored_member_eligibility():
+    service = PassiveActivity("10001")
+    with patch("time.time", return_value=NOW):
+        for index in range(1, 6):
+            observe(service, user=str(8000 + index), mid=f"m{index}")
+        batch = observe(
+            service,
+            user="8006",
+            mid="trigger",
+            mentioned=True,
+            ignored_ids={"8004"},
+        )
+    assert [user for user, _ in batch.members] == ["8003", "8005"]
+
+
+def test_limited_batches_freeze_before_later_messages_and_merge_without_refill():
+    async def run():
+        service = PassiveActivity("10001")
+        registry = TaskRegistry()
+        calls = []
+
+        async def apply(group, user, **kw):
+            calls.append((user, kw))
+            return user != "8004"
+
+        favor = SimpleNamespace(apply_passive_familiarity=apply)
+        with patch("time.time", return_value=NOW):
+            for index in range(1, 6):
+                observe(service, user=str(8000 + index), mid=f"m{index}")
+            first = observe(service, user="8006", mid="first", mentioned=True)
+        with patch("time.time", return_value=NOW + 1):
+            observe(service, user="8007", mid="future")
+            service.schedule(first, favor, registry)
+            second = observe(service, user="8008", mid="second", mentioned=True)
+            service.schedule(second, favor, registry)
+        assert [user for user, _ in first.members] == ["8003", "8004", "8005"]
+        assert [user for user, _ in second.members] == ["8005", "8006", "8007"]
+        assert registry.size == 1
+        await drain(SimpleNamespace(registry=registry))
+        assert [user for user, _ in calls] == ["8003", "8004", "8005", "8006", "8007"]
+        for user, metadata in calls:
+            batch = first if user in ("8003", "8004") else second
+            assert metadata == dict(
+                trigger_id=batch.trigger_id,
+                observed_at=dict(batch.members)[user],
+                triggered_at=batch.triggered_at,
+            )
+        assert not service._pending
+
+    asyncio.run(run())

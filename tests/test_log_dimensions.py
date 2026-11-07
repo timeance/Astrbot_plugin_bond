@@ -86,3 +86,152 @@ def test_dimension_view_does_not_change_whole_event_undo(tmp_path):
             await router.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("mode", ["per_group", "global"])
+def test_passive_batches_paginate_after_grouping_and_filtering(tmp_path, mode):
+    async def run():
+        router = BotScopeStorageRouter(tmp_path)
+        try:
+            db = await router.get("10001", mode)
+            favor = service(db, mode)
+            stored_group = favor.group_key("123")
+            entries = [
+                ("8001", "trigger-a", "123", 100, 0.3, "passive_familiarity"),
+                ("8002", "trigger-a", "123", 101, 0.2, "passive_familiarity"),
+                ("8003", "trigger-a", "123", 105, 0.12345, "passive_familiarity"),
+                ("8004", "trigger-a", "123", 110, 0.3, "passive_familiarity"),
+                ("8005", "trigger-a", "999", 110, 0.3, "passive_familiarity"),
+                ("8006", "trigger-b", "123", 110, 0.3, "passive_familiarity"),
+                ("8007", "", "", 110, 0.3, "passive_familiarity"),
+                ("8008", "", "", 110, -0.3, "passive_familiarity"),
+                ("8009", "direct", "123", 120, 0, "judge"),
+            ]
+            db._c().executemany(
+                "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,source,ts,relation_delta,event_id,origin_group_id) "
+                "VALUES(?,?,0,2,2,?,?,?,?,?)",
+                [
+                    (
+                        stored_group,
+                        user,
+                        source,
+                        ts,
+                        json.dumps({"familiarity": delta, "affinity": 0, "trust": 0}),
+                        event,
+                        origin,
+                    )
+                    for user, event, origin, ts, delta, source in entries
+                ],
+            )
+            db._c().commit()
+            raw = await favor.query_logs("123", None, limit=100)
+            grouped = await favor.query_logs("123", None, limit=100, group_passive=True)
+            assert len(raw) == 9 and len(grouped) == 6
+            batch = next(row for row in grouped if len(row.get("members", [])) == 4)
+            assert batch["origin_group_id"] == "123"
+            assert {row["user_id"] for row in batch["members"]} == {
+                "8001",
+                "8002",
+                "8003",
+                "8004",
+            }
+            assert (
+                next(row for row in batch["members"] if row["user_id"] == "8003")[
+                    "relation_delta"
+                ]["familiarity"]
+                == 0.12345
+            )
+            paged = []
+            for offset in range(6):
+                page = await favor.query_logs(
+                    "123", None, limit=1, offset=offset, group_passive=True
+                )
+                assert len(page) == 1
+                paged.extend(page)
+            assert paged == grouped
+            assert (
+                await favor.query_logs(
+                    "123", None, limit=1, offset=6, group_passive=True
+                )
+                == []
+            )
+            flattened = [
+                member for row in grouped for member in row.get("members", [row])
+            ]
+            assert sorted(row["id"] for row in flattened) == sorted(
+                row["id"] for row in raw
+            )
+            assert await db.get_log(batch["members"][0]["id"]) == batch["members"][0]
+            assert (
+                len(
+                    await favor.query_logs(
+                        "123", None, dimension="familiarity", group_passive=True
+                    )
+                )
+                == 5
+            )
+            assert (
+                len(
+                    await favor.query_logs(
+                        "123", None, source="judge", group_passive=True
+                    )
+                )
+                == 1
+            )
+            searched = await favor.query_logs("123", "8003", group_passive=True)
+            assert [member["user_id"] for member in searched[0]["members"]] == ["8003"]
+            # 另一个存储群即使碰巧共用触发标识和来源群，也不能归为同一批。
+            db._c().execute(
+                "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,source,ts,event_id,origin_group_id) "
+                "VALUES('456','8010',0,0,0,'passive_familiarity',100,'trigger-a','123')"
+            )
+            db._c().commit()
+            all_groups = await db.query_logs(limit=100, group_passive=True)
+            assert len(all_groups) == 7
+        finally:
+            await router.close()
+
+    asyncio.run(run())
+
+
+def test_grouped_passive_undo_keeps_other_members_and_audit_rows(tmp_path):
+    import time
+
+    async def run():
+        router = BotScopeStorageRouter(tmp_path)
+        try:
+            db = await router.get("10001", "global")
+            favor = service(db, "global")
+            now = time.time()
+            for user in ("8001", "8002"):
+                assert await favor.apply_passive_familiarity(
+                    "123",
+                    user,
+                    trigger_id="same-trigger",
+                    observed_at=now,
+                    triggered_at=now,
+                )
+            batch = (await favor.query_logs("123", None, group_passive=True))[0]
+            assert len(batch["members"]) == 2
+            target = next(row for row in batch["members"] if row["user_id"] == "8001")
+            await favor.undo_log(target["id"], actor="fixture")
+            after = await favor.query_logs("123", None, group_passive=True)
+            original = next(row for row in after if row.get("members"))
+            assert next(row for row in original["members"] if row["user_id"] == "8001")[
+                "reversed"
+            ]
+            assert not next(
+                row for row in original["members"] if row["user_id"] == "8002"
+            )["reversed"]
+            assert (
+                await favor.get_relation("123", "8001")
+            ).familiarity == pytest.approx(0, abs=0.001)
+            assert (
+                await favor.get_relation("123", "8002")
+            ).familiarity == pytest.approx(0.3, abs=0.001)
+            assert len(await favor.query_logs("123", None)) == 3
+            assert all(row["origin_group_id"] == "123" for row in after)
+        finally:
+            await router.close()
+
+    asyncio.run(run())

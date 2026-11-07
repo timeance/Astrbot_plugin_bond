@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.5.7",
+    "0.5.9",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
