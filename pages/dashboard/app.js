@@ -1568,20 +1568,25 @@ createApp({
             <tr v-for="r in logs" :key="r.id" :class="{ 'xx-reversed': isLogReversed(r) }">
               <td class="xx-mono">{{ fmtTime(r.ts) }}</td>
               <td class="xx-mono">{{ logGroupLabel(r) }}</td>
-              <td v-if="isPassiveLog(r)" colspan="3" class="xx-passive-cell">
-                <div class="xx-passive-preview">
-                  <div v-for="member in passiveLogPreview(r)" :key="member.id" class="xx-passive-member-line">
-                    <span class="xx-mono xx-log-qq">{{ member.user_id }}</span>
-                    <span class="xx-log-delta xx-log-delta-familiarity">熟悉度 {{ fmtKnownDelta(passiveLogDelta(member)) }}<span v-if="member.reversed" class="xx-tag xx-muted">已撤销</span></span>
-                  </div>
-                  <span v-if="passiveLogMembers(r).length > 3" class="xx-muted-text">还有 {{ passiveLogMembers(r).length - 3 }} 人</span>
+              <td class="xx-mono">
+                <div v-if="isPassiveLog(r)" class="xx-passive-column">
+                  <span v-for="member in passiveLogPreview(r)" :key="member.id">{{ member.user_id }}</span>
+                  <span v-if="passiveLogMembers(r).length > 3" class="xx-passive-more xx-muted-text">还有 {{ passiveLogMembers(r).length - 3 }} 人</span>
                 </div>
+                <template v-else>{{ r.user_id }}</template>
               </td>
-              <template v-else>
-                <td class="xx-mono">{{ r.user_id }}</td>
-                <td><div class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" class="xx-log-delta" :class="'xx-log-delta-' + change.key">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div></td>
-                <td class="xx-mono">{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</td>
-              </template>
+              <td>
+                <div v-if="isPassiveLog(r)" class="xx-relation-3d xx-passive-column" :class="{ 'xx-passive-overflow': passiveLogMembers(r).length > 3 }">
+                  <span v-for="member in passiveLogPreview(r)" :key="member.id" class="xx-log-delta xx-log-delta-familiarity">熟悉度 {{ fmtKnownDelta(passiveLogDelta(member)) }}<span v-if="member.reversed" class="xx-tag xx-muted">已撤销</span></span>
+                </div>
+                <div v-else class="xx-relation-3d"><span v-for="change in logDeltaParts(r)" :key="change.key" class="xx-log-delta" :class="'xx-log-delta-' + change.key">{{ change.label }} {{ fmtKnownDelta(change.value) }}</span></div>
+              </td>
+              <td class="xx-mono">
+                <div v-if="isPassiveLog(r)" class="xx-passive-column" :class="{ 'xx-passive-overflow': passiveLogMembers(r).length > 3 }">
+                  <span v-for="member in passiveLogPreview(r)" :key="member.id">{{ fmtOptionalNum(member.favor_before) }} → {{ fmtOptionalNum(member.favor_after) }}</span>
+                </div>
+                <template v-else>{{ fmtOptionalNum(r.favor_before) }} → {{ fmtOptionalNum(r.favor_after) }}</template>
+              </td>
               <td class="xx-reason-cell" :title="displayReason(r.reason)">{{ displayReason(r.reason) }}</td>
               <td><span class="xx-tag">{{ sourceLabel(r.source) }}</span></td>
               <td class="xx-actions">
