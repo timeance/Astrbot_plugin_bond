@@ -35,6 +35,7 @@
   --xx-danger-soft: #361A26;
   --xx-danger-line: #7A3244;
   --xx-on-danger: #0B1120;
+  --xx-warning-ink: #FFB86C;
   --xx-success: #5CE1E6;
   --xx-success-soft: #122E3A;
   --xx-success-line: #2C6F7A;
@@ -82,6 +83,7 @@
   --xx-danger-soft: #FDEFF1;
   --xx-danger-line: #E8A6AE;
   --xx-on-danger: #FFFFFF;
+  --xx-warning-ink: #A64B00;
   --xx-success: #0E7988;
   --xx-success-soft: #E0F3F6;
   --xx-success-line: #76C1CC;
@@ -1879,4 +1881,18 @@ details.xx-form-card[open] > summary::after {
     left: 0;
     width: min(260px, 80vw);
   }
+}
+
+/* 设置草稿提醒与系统诊断记录 */
+.xx-unsaved-notice, .xx-saved-notice {
+  align-self: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.xx-unsaved-notice { color: var(--xx-danger-deep); }
+.xx-saved-notice { color: var(--xx-warning-ink); }
+.xx-diagnostic-records {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--xx-line);
 }

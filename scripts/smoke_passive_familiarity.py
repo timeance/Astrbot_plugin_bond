@@ -41,8 +41,10 @@ async def check(plugin_dir: Path, runtime_dir: Path):
     assert astrbot.__version__ == "4.28.0"
     schema = json.loads((plugin_dir / "_conf_schema.json").read_text(encoding="utf-8"))
     config = AstrBotConfig(str(runtime_dir / "config.json"), schema=schema)
-    assert config["passive_familiarity"]["enabled"] is False
-    config["passive_familiarity"]["enabled"] = True
+    assert config["passive_familiarity"] is True
+    config["passive_familiarity_rules"].update(
+        amount=0.6, ceiling=50, cooldown_minutes=3, window_minutes=20
+    )
     config["inject"]["enabled"] = True
     config["relation_mode"] = "realistic"
     config["group_whitelist"] = [GROUP]
@@ -135,7 +137,7 @@ async def check(plugin_dir: Path, runtime_dir: Path):
             trigger = event(DIRECT, "trigger", directed=True)
             await dispatch(trigger)
             after = await deps.favor._storage.get(GROUP, ACTIVE)
-            assert after.familiarity == 40.3
+            assert after.familiarity == 40.6
             for name in (
                 "favor",
                 "trust",
@@ -165,7 +167,7 @@ async def check(plugin_dir: Path, runtime_dir: Path):
             assert '"user_id": "8002"' in req.system_prompt
             # 同一真实事件重试不产生第二次被动奖励。
             await dispatch(trigger)
-            assert (await deps.favor._storage.get(GROUP, ACTIVE)).familiarity == 40.3
+            assert (await deps.favor._storage.get(GROUP, ACTIVE)).familiarity == 40.6
 
         # 已有直接评估链仍可计分与保温；仅 Provider 使用离线预置分类。
         with patch("time.time", return_value=NOW + 60):
@@ -211,8 +213,28 @@ async def check(plugin_dir: Path, runtime_dir: Path):
         ]
     finally:
         await plugin.terminate()
+    # 宿主先补 schema 默认值，再由插件迁移旧对象，明确关闭不能变为开启。
+    for enabled in (False, True):
+        legacy_path = runtime_dir / f"legacy-{enabled}.json"
+        legacy_path.write_text(
+            json.dumps({"passive_familiarity": {"enabled": enabled}}), encoding="utf-8"
+        )
+        legacy_config = AstrBotConfig(str(legacy_path), schema=schema)
+        legacy_plugin = BondPlugin(_context(Context, legacy_config), legacy_config)
+        try:
+            await legacy_plugin.initialize()
+            assert legacy_config["passive_familiarity"] is enabled
+            assert (
+                await legacy_plugin._runtime.select(BOT)
+            ).passive_activity.enabled is enabled
+            assert (
+                AstrBotConfig(str(legacy_path), schema=schema)["passive_familiarity"]
+                is enabled
+            )
+        finally:
+            await legacy_plugin.terminate()
     print(
-        "PASS AstrBot 4.28.0: schema重载、真实事件/主钩子、被动+0.3、触发者排除、A/T与全部保温不变、请求人格/历史保留、重试、后续直接评估及实际优先级排序。"
+        "PASS AstrBot 4.28.0: schema重载、真实事件/主钩子、自定义被动+0.6、触发者排除、A/T与全部保温不变、请求人格/历史保留、重试、后续直接评估及实际优先级排序。"
     )
     print(
         "LIMIT: 钩子直接调用，Provider为离线预置分类；未连接QQ、真实模型或启动完整平台pipeline/其他插件。高于1000的接管监听器仍可能先执行。"

@@ -117,10 +117,13 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
         "group_whitelist",
         "default_scope_mode",
         "master_ids",
-        "passive_familiarity.enabled",
+        "passive_familiarity",
         "inject.enabled",
         "relation_mode",
         "ignored_bot_ids",
+        "decay.grace_days",
+        "decay.maintenance_strategy",
+        "timezone",
     ]
     by_path = {f["path"]: f for f in definitions}
     assert len(by_path) == len(definitions)
@@ -131,9 +134,9 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
     ):
         assert by_path[path]["special"] == "select_provider"
     assert by_path["inject.memory_count"]["group"] == "memory"
-    assert by_path["passive_familiarity.enabled"]["label"] == "眼熟模式"
+    assert by_path["passive_familiarity"]["label"] == "眼熟模式"
     assert (
-        by_path["passive_familiarity.enabled"]["hint"]
+        by_path["passive_familiarity"]["hint"]
         == "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
     )
 
@@ -161,7 +164,12 @@ def test_host_visibility_and_webui_wording_agree():
     assert visible == [
         f["path"]
         for f in definitions
-        if f["group"] == "basic" or f["path"].startswith("command.")
+        if (
+            f["group"] == "basic"
+            and f["path"]
+            not in {"decay.grace_days", "decay.maintenance_strategy", "timezone"}
+        )
+        or f["path"].startswith("command.")
     ]
     for field in definitions:
         node = schema
@@ -183,13 +191,20 @@ def test_host_visibility_and_webui_wording_agree():
     assert schema["decay"]["items"]["grace_days"]["type"] == "float"
 
 
-def test_relation_fields_keep_every_dimension_together_without_changing_group():
+def test_relation_fields_split_dimensions_and_keep_shared_settings_in_basic():
     schema = json.loads(
         (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
     )
-    paths = [f["path"] for f in fields() if f["group"] == "rules"]
-    assert paths[:2] == ["decay.grace_days", "timezone"]
-    expected = {"timezone"}
+    definitions = fields()
+    groups = {
+        key: [f["path"] for f in definitions if f["group"] == key]
+        for key in ("basic", "familiarity", "affinity", "trust")
+    }
+    assert {"decay.grace_days", "decay.maintenance_strategy", "timezone"} <= set(
+        groups["basic"]
+    )
+    paths = groups["familiarity"] + groups["affinity"] + groups["trust"]
+    expected = set()
 
     def collect(path, node):
         if node["type"] == "object":
@@ -198,16 +213,28 @@ def test_relation_fields_keep_every_dimension_together_without_changing_group():
         else:
             expected.add(path)
 
-    for key in ("relation_daily_caps", "familiarity_growth", "decay", "economy"):
+    for key in (
+        "relation_daily_caps",
+        "passive_familiarity_rules",
+        "familiarity_growth",
+        "decay",
+        "economy",
+    ):
         collect(key, schema[key])
-    expected.remove("economy.preset")
+    expected -= {"economy.preset", "decay.grace_days", "decay.maintenance_strategy"}
     assert set(paths) == expected
-    dimensions = [
-        0 if "familiarity" in path else 2 if "trust" in path else 1
-        for path in paths[2:]
+    assert groups["familiarity"][:6] == [
+        "relation_daily_caps.familiarity_up",
+        "relation_daily_caps.familiarity_down",
+        "passive_familiarity_rules.amount",
+        "passive_familiarity_rules.ceiling",
+        "passive_familiarity_rules.cooldown_minutes",
+        "passive_familiarity_rules.window_minutes",
     ]
-    assert dimensions == sorted(dimensions)
-    assert "economy.enabled" in paths
+    assert all("trust" in path for path in groups["trust"])
+    assert "economy.enabled" in groups["affinity"]
+    assert "decay.maintenance_strategy" in groups["basic"]
+    assert not any(f["group"] == "rules" for f in definitions)
 
 
 @pytest.mark.parametrize("days", [0, 0.5, 5.0, 30])
@@ -707,7 +734,7 @@ def test_independent_baseline_bounds_and_legacy_value_ignored(dimension):
     data = snapshot(legacy)
     field = next(field for field in data["fields"] if field["path"] == path)
     expected = {"familiarity": 10, "affinity": 0, "trust": 20}[dimension]
-    assert field["group"] == "rules" and field["default"] == expected
+    assert field["group"] == dimension and field["default"] == expected
     assert data["values"][path] == expected
     assert data["values"] == snapshot({})["values"]
     assert "decay.baseline" not in data["values"]
@@ -752,7 +779,11 @@ def test_query_settings_share_host_values_and_reject_unknown_impression_mode():
 
 
 def test_diagnostic_levels_capacity_defaults_and_validation():
-    values = snapshot({})["values"]
+    data = snapshot({})
+    values = data["values"]
+    assert all(
+        f["title"] == "系统诊断" for f in data["fields"] if f["group"] == "diagnostics"
+    )
     assert values["diagnostics.enabled"] is False
     assert values["diagnostics.detail_level"] == "assessment"
     assert values["diagnostics.max_size_mb"] == 100
@@ -765,3 +796,70 @@ def test_diagnostic_levels_capacity_defaults_and_validation():
             validate_patch({"diagnostics.max_size_mb": invalid})
     with pytest.raises(ValueError):
         validate_patch({"diagnostics.detail_level": "unknown"})
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_flat_passive_switch_migrates_saved_choice_once(enabled):
+    from astrbot_plugin_bond.core.config_migrations import migrate_saved_defaults
+
+    config = {"passive_familiarity": {"enabled": enabled}}
+    assert migrate_saved_defaults(config) == ["passive_familiarity"]
+    assert config["passive_familiarity"] is enabled
+    assert migrate_saved_defaults(config) == []
+    assert snapshot(config)["values"]["passive_familiarity"] is enabled
+    schema = json.loads(
+        (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
+    )
+    assert schema["passive_familiarity"]["type"] == "bool"
+    assert schema["passive_familiarity"]["default"] is True
+    assert (
+        list(schema).index("passive_familiarity")
+        == list(schema).index("master_ids") + 1
+    )
+    assert schema["passive_familiarity_rules"]["invisible"] is True
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("amount", -0.1),
+        ("amount", 100.1),
+        ("amount", True),
+        ("ceiling", 100.1),
+        ("ceiling", float("nan")),
+        ("cooldown_minutes", 0),
+        ("cooldown_minutes", 1.5),
+        ("window_minutes", 0),
+        ("window_minutes", True),
+    ],
+)
+def test_invalid_passive_parameters_rejected_without_saving(key, value):
+    with pytest.raises(ValueError):
+        validate_patch({"passive_familiarity_rules." + key: value})
+
+
+def test_passive_parameters_save_reload_and_report_pending_runtime_values():
+    async def run():
+        config = Config(passive_familiarity=False)
+        runtime = RuntimeService(None, config, None)
+        patch = {
+            "passive_familiarity_rules.amount": 0.8,
+            "passive_familiarity_rules.ceiling": 45,
+            "passive_familiarity_rules.cooldown_minutes": 5,
+            "passive_familiarity_rules.window_minutes": 15,
+        }
+        initial = runtime.detailed_settings()
+        saved = await runtime.save_detailed_settings(patch, initial["revision"])
+        assert config["passive_familiarity"] is False
+        assert saved["active_values"] == initial["values"]
+        assert {key: saved["values"][key] for key in patch} == patch
+        reloaded = RuntimeService(None, config, None).detailed_settings()
+        assert reloaded["active_values"] == saved["values"]
+        before = copy.deepcopy(dict(config))
+        with pytest.raises(ValueError):
+            await runtime.save_detailed_settings(
+                {"passive_familiarity_rules.ceiling": 101}, reloaded["revision"]
+            )
+        assert config == before
+
+    asyncio.run(run())

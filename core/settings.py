@@ -27,33 +27,44 @@ SECTIONS = {
             "group_whitelist",
             "default_scope_mode",
             "master_ids",
-            "passive_familiarity.enabled",
+            "passive_familiarity",
             "inject.enabled",
             "relation_mode",
             "ignored_bot_ids",
+            "decay.grace_days",
+            "decay.maintenance_strategy",
+            "timezone",
         ],
     ),
-    "rules": (
-        "关系变化",
+    "familiarity": (
+        "熟悉度变化",
         [
-            "decay.grace_days",
-            "timezone",
             "relation_daily_caps.familiarity_up",
             "relation_daily_caps.familiarity_down",
+            "passive_familiarity_rules",
             "familiarity_growth",
             "decay.familiarity_enabled",
             "decay.familiarity_half_life",
             "decay.familiarity_baseline",
+        ],
+    ),
+    "affinity": (
+        "亲近度变化",
+        [
             "relation_daily_caps.affinity_up",
             "relation_daily_caps.affinity_down",
             "economy",
-            "decay.maintenance_strategy",
             "decay.enabled",
             "decay.half_life_base",
             "decay.half_life_growth",
             "decay.half_life_max",
             "decay.affinity_baseline",
             "decay.floor_enabled",
+        ],
+    ),
+    "trust": (
+        "信任度变化",
+        [
             "relation_daily_caps.trust_up",
             "relation_daily_caps.trust_down",
             "decay.trust_enabled",
@@ -66,7 +77,7 @@ SECTIONS = {
         ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
     ),
     "commands": ("查询与排行", ["command", "render.font_path"]),
-    "diagnostics": ("关系诊断", ["diagnostics"]),
+    "diagnostics": ("系统诊断", ["diagnostics"]),
 }
 LABELS = {
     "assessment.enabled": (
@@ -106,7 +117,7 @@ LABELS = {
         "图片最多展示 10 人的昵称、头像和关系，不显示分值。头像由 QQ 提供，生成图片失败时改用文字。",
     ),
     "diagnostics.enabled": (
-        "记录关系诊断",
+        "记录系统诊断",
         "记录评估与关系变化，按所选详细程度保留诊断内容。",
     ),
     "diagnostics.detail_level": (
@@ -432,6 +443,14 @@ def snapshot(config):
 def validate_patch(values):
     if not isinstance(values, dict) or not values:
         raise ValueError("请提交要修改的设置")
+    from .passive_familiarity import PassiveFamiliarityConfig
+
+    passive_values = {
+        path.split(".", 1)[1]: value
+        for path, value in values.items()
+        if path.startswith("passive_familiarity_rules.")
+    }
+    PassiveFamiliarityConfig.from_config(passive_values)
     allowed = {f["path"]: f for f in fields()}
     for path, value in values.items():
         if path not in allowed:

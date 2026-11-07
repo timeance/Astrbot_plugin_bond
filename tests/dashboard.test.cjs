@@ -394,52 +394,40 @@ test('returning to the shared log table reloads changed evaluation dimension eve
 });
 
 
-test('section defaults are staged and preserve other sections, identity and models',async()=>{
+test('dimension defaults preserve other dimensions, shared settings and selected models',async()=>{
  const {ui,pending}=harness();
- const values={relation_mode:'realistic','decay.half_life_base':10,'relation_daily_caps.affinity_up':12,
-  'decay.familiarity_enabled':false,'decay.familiarity_half_life':90,
-  'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20,
-  timezone:'UTC',master_ids:'8001','command.ranking_access':'master','judge.provider_id':'summary',
-  'assessment.small_provider_id':'chosen','inject.memory_days':4};
+ const values={'passive_familiarity_rules.amount':1.2,'decay.familiarity_baseline':20,
+  'decay.affinity_baseline':15,'decay.trust_baseline':30,timezone:'UTC',master_ids:'8001',
+  'decay.grace_days':7,'decay.maintenance_strategy':'legacy','judge.provider_id':'summary','inject.memory_days':4};
  ui.detailSettings.value={revision:'before',values:{...values},fields:[
-  {path:'relation_mode',group:'basic',default:'galgame'},
-  {path:'decay.familiarity_enabled',group:'rules',default:true},
-  {path:'decay.familiarity_half_life',group:'rules',default:60},
-  {path:'decay.familiarity_baseline',group:'rules',default:0},
-  {path:'decay.affinity_baseline',group:'rules',default:0},
-  {path:'decay.trust_baseline',group:'rules',default:0},
-  {path:'decay.half_life_base',group:'rules',default:30},
-  {path:'relation_daily_caps.affinity_up',group:'rules',default:10},
-  {path:'timezone',group:'rules',default:'Asia/Shanghai'},
+  {path:'passive_familiarity_rules.amount',group:'familiarity',default:0.3},
+  {path:'decay.familiarity_baseline',group:'familiarity',default:10},
+  {path:'decay.affinity_baseline',group:'affinity',default:0},
+  {path:'decay.trust_baseline',group:'trust',default:20},
+  {path:'timezone',group:'basic',default:'Asia/Shanghai'},
+  {path:'decay.grace_days',group:'basic',default:5},
+  {path:'decay.maintenance_strategy',group:'basic',default:'independent'},
   {path:'master_ids',group:'basic',default:''},
-  {path:'command.ranking_access',group:'commands',default:'all'},
   {path:'judge.provider_id',group:'memory',default:''},
   {path:'inject.memory_days',group:'memory',default:7}
  ]};ui.detailValues.value={...values};
- ui.detailLoading.value=true;ui.restoreSectionDefaults('rules');
- assert.equal(ui.detailValues.value['decay.half_life_base'],10);
+ ui.detailLoading.value=true;ui.restoreSectionDefaults('familiarity');
+ assert.equal(ui.detailValues.value['passive_familiarity_rules.amount'],1.2);
  ui.detailLoading.value=false;ui.restoreSectionDefaults('basic');
- assert.equal(ui.detailValues.value.master_ids,'8001');
- ui.restoreSectionDefaults('rules');
- assert.equal(ui.detailValues.value.relation_mode,'realistic');
- assert.equal(ui.detailValues.value['relation_daily_caps.affinity_up'],10);
- assert.equal(ui.detailValues.value['decay.familiarity_enabled'],true);
- assert.equal(ui.detailValues.value['decay.familiarity_half_life'],60);
- assert.equal(ui.detailSettings.value.values['decay.familiarity_enabled'],false);
- assert.equal(ui.detailSettings.value.values['decay.familiarity_half_life'],90);
- for(const dimension of ['familiarity','affinity','trust'])assert.equal(ui.detailValues.value[`decay.${dimension}_baseline`],0);
- assert.equal(ui.detailSettings.value.values['decay.trust_baseline'],20);
- assert.equal(ui.detailValues.value['command.ranking_access'],'master');
- assert.equal(ui.detailValues.value['assessment.small_provider_id'],'chosen');
- assert.equal(ui.detailSettings.value.values.relation_mode,'realistic');
+ assert.deepEqual(ui.detailValues.value,values);
+ ui.restoreSectionDefaults('familiarity');
+ assert.match(ui.detailNotice.value,/默认设置/);assert.equal(ui.detailNoticeError.value,false);
+ assert.equal(ui.detailValues.value['decay.familiarity_baseline'],10);
+ assert.equal(ui.detailValues.value['passive_familiarity_rules.amount'],0.3);
+ for(const key of ['decay.affinity_baseline','decay.trust_baseline','timezone','master_ids','decay.grace_days','decay.maintenance_strategy'])assert.equal(ui.detailValues.value[key],values[key]);
  assert.equal(pending.length,0);
  const save=ui.saveSettings();
- assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({'decay.half_life_base':30,'relation_daily_caps.affinity_up':10,'decay.familiarity_enabled':true,'decay.familiarity_half_life':60,'decay.familiarity_baseline':0,'decay.affinity_baseline':0,'decay.trust_baseline':0,timezone:'Asia/Shanghai'}));
+ assert.equal(JSON.stringify(pending[0].params.values),JSON.stringify({'passive_familiarity_rules.amount':0.3,'decay.familiarity_baseline':10}));
  pending[0].resolve({success:true,revision:'after',values:{...ui.detailValues.value},fields:ui.detailSettings.value.fields});await save;
- assert.match(ui.detailNotice.value,/重载/);
- ui.restoreSectionDefaults('memory');
- assert.equal(ui.detailValues.value['judge.provider_id'],'summary');
- assert.equal(ui.detailValues.value['inject.memory_days'],7);
+ assert.equal(ui.detailNotice.value,'设置已保存。');
+ ui.restoreSectionDefaults('affinity');assert.equal(ui.detailValues.value['decay.affinity_baseline'],0);assert.equal(ui.detailValues.value['decay.trust_baseline'],30);
+ ui.restoreSectionDefaults('trust');assert.equal(ui.detailValues.value['decay.trust_baseline'],20);
+ ui.restoreSectionDefaults('memory');assert.equal(ui.detailValues.value['judge.provider_id'],'summary');assert.equal(ui.detailValues.value['inject.memory_days'],7);
 });
 
 test('editing mode settings keeps the loaded runtime summary unchanged',()=>{
@@ -491,7 +479,7 @@ test('evaluation defaults preserve selected models and mode and save only allowe
  for(const key of ['enabled','assessment_mode','small_provider_id','large_provider_id','cooldown_sec'])assert.equal(payload[key],undefined);
  assert.equal(payload.window_sec,300);assert.equal(payload.context_events,8);
  pending[0].resolve({success:true,restart_required:true});await save;
- assert.match(ui.modelNotice.value,/重载/);
+ assert.equal(ui.modelNotice.value,'');assert.equal(ui.evaluationNeedsReload.value,true);
 });
 
 for(const [key,value] of [['window_sec',0],['window_max_calls',1.5],['per_user_daily_small_cap',-1],['context_chars',''],['context_events',NaN],['context_turns',21],['context_chars',20001],['context_days',91],['context_events',21]])test(`invalid ${key} is rejected before saving`,async()=>{
@@ -529,7 +517,7 @@ test('settings can open and save without a Bot or scope',async()=>{
  assert.equal(pending[0].endpoint,'settings');
  assert.equal(JSON.stringify(pending[0].params),JSON.stringify({values:{'inject.enabled':true},revision:'initial'}));
  pending[0].resolve({success:true,fields:[],values:{...values,'inject.enabled':true},revision:'saved',providers:[]});await save;
- assert.equal(ui.detailSettings.value.revision,'saved');assert.match(ui.detailNotice.value,/重载/);
+ assert.equal(ui.detailSettings.value.revision,'saved');assert.equal(ui.detailNotice.value,'设置已保存。');
  assert.equal(reads.some(item=>item.endpoint==='groups'),false);
 });
 
@@ -797,4 +785,96 @@ test('passive familiarity has a clear audit source label',()=>{
  const {ui}=harness();
  assert.equal(ui.sourceLabel('passive_familiarity'),'群聊活跃');
  assert.equal(ui.sourceLabel('judge'),'评估');
+});
+
+
+test('settings reminders follow the draft and saved runtime difference across save results',async()=>{
+ const {ui,pending,pendingGets}=harness({},['settings']);
+ const initial={'inject.enabled':false};
+ ui.detailSettings.value={revision:'initial',values:{...initial},active_values:{...initial},fields:[]};
+ ui.detailValues.value={...initial};
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,false);
+ ui.detailValues.value['inject.enabled']=true;
+ assert.equal(ui.detailDirty.value,true);
+ const failed=ui.saveSettings();
+ assert.equal(ui.detailDirty.value,true);
+ pending[0].resolve({success:false,error:'保存失败'});await failed;
+ assert.equal(ui.detailDirty.value,true);assert.equal(ui.detailNeedsReload.value,false);
+ assert.equal(ui.detailValues.value['inject.enabled'],true);
+ assert.equal(ui.detailNoticeError.value,true);assert.match(ui.detailNotice.value,/保存失败/);
+ const saved=ui.saveSettings();
+ pending[1].resolve({success:true,revision:'saved',values:{'inject.enabled':true},active_values:{...initial},fields:[]});await saved;
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,true);
+ assert.equal(ui.detailNotice.value,'');assert.equal(ui.detailNoticeError.value,false);
+ await ui.saveSettings();assert.equal(pending.length,2);assert.match(ui.detailNotice.value,/没有需要保存/);
+ assert.equal(ui.detailNeedsReload.value,true);
+ ui.detailValues.value['inject.enabled']=false;assert.equal(ui.detailDirty.value,true);
+ ui.detailValues.value['inject.enabled']=true;assert.equal(ui.detailDirty.value,false);
+ const refresh=ui.loadSettings();
+ pendingGets[0].resolve({success:true,revision:'reloaded',values:{'inject.enabled':true},active_values:{'inject.enabled':true},fields:[]});await refresh;
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,false);
+});
+
+test('list drafts update reminders while preserving typed separators and revert cleanly',async()=>{
+ const {ui,pendingGets}=harness({},['settings']);
+ ui.detailSettings.value={revision:'list',values:{group_whitelist:['10001']},fields:[]};
+ ui.detailValues.value={group_whitelist:['10001']};
+ ui.updateListSetting('group_whitelist','10001, ');
+ assert.equal(ui.listInputs.value.group_whitelist,'10001, ');assert.equal(ui.detailDirty.value,false);
+ ui.updateListSetting('group_whitelist','10001, 20002');assert.equal(ui.detailDirty.value,true);
+ ui.updateListSetting('group_whitelist','10001');assert.equal(ui.detailDirty.value,false);
+ ui.updateListSetting('group_whitelist','20002');assert.equal(ui.detailDirty.value,true);
+ const refresh=ui.loadSettings();
+ pendingGets[0].resolve({success:true,revision:'list-refreshed',values:{group_whitelist:['10001']},fields:[]});await refresh;
+ assert.equal(ui.detailDirty.value,false);assert.equal(Object.keys(ui.listInputs.value).length,0);
+});
+
+for(const restartRequired of [true,false]) test(`evaluation reminders use runtime differences when restart_required is ${restartRequired}`,async()=>{
+ const {ui,pending,pendingGets}=harness({},['models']);
+ const load=ui.loadEvaluation();
+ pendingGets[0].resolve({success:true,revision:'r1',configured:{context_turns:8},active:{context_turns:6},max_concurrent_assessments:2,active_max_concurrent_assessments:2});await load;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,true);
+ ui.modelConfig.value.context_turns=9;assert.equal(ui.evaluationDirty.value,true);
+ ui.modelConfig.value.context_turns=8;assert.equal(ui.evaluationDirty.value,false);
+ ui.maxConcurrentAssessments.value=3;assert.equal(ui.evaluationDirty.value,true);
+ const failed=ui.saveModels();
+ pending[0].resolve({success:false,error:'保存失败'});await failed;
+ assert.equal(ui.evaluationDirty.value,true);
+ assert.equal(ui.maxConcurrentAssessments.value,3);assert.equal(ui.modelRevision.value,'r1');
+ assert.equal(ui.modelNoticeError.value,true);assert.match(ui.modelNotice.value,/保存失败/);
+ const saved=ui.saveModels();
+ pending[1].resolve({success:true,revision:'r2',restart_required:restartRequired});await saved;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,true);
+ assert.equal(ui.modelNotice.value,'');assert.equal(ui.modelNoticeError.value,false);
+ const refresh=ui.loadEvaluation();
+ pendingGets[1].resolve({success:true,revision:'r3',configured:{context_turns:8},active:{context_turns:8},max_concurrent_assessments:3,active_max_concurrent_assessments:3});await refresh;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,false);
+ ui.restoreEvaluationDefaults();assert.equal(ui.evaluationDirty.value,true);
+ assert.match(ui.modelNotice.value,/默认值/);assert.equal(ui.modelNoticeError.value,false);
+});
+
+for(const runtimeKnown of [true,false]) test(`settings save feedback only claims active values when runtime is known: ${runtimeKnown}`,async()=>{
+ const {ui,pending}=harness();
+ ui.detailSettings.value={revision:'initial',values:{'inject.enabled':false},active_values:{'inject.enabled':true},fields:[]};
+ ui.detailValues.value={'inject.enabled':true};
+ assert.equal(ui.detailDirty.value,true);assert.equal(ui.detailNeedsReload.value,true);
+ const save=ui.saveSettings();
+ const response={success:true,revision:'saved',restart_required:true,values:{'inject.enabled':true},fields:[]};
+ if(runtimeKnown)response.active_values={'inject.enabled':true};
+ pending[0].resolve(response);await save;
+ assert.equal(ui.detailDirty.value,false);assert.equal(ui.detailNeedsReload.value,false);
+ assert.equal(ui.detailNoticeError.value,false);
+ assert.equal(ui.detailNotice.value,runtimeKnown?'设置已保存，当前设置已生效。':'设置已保存。');
+});
+
+for(const restartRequired of [true,false]) test(`saving evaluation values matching runtime keeps success feedback when restart_required is ${restartRequired}`,async()=>{
+ const {ui,pending,pendingGets}=harness({},['models']);
+ const load=ui.loadEvaluation();
+ pendingGets[0].resolve({success:true,revision:'r1',configured:{context_turns:8},active:{context_turns:6},max_concurrent_assessments:3,active_max_concurrent_assessments:2});await load;
+ ui.modelConfig.value.context_turns=6;ui.maxConcurrentAssessments.value=2;
+ assert.equal(ui.evaluationDirty.value,true);assert.equal(ui.evaluationNeedsReload.value,true);
+ const save=ui.saveModels();
+ pending[0].resolve({success:true,revision:'r2',restart_required:restartRequired});await save;
+ assert.equal(ui.evaluationDirty.value,false);assert.equal(ui.evaluationNeedsReload.value,false);
+ assert.equal(ui.modelNoticeError.value,false);assert.equal(ui.modelNotice.value,'评估配置已保存，当前设置已生效。');
 });

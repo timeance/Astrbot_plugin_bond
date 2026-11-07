@@ -113,6 +113,7 @@ createApp({
     const evaluationLoading = ref(false);
     const modelSaving = ref(false);
     const modelConfig = ref({});
+    const savedEvaluation = ref(null);
     const modelRevision = ref("");
     let evaluationRequestId = 0;
     const activeModelConfig = ref({});
@@ -176,6 +177,13 @@ createApp({
     });
     const detailSettings = ref(null);
     const detailValues = ref({});
+    const listInputs = ref({});
+    const detailDirty = computed(() => !!detailSettings.value && Object.entries(detailValues.value).some(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(detailSettings.value.values[key])
+    ));
+    const detailNeedsReload = computed(() => !!detailSettings.value?.active_values && Object.entries(detailSettings.value.values).some(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(detailSettings.value.active_values[key])
+    ));
     const detailLoading = ref(false);
     const detailNotice = ref("");
     const detailNoticeError = ref(false);
@@ -200,7 +208,10 @@ createApp({
         if (!data.success) throw new Error(data.error || "设置读取失败，请重试");
         detailSettings.value = data;
         detailValues.value = {...data.values};
-        if (save) detailNotice.value = "设置已保存，重载插件后生效。";
+        listInputs.value = {};
+        if (save && !detailNeedsReload.value) {
+          detailNotice.value = data.active_values ? "设置已保存，当前设置已生效。" : "设置已保存。";
+        }
       } catch(error) {
         if (requestId === settingsRequestId) {
           detailNotice.value = String(error);
@@ -213,7 +224,10 @@ createApp({
         }
       }
     };
-    const updateListSetting = (path, raw) => { detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean); };
+    const updateListSetting = (path, raw) => {
+      listInputs.value[path] = raw;
+      detailValues.value[path] = raw.split(/[，,\s]+/).filter(Boolean);
+    };
     const listPlaceholder = (path) => ({
       group_whitelist: "留空对所有群生效，多个群号用逗号分隔",
       ignored_bot_ids: "留空不忽略，多个机器人账号用逗号分隔",
@@ -232,6 +246,7 @@ createApp({
       for (const field of detailSettings.value.fields) {
         if (field.group === group && !field.path.endsWith("provider_id")) {
           detailValues.value[field.path] = Array.isArray(field.default) ? [...field.default] : field.default;
+          delete listInputs.value[field.path];
         }
       }
       detailNotice.value = "已填入默认设置。保存并重载后生效，刷新可撤回；模型选择保持不变。";
@@ -292,6 +307,14 @@ createApp({
       {key:"context_days", label:"历史回顾天数", hint:"只参考这些天内的发言和已计分摘要，帮助模型理解上下文。0 表示不回顾历史。", min:0, max:90, step:1},
       {key:"context_events", label:"已评估互动条数", hint:"最多参考多少条本群已计分事件，帮助识别重复表达。历史不再计分；0 表示不带摘要。", min:0, max:20, step:1},
     ];
+    const evaluationDirty = computed(() => !!savedEvaluation.value && (
+      evaluationFields.some(({key}) => modelConfig.value[key] !== savedEvaluation.value.config[key]) ||
+      maxConcurrentAssessments.value !== savedEvaluation.value.max_concurrent_assessments
+    ));
+    const evaluationNeedsReload = computed(() => !!savedEvaluation.value && (
+      evaluationFields.some(({key}) => savedEvaluation.value.config[key] !== activeModelConfig.value[key]) ||
+      savedEvaluation.value.max_concurrent_assessments !== activeMaxConcurrentAssessments.value
+    ));
     const restoreEvaluationDefaults = () => {
       if (evaluationLoading.value || modelSaving.value) return;
       for (const field of evaluationFields) modelConfig.value[field.key] = DEFAULT_MODEL_CONFIG[field.key];
@@ -374,6 +397,7 @@ createApp({
       modelSaving.value = false;
       modelRevision.value = "";
       modelConfig.value = {};
+      savedEvaluation.value = null;
       activeModelConfig.value = {};
       activeMaxConcurrentAssessments.value = null;
       assessmentStats.value = { calls: [], events: {}, currency_cost: null };
@@ -895,6 +919,7 @@ createApp({
         modelConfig.value = normalizeModelConfig(modelData.configured);
         activeModelConfig.value = normalizeModelConfig(modelData.active);
         maxConcurrentAssessments.value = Number(modelData.max_concurrent_assessments || 2);
+        savedEvaluation.value = {config: {...modelConfig.value}, max_concurrent_assessments: maxConcurrentAssessments.value};
         activeMaxConcurrentAssessments.value = modelData.active_max_concurrent_assessments ?? null;
         assessmentStats.value = {
           calls: Array.isArray(statsData.stats && statsData.stats.calls) ? statsData.stats.calls : [],
@@ -929,9 +954,8 @@ createApp({
         modelRevision.value = data.revision || "";
         modelConfig.value = normalizeModelConfig({...modelConfig.value, ...body.config});
         maxConcurrentAssessments.value = body.max_concurrent_assessments;
-        setModelNotice(data && data.restart_required
-          ? "配置已保存，重载插件后生效。当前生效设置仍显示在右侧。"
-          : "评估配置已保存");
+        savedEvaluation.value = {config: {...body.config}, max_concurrent_assessments: body.max_concurrent_assessments};
+        if (!evaluationNeedsReload.value) setModelNotice("评估配置已保存，当前设置已生效。");
       } catch (e) {
         if (isCurrentScope(snapshot, revision)) setModelNotice(String(e), true);
       } finally {
@@ -1278,9 +1302,9 @@ createApp({
       evaluationLoading, modelSaving, modelConfig, activeModelConfig,
       maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels, modelRevision,
-      displayReason, displayStatus, detailSettings, detailValues, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
+      displayReason, displayStatus, detailSettings, detailValues, listInputs, detailDirty, detailNeedsReload, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
       restoreSectionDefaults, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions,
-      evaluationFields, restoreEvaluationDefaults,
+      evaluationFields, evaluationDirty, evaluationNeedsReload, restoreEvaluationDefaults,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest, diagnosticSize,
     };
   },
@@ -1622,6 +1646,8 @@ createApp({
               <input id="evaluation-concurrent" class="xx-input" type="number" min="1" max="32" step="1" v-model.number="maxConcurrentAssessments" :disabled="evaluationLoading || modelSaving">
             </div>
             <div class="xx-modal-actions">
+              <span v-if="evaluationDirty" class="xx-unsaved-notice" role="status">有未保存的修改，请保存设置</span>
+              <span v-else-if="evaluationNeedsReload" class="xx-saved-notice" role="status">设置已保存，重载插件后生效</span>
               <button class="xx-btn xx-btn-mini" @click="restoreEvaluationDefaults()" :disabled="evaluationLoading || modelSaving">恢复此区默认设置</button>
               <button class="xx-btn xx-btn-primary" @click="saveModels" :disabled="evaluationLoading || modelSaving || !modelRevision">
                 {{ modelSaving ? "保存中…" : "保存配置" }}
@@ -1671,6 +1697,8 @@ createApp({
         <p class="xx-help">设置适用于所有 Bot，保存并重载插件后生效。</p>
         <p v-if="detailNotice" role="status" :class="['xx-status', detailNoticeError ? 'xx-status-error' : 'xx-status-ok']">{{ detailNotice }}</p>
         <div class="xx-settings-toolbar xx-detail-toolbar">
+          <span v-if="detailDirty" class="xx-unsaved-notice" role="status">有未保存的修改，请保存设置</span>
+          <span v-else-if="detailNeedsReload" class="xx-saved-notice" role="status">设置已保存，重载插件后生效</span>
           <button class="xx-btn xx-btn-mini" @click="loadSettings()" :disabled="detailLoading">{{ detailLoading ? "处理中…" : "刷新设置" }}</button>
           <button class="xx-btn xx-btn-primary" @click="saveSettings()" :disabled="detailLoading || !detailSettings">保存修改</button>
         </div>
@@ -1688,8 +1716,8 @@ createApp({
         </div>
         <details v-for="group in detailGroups" :key="group.group" class="xx-form-card">
           <summary>{{ group.title }}</summary>
-          <p v-if="group.group === 'rules'" class="xx-help">
-            <span class="xx-field-help"><button type="button" class="xx-help-button" aria-label="关系变化：额度与区间说明" aria-describedby="rules-hint">?</button><span class="xx-help-tooltip" role="tooltip" id="rules-hint">加分和扣分分别累计，时间衰减不占额度。倍率区间按默认分界标注；修改过分界时，以自定义分界为准。</span></span>
+          <p v-if="['familiarity', 'affinity', 'trust'].includes(group.group)" class="xx-help">
+            <span class="xx-field-help"><button type="button" class="xx-help-button" :aria-label="group.title + '：额度与区间说明'" :aria-describedby="'rules-hint-' + group.group">?</button><span class="xx-help-tooltip" role="tooltip" :id="'rules-hint-' + group.group">加分和扣分分别累计，时间衰减不占额度。倍率区间按默认分界标注；修改过分界时，以自定义分界为准。</span></span>
           </p>
           <button v-if="group.group !== 'basic'" class="xx-btn xx-btn-mini" style="margin-top: 8px;" @click="restoreSectionDefaults(group.group)" :disabled="detailLoading">恢复此区默认设置</button>
           <div v-for="field in group.fields" :key="field.path" class="xx-form-row xx-detail-row">
@@ -1706,30 +1734,30 @@ createApp({
             </div>
             <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading || (field.path === 'diagnostics.detail_level' && !detailValues['diagnostics.enabled'])"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用",assessment:"评估记录",raw:"原文+评估",evaluation:"评估上下文",full:"完整上下文"})[option] || option }}</option></select>
             <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path === 'diagnostics.max_size_mb' ? 1 : field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path === 'diagnostics.max_size_mb' ? 10000 : field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
-            <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="(detailValues[field.path] || []).join(', ')" @change="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="listInputs[field.path] ?? (detailValues[field.path] || []).join(', ')" @input="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :placeholder="field.path === 'master_ids' ? listPlaceholder(field.path) : ''">
           </div>
+          <section v-if="group.group === 'diagnostics'" class="xx-diagnostic-records">
+            <h4>当前空间的诊断记录</h4>
+            <p class="xx-help">按所选详细程度记录，可导出或清除。</p>
+            <div class="xx-actions" style="margin-top: 12px;">
+              <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
+              <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
+              <button class="xx-btn" :class="diagnosticConfirm ? 'xx-btn-danger' : 'xx-btn-mini'" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
+              <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn xx-btn-primary">下载诊断记录</a>
+            </div>
+            <p class="xx-help">诊断记录占用：当前空间 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.disk_bytes : null) }} · 全部 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.total_disk_bytes : null) }} / {{ diagnosticSize(diagnosticStats?.max_bytes) }}</p>
+            <p v-if="diagnosticStats?.size_available && diagnosticStats.total_disk_bytes >= diagnosticStats.max_bytes * 0.9" class="xx-help">接近容量上限，旧记录将自动清理。</p>
+            <p v-if="diagnosticNotice" class="xx-help" role="status">{{ diagnosticNotice }}</p>
+            <dl v-if="diagnosticStats" class="xx-runtime-list" style="margin-top: 12px;">
+              <div><dt>当前记录开关</dt><dd>{{ diagnosticStats.enabled ? "已开启" : "已关闭" }}</dd></div>
+              <div><dt>本次运行已记录</dt><dd>{{ diagnosticStats.counters?.written || 0 }} 条</dd></div>
+              <div><dt>等待写入</dt><dd>{{ diagnosticStats.queued || 0 }} 条</dd></div>
+              <div><dt>丢弃或写入失败</dt><dd>{{ diagnosticStats.counters?.dropped || 0 }} / {{ diagnosticStats.counters?.write_errors || 0 }}</dd></div>
+              <div><dt>记录完整性</dt><dd>{{ diagnosticStats.gap ? "存在记录缺口，请查看导出说明" : "本次运行未发现缺失，历史记录完整性未知" }}</dd></div>
+            </dl>
+          </section>
         </details>
-        <div class="xx-form-card">
-          <h4>当前空间的诊断记录</h4>
-          <p class="xx-help">按所选详细程度记录，可导出或清除。</p>
-          <div class="xx-actions" style="margin-top: 12px;">
-            <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
-            <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
-            <button class="xx-btn" :class="diagnosticConfirm ? 'xx-btn-danger' : 'xx-btn-mini'" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
-            <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn xx-btn-primary">下载诊断记录</a>
-          </div>
-          <p class="xx-help">诊断记录占用：当前空间 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.disk_bytes : null) }} · 全部 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.total_disk_bytes : null) }} / {{ diagnosticSize(diagnosticStats?.max_bytes) }}</p>
-          <p v-if="diagnosticStats?.size_available && diagnosticStats.total_disk_bytes >= diagnosticStats.max_bytes * 0.9" class="xx-help">接近容量上限，旧记录将自动清理。</p>
-          <p v-if="diagnosticNotice" class="xx-help" role="status">{{ diagnosticNotice }}</p>
-          <dl v-if="diagnosticStats" class="xx-runtime-list" style="margin-top: 12px;">
-            <div><dt>当前记录开关</dt><dd>{{ diagnosticStats.enabled ? "已开启" : "已关闭" }}</dd></div>
-            <div><dt>本次运行已记录</dt><dd>{{ diagnosticStats.counters?.written || 0 }} 条</dd></div>
-            <div><dt>等待写入</dt><dd>{{ diagnosticStats.queued || 0 }} 条</dd></div>
-            <div><dt>丢弃或写入失败</dt><dd>{{ diagnosticStats.counters?.dropped || 0 }} / {{ diagnosticStats.counters?.write_errors || 0 }}</dd></div>
-            <div><dt>记录完整性</dt><dd>{{ diagnosticStats.gap ? "存在记录缺口，请查看导出说明" : "本次运行未发现缺失，历史记录完整性未知" }}</dd></div>
-          </dl>
-        </div>
       </section>
 
       <!-- 变动详情弹窗：完整发言 + AI 原因 -->
