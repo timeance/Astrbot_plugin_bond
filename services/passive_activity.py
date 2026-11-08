@@ -37,7 +37,9 @@ class PassiveActivity:
     ):
         self.bot_id = bot_id
         self.enabled = enabled is True
-        self._window_sec = (config or PassiveFamiliarityConfig()).window_minutes * 60
+        config = config or PassiveFamiliarityConfig()
+        self._window_sec = config.window_minutes * 60
+        self._member_limit = config.member_limit
         self._members: OrderedDict[tuple[str, str], float] = OrderedDict()
         self._messages: OrderedDict[tuple[str, str, str, str], float] = OrderedDict()
         self._pending: dict[str, OrderedDict[str, tuple[str, float, float]]] = {}
@@ -95,7 +97,13 @@ class PassiveActivity:
         members = tuple(
             (member, seen)
             for (group, member), seen in self._members.items()
-            if group == group_id and member != user_id and member not in ignored
+            if group == group_id and member != user_id
+        )
+        # 先按最近发言选定不同成员，再检查资格；被跳过的人不从更早成员补位。
+        if self._member_limit:
+            members = members[-self._member_limit :]
+        members = tuple(
+            (member, seen) for member, seen in members if member not in ignored
         )
         if not members:
             return None

@@ -324,6 +324,7 @@ class PageApi:
                 fuzzy=fuzzy,
                 dimension=dimension,
                 source=source,
+                group_passive=True,
             )
             return self._response({"success": True, "logs": logs, "count": len(logs)})
 
