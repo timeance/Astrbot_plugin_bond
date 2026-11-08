@@ -270,7 +270,7 @@ createApp({
           trust: values["decay.trust_baseline"],
         },
         familiarity: values["decay.familiarity_enabled"] ? `${values["decay.familiarity_half_life"]} 天半衰期` : "关闭",
-        affinity: values["decay.enabled"] ? `${values["decay.half_life_base"]} 天基础半衰期` : "关闭",
+        affinity: values["decay.enabled"] ? `${values["decay.half_life_base"]} 天半衰期` : "关闭",
         trust: values["decay.trust_enabled"] ? `${values["decay.trust_half_life"]} 天半衰期` : "关闭",
       };
     });
