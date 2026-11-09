@@ -1,4 +1,4 @@
-"""真实 AstrBot 4.28.0 消息元数据取证；仅合成 OneBot 数据，禁止网络。"""
+"""真实 AstrBot 消息元数据取证；仅合成 OneBot 数据，禁止网络。"""
 
 from __future__ import annotations
 
@@ -262,7 +262,9 @@ async def check() -> dict:
     from astrbot_plugin_bond.api.listeners import _chain_flags
     from astrbot_plugin_bond.core.assessment import locally_relevant
 
-    assert astrbot.__version__ == "4.28.0", astrbot.__version__
+    from smoke_astrbot import check_framework_version
+
+    check_framework_version()
     reply_messages = {
         9101: _payload([_segment("text", text="合成 Bot 上文")], 9101, BOT),
         9102: _payload([_segment("text", text="合成他人上文")], 9102, OTHER),

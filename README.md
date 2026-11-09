@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <strong>v0.5.11</strong> · AstrBot ≥4.28 / &lt;5 · OneBot aiocqhttp · AGPL-3.0
+  <strong>v0.5.12</strong> · AstrBot ≥4.28 · OneBot aiocqhttp · AGPL-3.0
 </p>
 
 ---
@@ -94,7 +94,7 @@ Bond 是面向 **长期多人群聊** 的关系记忆插件。它分别记录 Bo
 
 ### 1. 安装并确认 Bot
 
-- 使用 AstrBot `>=4.28,<5` 和 `aiocqhttp`；真实框架装配已在 `4.28.0` 验证，Python 版本跟随宿主要求。
+- 使用 AstrBot `>=4.28` 和 `aiocqhttp`；真实框架装配验证覆盖 `4.28.0`、`4.29.4`，Python 版本跟随宿主要求。后续版本可加载，兼容性以实际框架验证为准。
 - 在 AstrBot 的插件管理中通过本仓库地址安装；也可下载 main 的 ZIP，解压到 `data/plugins/astrbot_plugin_bond/`。**插件目录必须全小写**。
 - 重载后打开 Bond 管理页面，在「详细设置 → 基础设置」**先手动选择日常评估模型**（不自动跟随聊天模型），再按需开启自动评估、在回复中体现关系，填入适用群与需要忽略的机器人账号。尚未发现 Bot 时也可完成这些设置。
 - 在「详细设置 → 基础设置」选择关系模式，在「关系变化」调整基础参数；新安装默认为 Galgame。保存并重载后生效。连接 OneBot 后点击“刷新 Bot 列表”，选中需要管理的 Bot 与数据空间。

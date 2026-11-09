@@ -85,15 +85,19 @@ python scripts/build_package.py --output artifacts/bond-check.zip
 
 ## 真实框架与合成回放
 
-另建 `.venv-framework`，安装 `AstrBot==4.28.0`，使用这个环境的解释器分别执行以下命令。每次使用新的空输出目录，示例目录已用过时换一个名称。
+另建 `.venv-framework`，分别安装 CI 矩阵中的 `AstrBot==4.28.0` 和 `AstrBot==4.29.4`，使用对应环境的解释器分进程执行以下命令。每次使用新的空输出目录，示例目录已用过时换一个名称。版本固定用于验证基线，插件元数据只声明最低要求 `>=4.28`。
+
+运行前将 `BOND_EXPECTED_ASTRBOT_VERSION` 设为本次框架版本，例如 PowerShell 的 `$env:BOND_EXPECTED_ASTRBOT_VERSION = "4.29.4"`，或 Bash 的 `export BOND_EXPECTED_ASTRBOT_VERSION=4.29.4`。脚本核对实际导入版本，输出也使用实际版本号。本地已有源码检出时可通过 `PYTHONPATH` 指向对应框架目录；离线 pytest 进程须清除该变量，防止混用真实框架与测试桩。
 
 ```text
 python scripts/smoke_astrbot.py --session-dir artifacts/framework-run --runtime-dir artifacts/framework-run/runtime
 python scripts/smoke_message_metadata.py --session-dir artifacts/metadata-run
 python scripts/smoke_diagnostics.py --runtime-dir artifacts/diagnostics-run
+python scripts/smoke_relation_runner.py --runtime-dir artifacts/relation-run
+python scripts/smoke_passive_familiarity.py --runtime-dir artifacts/passive-run
 ```
 
-这些脚本分别验证真实框架装配与卸载、OneBot 合成消息转换，以及诊断认证拒绝、脱敏和空间隔离。它们不会连接真实 QQ 或 Provider；认证上下文由测试模拟，不能代替完整宿主登录、浏览器和 Angel Heart 同装验收。
+这些脚本分别验证真实框架装配与卸载、OneBot 合成消息转换、诊断认证拒绝、脱敏和空间隔离，以及 runner 关系快照与被动熟悉度。装配检查还使用真实人格选择器验证会话人格切换和显式禁用，使用合成 JWT 经宿主认证函数和 FastAPI/Quart 桥验证原生页面访问。它们使用合成数据与离线 Provider，完整宿主登录、浏览器和 Angel Heart 同装仍须单独验收。
 
 关系合成回放在离线环境执行：
 
@@ -111,7 +115,7 @@ python scripts/replay_relations.py --arms baseline model-a --output artifacts/re
 
 | 工作流 | 触发时机 | 检查内容 |
 | --- | --- | --- |
-| CI | PR、main 推送、手动 | Linux Python 3.10/3.12 和 Windows Python 3.12 离线测试、Node 22 页面测试、元数据、公开内容、Python 3.12 安装包；独立作业验证 AstrBot 4.28.0 装配。 |
+| CI | PR、main 推送、手动 | Linux Python 3.10/3.12 和 Windows Python 3.12 离线测试、Node 22 页面测试、元数据、公开内容、Python 3.12 安装包；独立矩阵验证 AstrBot 4.28.0、4.29.4 装配与全部 smoke。 |
 | Code Format Check | PR、main 推送、手动 | `requirements-dev.txt` 锁定版本的 Black 与 Ruff 格式检查。 |
 | CodeQL | PR、main 推送、每周、手动 | Python 静态安全分析。 |
 | release | main 版本变更通过 CI 后；或 `v*` tag、手动指定已有 tag | 检查当前版说明、源码、格式与归档，验证 annotated tag 后发布 ZIP、SHA-256 和 CHANGELOG。 |
