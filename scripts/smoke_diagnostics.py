@@ -1,4 +1,4 @@
-"""真实 AstrBot 4.28.0 诊断装配与宿主认证模拟；仅合成数据、无网络。"""
+"""真实 AstrBot 诊断装配与宿主认证模拟；仅合成数据、无网络。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from smoke_astrbot import _context, _response_parts
+from smoke_astrbot import _context, _response_parts, check_framework_version
 
 
 async def check(root, runtime):
+    version = check_framework_version()
     from astrbot.api import AstrBotConfig
     from astrbot.api.star import Context, StarTools
     from quart import Quart, g
@@ -169,7 +170,7 @@ async def check(root, runtime):
     finally:
         await plugin.terminate()
     print(
-        "PASS diagnostics: 2 Bot/2 scope、旧配置默认档位与显式选择、真实配置重载、脱敏导出、认证拒绝、选择性清除、正式状态不变、关闭后历史管理。"
+        f"PASS AstrBot {version} diagnostics: 2 Bot/2 scope、旧配置默认档位与显式选择、真实配置重载、脱敏导出、认证拒绝、选择性清除、正式状态不变、关闭后历史管理。"
     )
     print("LIMIT: Quart认证上下文为合成，不是完整HTTP登录/浏览器或真实聊天验收。")
 

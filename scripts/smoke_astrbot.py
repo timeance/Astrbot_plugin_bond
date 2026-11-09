@@ -1,4 +1,4 @@
-"""真实 AstrBot 4.28.0 装配 smoke；不连接平台、网络模型或真实 Provider。"""
+"""真实 AstrBot 装配 smoke；不连接平台、网络模型或真实 Provider。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,124 @@ from types import SimpleNamespace
 BOT_IDS = ("10000001", "10000002")
 OLD_GROUP = "7001"
 OLD_USER = "8001"
+
+
+def check_framework_version() -> str:
+    import astrbot
+
+    expected = os.environ.get("BOND_EXPECTED_ASTRBOT_VERSION")
+    if expected:
+        assert astrbot.__version__ == expected, (astrbot.__version__, expected)
+    return astrbot.__version__
+
+
+async def _check_persona(context, judge) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    from astrbot.core.persona_mgr import PersonaManager
+
+    from astrbot_plugin_bond.services.self_impression_service import (
+        SelfImpressionService,
+    )
+
+    manager = PersonaManager(None, SimpleNamespace(default_conf={}))
+    manager.personas_v3 = [
+        {"name": "synthetic-one", "prompt": "合成人格一"},
+        {"name": "synthetic-two", "prompt": "合成人格二"},
+    ]
+    conversation = SimpleNamespace(persona_id="synthetic-one")
+    conversations = SimpleNamespace(
+        get_curr_conversation_id=AsyncMock(return_value="synthetic-conversation"),
+        get_conversation=AsyncMock(return_value=conversation),
+    )
+    # 只替换会话与偏好存储，使用宿主真实的人格选择器。
+    with (
+        patch.object(context, "persona_manager", manager),
+        patch.object(context, "conversation_manager", conversations),
+        patch.object(
+            context, "astrbot_config_mgr", SimpleNamespace(get_conf=lambda _: {})
+        ),
+        patch("astrbot.core.persona_mgr.sp.get_async", new=AsyncMock(return_value={})),
+    ):
+        impression = SelfImpressionService(context)
+        for persona_id, prompt in (
+            ("synthetic-one", "合成人格一"),
+            ("synthetic-two", "合成人格二"),
+        ):
+            conversation.persona_id = persona_id
+            expected = (persona_id, prompt)
+            assert (
+                await judge._persona_ctx_for("synthetic:group:7001", "aiocqhttp")
+                == expected
+            )
+            assert (
+                await impression._persona_ctx("synthetic:group:7001", "aiocqhttp")
+                == expected
+            )
+        conversation.persona_id = "[%None]"
+        assert (await judge._persona_ctx_for("synthetic:group:7001", "aiocqhttp"))[
+            1
+        ] == ""
+        assert await impression._persona_ctx("synthetic:group:7001", "aiocqhttp") == (
+            "当前 Bot",
+            "",
+        )
+
+
+async def _check_dashboard_bridge(context) -> None:
+    import jwt
+    from fastapi import FastAPI, Request
+
+    from astrbot.dashboard.api.auth import require_dashboard_user
+    from astrbot.dashboard.api.plugins import dashboard_plugin_extension_route
+    from astrbot.dashboard.asgi_runtime import FastAPIAppAdapter
+    from astrbot.dashboard.responses import ApiError
+
+    app = FastAPI()
+    FastAPIAppAdapter(app)
+    app.state.core_lifecycle = SimpleNamespace(star_context=context)
+    app.state.jwt_secret = "synthetic-bond-smoke-signing-key-only"
+    token = jwt.encode(
+        {"username": "synthetic-admin"}, app.state.jwt_secret, algorithm="HS256"
+    )
+
+    async def call(endpoint, *, body=None, authenticated=False):
+        payload = json.dumps(body or {}).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": payload, "more_body": False}
+
+        headers = [(b"content-type", b"application/json")]
+        if authenticated:
+            headers.append((b"authorization", f"Bearer {token}".encode()))
+        request = Request(
+            {
+                "type": "http",
+                "app": app,
+                "method": "POST" if body is not None else "GET",
+                "path": f"/api/plug/astrbot_plugin_bond/{endpoint}",
+                "query_string": b"",
+                "headers": headers,
+                "scheme": "http",
+                "server": ("synthetic.invalid", 80),
+            },
+            receive,
+        )
+        try:
+            username = await require_dashboard_user(request)
+        except ApiError as exc:
+            return exc.status_code, None
+        response = await dashboard_plugin_extension_route(
+            f"astrbot_plugin_bond/{endpoint}", request, username
+        )
+        return response.status_code, json.loads(response.body)
+
+    assert (await call("bots"))[0] == 401
+    assert (await call("profile", body={"username": "synthetic-admin"}))[0] == 401
+    status, body = await call("bots", authenticated=True)
+    assert status == 200 and body["success"] is True
+    # 已认证写请求经宿主桥转发后，仍执行插件参数校验。
+    assert (await call("profile", body={}, authenticated=True))[0] == 400
 
 
 def _context(Context, config):
@@ -56,7 +174,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
     from astrbot_plugin_bond.main import BondPlugin
     from astrbot_plugin_bond.storage.migrations import SCHEMA_VERSION
 
-    assert astrbot.__version__ == "4.28.0", astrbot.__version__
+    check_framework_version()
     schema = json.loads((plugin_dir / "_conf_schema.json").read_text(encoding="utf-8"))
     config_path = runtime_dir / "bond_config.json"
     config = AstrBotConfig(str(config_path), schema=schema)
@@ -201,6 +319,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
                 }
 
         old_deps = await plugin._runtime.select(BOT_IDS[0], "per_group")
+        await _check_persona(context, old_deps.judge)
         # 通过真实 main 装配确认新安装默认，而非仅检查配置快照。
         assert config["relation_mode"] == "galgame"
         assert old_deps.favor._relation_caps == dict(
@@ -1006,6 +1125,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         restored = await old_deps.favor.get(OLD_GROUP, OLD_USER)
         assert restored is not None and restored.favor == 12
         assert (data_dir / "backups" / BOT_IDS[0] / backup_name).is_file()
+        await _check_dashboard_bridge(context)
     finally:
         await plugin.terminate()
 
@@ -1111,8 +1231,8 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         "Galgame×2额度、F30/A30/T60衰减、三维独立基线、新旧配置、窗口预算、回复钩子、scope 持久化、冻结 listener、18 路 WebUI、群白名单、主人标记、人格中立查询资料、私聊 Bot 发现、认证、备份恢复、损坏提示词降级、卸载。"
     )
     print(
-        "LIMIT: 未启动完整 AstrBot dashboard HTTP server；认证通过 Quart g.username"
-        "模拟宿主中间件已写入的管理面板用户，不连接真实平台或模型。"
+        "LIMIT: 原生页面认证验证使用合成 JWT、真实宿主认证函数及 FastAPI/Quart 桥；"
+        "未启动完整 HTTP server 或浏览器，不连接真实平台或模型。"
     )
 
 

@@ -1,4 +1,4 @@
-"""真实 AstrBot 4.28 runner → 离线记录 Provider；全程合成数据，禁止网络。"""
+"""真实 AstrBot runner → 离线记录 Provider；全程合成数据，禁止网络。"""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from smoke_astrbot import check_framework_version
 
 BOT, GROUP, USER = "10001", "7001", "8001"
 
@@ -43,7 +45,7 @@ async def check(runtime_dir: Path) -> None:
     from astrbot_plugin_bond.services.prompt_service import PromptService
     from astrbot_plugin_bond.storage.router import BotScopeStorageRouter
 
-    assert astrbot.__version__ == "4.28.0", astrbot.__version__
+    check_framework_version()
     router = BotScopeStorageRouter(runtime_dir / "synthetic")
     levels = LevelTable.from_config(None)
     deps = Deps(
@@ -234,7 +236,10 @@ async def check(runtime_dir: Path) -> None:
     finally:
         await deps.registry.cancel_and_wait_all()
         await router.close()
-    print("PASS AstrBot 4.28.0 actual ToolLoopAgentRunner → offline Provider:", results)
+    print(
+        f"PASS AstrBot {astrbot.__version__} actual ToolLoopAgentRunner → offline Provider:",
+        results,
+    )
     print(
         "LIMIT: 实际主消息/请求钩子直接调用；未启动完整平台 pipeline、真实模型或网络。"
     )

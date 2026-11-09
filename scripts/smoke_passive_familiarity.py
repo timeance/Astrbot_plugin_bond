@@ -1,4 +1,4 @@
-"""真实 AstrBot 4.28.0 的被动熟悉度钩子检查；合成事件、SQLite，禁止网络。"""
+"""真实 AstrBot 的被动熟悉度钩子检查；合成事件、SQLite，禁止网络。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from smoke_astrbot import _context
+from smoke_astrbot import _context, check_framework_version
 
 BOT, GROUP, ACTIVE, DIRECT = "10001", "7001", "8001", "8002"
 NOW = 1_800_000_000.0
@@ -38,7 +38,7 @@ async def check(plugin_dir: Path, runtime_dir: Path):
     from astrbot_plugin_bond.main import BondPlugin
     from astrbot_plugin_bond.services.assessment_service import AssessmentConfig
 
-    assert astrbot.__version__ == "4.28.0"
+    check_framework_version()
     schema = json.loads((plugin_dir / "_conf_schema.json").read_text(encoding="utf-8"))
     config = AstrBotConfig(str(runtime_dir / "config.json"), schema=schema)
     assert config["passive_familiarity"] is True
@@ -234,7 +234,7 @@ async def check(plugin_dir: Path, runtime_dir: Path):
         finally:
             await legacy_plugin.terminate()
     print(
-        "PASS AstrBot 4.28.0: schema重载、真实事件/主钩子、自定义被动+0.6、触发者排除、A/T与全部保温不变、请求人格/历史保留、重试、后续直接评估及实际优先级排序。"
+        f"PASS AstrBot {astrbot.__version__}: schema重载、真实事件/主钩子、自定义被动+0.6、触发者排除、A/T与全部保温不变、请求人格/历史保留、重试、后续直接评估及实际优先级排序。"
     )
     print(
         "LIMIT: 钩子直接调用，Provider为离线预置分类；未连接QQ、真实模型或启动完整平台pipeline/其他插件。高于1000的接管监听器仍可能先执行。"
