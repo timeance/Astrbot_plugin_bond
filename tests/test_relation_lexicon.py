@@ -28,8 +28,17 @@ def test_all_combinations_have_distinct_dimension_meanings():
             BAND_LABELS[i][band] for i, band in enumerate(bands)
         )
         seen.add(desc.key)
+    assert seen <= set(TERMS)
+    seen = {
+        resolver.describe(RelationState(f, a, t)).key
+        for f, a, t in product(
+            (0, 1, 3, 5, 8, 20, 40, 70),
+            (-70, -25, 0, 10, 25, 70),
+            (-70, -25, 0, 25, 70),
+        )
+    }
     assert seen == set(TERMS)
-    assert 40 <= len(seen) <= 60
+    assert len(seen) == 75
     assert len(CELLS) == 5
     assert len({title for title, _ in TERMS.values()}) == len(TERMS)
 
@@ -74,7 +83,7 @@ def test_mixed_attitudes_keep_trust_independent_and_do_not_invent_history():
     resolver = RelationResolver()
     warm_guarded = resolver.describe(RelationState(90, 80, -80))
     distant_trusted = resolver.describe(RelationState(90, -80, 80))
-    assert warm_guarded.title == "亲近却戒备"
+    assert warm_guarded.title == "亲密却戒备"
     assert distant_trusted.title == "疏远但信赖"
     assert "亲密" in warm_guarded.text and "戒备" in warm_guarded.text
     assert "疏远" in distant_trusted.text and "信赖" in distant_trusted.text
@@ -84,6 +93,23 @@ def test_mixed_attitudes_keep_trust_independent_and_do_not_invent_history():
             for word in ("患难", "背叛过", "重归于好", "恋人", "主人")
         )
     assert resolver.resolve(RelationState()) == "陌生"
+
+
+@pytest.mark.parametrize(
+    "before,after,old_title,new_title",
+    [
+        ((2.9, 0, 0), (3, 0, 0), "眼熟之人", "新相识"),
+        ((4.9, 0, 0), (5, 0, 0), "新相识", "泛泛之交"),
+        ((7.9, 0, 0), (8, 0, 0), "泛泛之交", "渐熟的相识"),
+        ((19.9, 0, 0), (20, 0, 0), "渐熟的相识", "相熟之人"),
+        ((20, 24.9, 0), (20, 25, 0), "友好之交", "亲近的相识"),
+        ((20, 24.9, 20), (20, 25, 20), "亲切之交", "亲近之交"),
+    ],
+)
+def test_early_display_boundaries(before, after, old_title, new_title):
+    resolver = RelationResolver()
+    assert resolver.resolve(RelationState(*before)) == old_title
+    assert resolver.resolve(RelationState(*after)) == new_title
 
 
 def test_explicit_legacy_configuration_and_description_remain_consistent():

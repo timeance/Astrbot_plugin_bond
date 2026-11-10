@@ -92,8 +92,8 @@ def test_self_command_text_is_exactly_compatible(tools, svc, group_event, target
 
     asyncio.run(run())
     assert svc.relation_title.await_args_list == [
-        call("60001", "50001"),
-        call("60001", "50001"),
+        call("60001", "50001", event=group_event),
+        call("60001", "50001", event=group_event),
     ]
     svc.ranking.assert_not_called()
 
@@ -107,7 +107,7 @@ def test_ranking_command_and_command_entrypoints_keep_exact_text(
         SimpleNamespace(user_id="50001", nickname="  雪\t球\n "),
         SimpleNamespace(user_id="50002", nickname=""),
     ]
-    svc.relation_title.side_effect = lambda group, user: {
+    svc.relation_title.side_effect = lambda group, user, *, event: {
         "50001": "谨慎的熟人",
         "50002": "陌生",
     }[user]
@@ -131,8 +131,8 @@ def test_ranking_command_and_command_entrypoints_keep_exact_text(
     assert (
         svc.relation_title.await_args_list
         == [
-            call("60001", "50001"),
-            call("60001", "50002"),
+            call("60001", "50001", event=group_event),
+            call("60001", "50002", event=group_event),
         ]
         * 4
     )
@@ -144,7 +144,7 @@ def test_llm_self_query_only_exposes_bot_to_speaker_relation(tools, svc, group_e
         text,
         facts={"object": "当前发言者", "relation_title": "谨慎的熟人"},
     )
-    svc.relation_title.assert_awaited_once_with("60001", "50001")
+    svc.relation_title.assert_awaited_once_with("60001", "50001", event=group_event)
     svc.ranking.assert_not_called()
 
 
@@ -237,7 +237,8 @@ def test_llm_ranking_bounds_limit_and_escapes_public_names(
     )
     svc.ranking.assert_awaited_once_with("60001", effective_limit)
     assert svc.relation_title.await_args_list == [
-        call("60001", record.user_id) for record in records[:effective_limit]
+        call("60001", record.user_id, event=group_event)
+        for record in records[:effective_limit]
     ]
 
 

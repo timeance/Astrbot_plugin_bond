@@ -33,7 +33,7 @@ def db(tmp_path):
 
 
 def service(db, **kwargs):
-    # 此套回归固定旧维护语义；独立策略另由 test_independent_maintenance 覆盖。
+    # legacy 仅联动 F/A；T 仍只由合格的 T 事件结算和维护。
     kwargs.setdefault("maintenance_strategy", "legacy")
     policy, caps = build_relation_profile(
         "realistic", rules=kwargs.pop("rules", None), caps=kwargs.pop("caps", None)
@@ -117,31 +117,39 @@ def test_config_reload_reuses_original_anchor_without_writes(db):
         assert len(run(db.query_logs("g", "u"))) == 1
 
 
-def test_tonly_fonly_interleave_settle_all_dimensions_without_charging_decay(db):
+def test_synthetic_t_event_settles_legacy_f_a_and_f_only_preserves_trust(db):
+    # 显式合成 T 规则仅验证结算数学，不代表新版自动评分证据。
     svc = service(db, rules={"insult": {"affinity": 0, "trust": -1.5}})
     with patch("time.time", return_value=START):
         seed(svc)
     with patch("time.time", return_value=START + 17 * DAY + 13):
-        before = svc._effective_familiarity(40, START)
+        before = 40 * 0.5 ** ((17 + 13 / DAY) / 60)
         result = event(svc, "t-only", "insult")
         assert result["delta"]["familiarity"] == 0
         assert (
             result["before"]["familiarity"] == result["after"]["familiarity"] == before
         )
-        assert raw(db).familiarity == before
+        assert raw(db).familiarity == pytest.approx(before)
         assert raw(db).familiarity_updated_at == START + 17 * DAY + 13
         assert log(db, "t-only")["relation_delta"]["familiarity"] == 0
         assert usage(db)[0][:2] == (0, 0)
         t_value, t_anchor = raw(db).trust, raw(db).trust_updated_at
+        assert t_value == pytest.approx(40 * 0.5 ** ((17 + 13 / DAY) / 180) - 1.5)
+        assert t_anchor == raw(db).trust_maintained_at == START + 17 * DAY + 13
     with patch("time.time", return_value=START + 60 * DAY):
         result = event(svc, "f-only")
         assert result["before"]["familiarity"] == pytest.approx(20)
         assert result["delta"]["familiarity"] == pytest.approx(0.12)
         assert raw(db).familiarity == pytest.approx(20.12)
-        assert raw(db).trust == pytest.approx(svc._effective_trust(t_value, t_anchor))
-        assert raw(db).trust_updated_at == START + 60 * DAY
+        effective_t = t_value * 0.5 ** ((60 - 17 - 13 / DAY) / 180)
+        assert result["before"]["trust"] == pytest.approx(effective_t)
+        assert result["after"]["trust"] == pytest.approx(effective_t)
+        assert raw(db).trust == t_value
+        assert raw(db).trust_updated_at == raw(db).trust_maintained_at == t_anchor
         assert usage(db)[-1][:2] == (0.12, 0)
+        assert usage(db)[-1][4:] == (0, 0)
         assert log(db, "f-only")["relation_delta"]["familiarity"] == pytest.approx(0.12)
+        assert log(db, "f-only")["relation_delta"]["trust"] == 0
 
 
 def test_raw_fraction_restart_undo_redo_use_effective_value_without_quota_refund(db):
@@ -193,7 +201,7 @@ def test_decay_does_not_refund_same_day_f_quota(db):
     svc = service(
         db,
         familiarity_half_life=5,
-        caps={"familiarity": (0.1, 0), "affinity": (10, 8), "trust": (2, 5)},
+        caps={"familiarity": (0.1, 0), "affinity": (10, 8), "trust": (2, 8)},
     )
     with patch("time.time", return_value=START):
         seed(svc)
@@ -415,7 +423,10 @@ def test_concurrent_f_settlement_matches_serial_raw_curve(tmp_path):
                 else:
                     for i in range(8):
                         event(services[i % 2], f"e-{i}")
-                assert raw(first).trust_updated_at == START + 60 * DAY
+                assert raw(first).trust == 40
+                assert raw(first).trust_updated_at == START
+                assert raw(first).trust_maintained_at == START
+                assert run(services[0].get("g", "u")).trust == 31.7
                 return raw(first).familiarity, usage(first)
         finally:
             run(first.close())
@@ -527,7 +538,8 @@ def test_stop_ranges_reload_use_original_clocks_without_rewrite(db):
         assert len(run(db.query_logs("g", "u"))) == 1
 
 
-def test_stop_ranges_transaction_deltas_undo_and_legacy_writes(db):
+def test_synthetic_stop_ranges_transaction_deltas_undo_and_legacy_writes(db):
+    # 显式合成三维规则仅验证停止区间和撤销，不代表自动信任证据。
     svc = service(
         db,
         decay_enabled=True,

@@ -143,19 +143,22 @@ def test_score_cap_is_not_quota_exhaustion(db):
 
 
 @pytest.mark.parametrize("name", ["insult", "manipulation", "apology"])
-def test_negative_and_apology_maintain_only_existing_dimensions(db, name):
+def test_ordinary_negative_events_and_apology_preserve_raw_trust_and_clocks(db, name):
     with patch("time.time", return_value=START):
         svc = service(db)
         seed(svc)
     with patch("time.time", return_value=START + 6 * DAY):
-        event(svc, name)
+        result = event(svc, name)
         rec = raw(db)
         assert rec.affinity_maintained_at == START + 6 * DAY
-        if name == "apology":
-            assert rec.trust_maintained_at == START
-        else:
-            assert rec.trust_maintained_at == START + 6 * DAY
-            assert rec.familiarity_maintained_at == START
+        assert result["delta"]["trust"] == 0
+        assert result["before"]["trust"] == pytest.approx(-80 * 0.5**0.1)
+        assert result["after"]["trust"] == result["before"]["trust"]
+        assert rec.trust == -80
+        assert rec.trust_updated_at == rec.trust_maintained_at == START
+        assert rec.familiarity_maintained_at == (
+            START + 6 * DAY if name == "apology" else START
+        )
 
 
 def test_repeated_switches_reads_and_restart_do_not_create_warmth(db):
@@ -223,17 +226,22 @@ def test_failed_switch_is_atomic_and_retry_cannot_double_decay(db):
         assert state(svc) == (20, 20, -20)
 
 
-def test_legacy_rollback_changes_future_logic_not_scores(db):
+def test_legacy_rollback_restores_f_a_linkage_and_f_only_preserves_trust(db):
     with patch("time.time", return_value=START):
         svc = service(db)
         seed(svc)
     with patch("time.time", return_value=START + 15 * DAY):
         svc = service(db, maintenance_strategy="legacy")
         assert state(svc) == (40, 40, -40)
+        before = raw(db)
         event(svc)
-        assert raw(db).trust_maintained_at == START + 15 * DAY
+        assert raw(db).affinity_maintained_at == START + 15 * DAY
+        assert raw(db).familiarity_maintained_at == START + 15 * DAY
+        assert raw(db).trust == before.trust
+        assert raw(db).trust_updated_at == before.trust_updated_at
+        assert raw(db).trust_maintained_at == START
     with patch("time.time", return_value=START + 19 * DAY):
-        assert state(svc)[1:] == (40, -40)
+        assert state(svc)[1:] == (40, -30.3)
 
 
 def test_switch_during_override_preserves_pause_once(db):
@@ -501,12 +509,14 @@ def test_formal_relation_uses_same_post_switch_anchors(db):
 
 
 @pytest.mark.parametrize("cap, expected", [(0.05, True), (0, False)])
-def test_partial_quota_precision_is_maintenance_but_exhaustion_is_not(
+def test_synthetic_trust_partial_quota_precision_maintains_but_exhaustion_does_not(
     db, cap, expected
 ):
     with patch("time.time", return_value=START):
         svc = service(
             db,
+            # 合成 T 请求用于隔离额度与舍入数学，不代表自动评分证据。
+            relation_policy=RelationPolicy(rules={"insult": {"trust": -1.5}}),
             relation_caps={
                 "familiarity": (0, 0),
                 "affinity": (0, 0),
@@ -616,6 +626,7 @@ def test_zero_event_cap_preserves_original_intent_in_diagnostics(
         )
         configured = dict.fromkeys(("familiarity", "affinity", "trust"), 0)
         configured[dimension] = requested
+        # 合成维度请求只验证限幅诊断，含 T 的分支不代表自动评分证据。
         policy = RelationPolicy(
             rules={"friendly": configured}, event_caps={"friendly": {dimension: cap}}
         )

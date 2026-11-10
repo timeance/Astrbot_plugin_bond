@@ -18,6 +18,7 @@ from astrbot_plugin_bond.core.relation_lexicon import (
     CELLS,
     LEXICON_VERSION,
     TERMS,
+    DISPLAY_VARIANTS,
 )
 
 CENTERS = ((0, 3, 20, 50, 85), (-70, -25, 0, 25, 70), (-70, -25, 0, 25, 70))
@@ -81,6 +82,7 @@ def compare(replay=None):
         terms=len(TERMS),
         cells=cells,
         edges=BAND_EDGES,
+        display_variants=DISPLAY_VARIANTS,
         trajectories=trajectories,
         replay_sha256=(
             hashlib.sha256(Path(replay).read_bytes()).hexdigest() if replay else None
@@ -113,6 +115,19 @@ def markdown(report):
     lines.extend(
         f"| {key} | {title} | {meaning} |" for key, (title, meaning) in TERMS.items()
     )
+    lines += [
+        "",
+        "## 局部展示细分",
+        "",
+        "以下规则优先于主表；仍保留三维各五档。F 区间左闭右开，101 表示包含上限100。",
+        "",
+        "| 称谓 | F范围 | A档 | T档 | 额外条件 |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    lines.extend(
+        f"| {TERMS[key][0]} | {lo}～{hi} | {BAND_LABELS[1][a]} | {BAND_LABELS[2][t]} | {'A ≥ ' + str(a_min) if a_min > -100 else '无'} |"
+        for key, lo, hi, a, t, a_min in DISPLAY_VARIANTS
+    )
     for f, label in enumerate(BAND_LABELS[0]):
         lines += [
             "",
@@ -134,10 +149,10 @@ def markdown(report):
         "## 展示与兼容",
         "",
         "公开接口显示称谓；模型接收称谓、释义及三维分档，不注入数值。",
-        "人格、权限、主动发言和回复频率保持宿主约束。无关系schema或历史改分。",
+        "人格、权限、主动发言和回复频率保持宿主约束。固定词典仅影响表达，不修改历史分数。",
         "显式调用 RelationResolver(thresholds=..., labels=...) 继续使用旧三档规则。",
         "默认 RelationResolver() 使用新词典；RelationResolver(thresholds={}) 可用于旧版离线对照。",
-        "回滚代码恢复旧称谓，无需反向迁移或重算流水。",
+        "整插件回滚须恢复匹配的旧代码、配置与完整数据备份，不能只回退代码。",
         "",
         "## 回放边界",
         "",

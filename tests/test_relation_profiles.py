@@ -29,8 +29,8 @@ def test_profile_keeps_base_rules_and_only_scales_positive_caps(mode, factor):
     }
     assert caps["familiarity"] == (5 * factor, 0)
     assert caps["affinity"] == (10 * factor, 8)
-    assert caps["trust"] == (2 * factor, 5)
-    for event in ("thanks", "friendly", "apology"):
+    assert caps["trust"] == (2 * factor, 8)
+    for event in ("thanks", "friendly", "apology", "insult", "manipulation"):
         assert policy.deltas(event)["trust"] == 0
     for event in ("insult", "manipulation"):
         assert policy.deltas(event) == baseline.deltas(event)
@@ -39,7 +39,7 @@ def test_profile_keeps_base_rules_and_only_scales_positive_caps(mode, factor):
 def test_omitted_mode_defaults_to_galgame():
     policy, caps = build_relation_profile()
     assert policy.positive_multiplier == 2
-    assert caps == dict(familiarity=(10, 0), affinity=(20, 8), trust=(4, 5))
+    assert caps == dict(familiarity=(10, 0), affinity=(20, 8), trust=(4, 8))
 
 
 @pytest.mark.parametrize("mode", ["", "Galgame", "unknown", None, [], {}])
@@ -48,7 +48,8 @@ def test_unknown_mode_is_rejected(mode):
         build_relation_profile(mode)
 
 
-def test_custom_base_rules_caps_and_daily_limits_remain_authoritative():
+def test_synthetic_base_rules_caps_and_daily_limits_remain_authoritative():
+    # 显式合成 T 规则仅验证底层定制数学，不代表自动评分证据或用户设置。
     rules = {"friendly": dict(familiarity=5, affinity=3, trust=0.2)}
     event_caps = {"friendly": dict(familiarity=0.4, affinity=0.6, trust=0.3)}
     daily = dict(familiarity=(0.7, 0), affinity=(3, 4), trust=(0.4, 0.8))
@@ -67,9 +68,9 @@ def test_profile_instances_and_snapshots_do_not_share_mutable_state():
     caps["trust"] = (100, 100)
     policy.snapshot()["rules"]["friendly"]["trust"] = 100
     second, fresh = build_relation_profile()
-    assert fresh["trust"] == (4, 5)
+    assert fresh["trust"] == (4, 8)
     assert policy.snapshot() == second.snapshot()
-    assert DEFAULT_DAILY_CAPS["trust"] == (2, 5)
+    assert DEFAULT_DAILY_CAPS["trust"] == (2, 8)
 
 
 @pytest.mark.parametrize(
@@ -109,7 +110,8 @@ def test_transaction_pipeline_preserves_raw_f_and_applies_mode_once(
     assert result["affinity"] == result["trust"] == 0
 
 
-def test_custom_positive_trust_gets_mode_once_without_a_curve():
+def test_synthetic_positive_trust_gets_mode_once_without_a_curve():
+    # 显式合成 T 请求只验证倍率，不代表 friendly 自动增信。
     policy, _ = build_relation_profile(rules={"friendly": {"trust": 0.13}})
     assert policy.deltas("friendly", rounded=False)["trust"] == pytest.approx(0.26)
 
@@ -173,7 +175,7 @@ def test_affinity_curve_then_mode_keeps_full_double_precision(
     assert outcomes[1] == pytest.approx(outcomes[0] * 2)
 
 
-def test_custom_negative_weight_still_obeys_base_event_cap():
+def test_custom_negative_affinity_weight_caps_without_changing_trust():
     policy, _ = build_relation_profile()
     raw = policy.base_deltas("insult")
     raw["affinity"] = apply(
@@ -183,4 +185,4 @@ def test_custom_negative_weight_still_obeys_base_event_cap():
         "insult", policy.scale_positive(raw, rounded=False), rounded=False
     )
     assert result["affinity"] == -2
-    assert result["trust"] == -1.5
+    assert result["trust"] == 0

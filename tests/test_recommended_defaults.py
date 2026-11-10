@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from astrbot_plugin_bond.core.level_economy import EconomyConfig
 from astrbot_plugin_bond.core.levels import LevelTable
+from astrbot_plugin_bond.core import relation_policy
 from astrbot_plugin_bond.core.settings import snapshot, validate_patch
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
@@ -225,9 +226,27 @@ def test_disabled_recovery_suppression_does_not_scan_logs(tmp_path):
     asyncio.run(run())
 
 
-def test_replay_is_deterministic_and_does_not_inflate_trust(tmp_path):
+def test_historical_replay_is_deterministic_and_freezes_event_rules(
+    tmp_path, monkeypatch
+):
     first = asyncio.run(replay(tmp_path / "first"))
+    monkeypatch.setattr(
+        relation_policy,
+        "DEFAULT_RULES",
+        {
+            event: {dimension: 0.0 for dimension in vector}
+            for event, vector in relation_policy.DEFAULT_RULES.items()
+        },
+    )
     assert first == asyncio.run(replay(tmp_path / "second"))
+    rules = first["historical_rules"]
+    assert len(rules) == 9
+    assert all(
+        set(vector) == {"familiarity", "affinity", "trust"} for vector in rules.values()
+    )
+    assert rules["insult"]["trust"] == -1.5
+    assert rules["manipulation"]["trust"] == -2
+    assert "不代表当前生产信任规则" in first["historical_rules_note"]
     old = first["arms"]["previous_0_3_3"]["scenarios"]
     new = first["arms"]["recommended"]["scenarios"]
     assert old["positive_burst"]["rows"][5]["half_life"] == 120

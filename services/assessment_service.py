@@ -16,7 +16,10 @@ from ..core.assessment import (
     locally_relevant,
     needs_review,
     parse_verdict,
+    TRUST_CONTRACT,
+    verify_trust_evidence,
 )
+from ..core.relation_policy import TRUST_EVENTS
 
 
 @dataclass(frozen=True)
@@ -455,7 +458,7 @@ class AssessmentService:
                 else SYSTEM_PROMPT
             )
             payload = await self._snapshot(interaction)
-            frozen_prompt = instructions + "\n输入：" + payload
+            frozen_prompt = instructions + TRUST_CONTRACT + "\n输入：" + payload
             verdict = await self._call(
                 cfg.small_provider_id,
                 cfg.small_timeout_sec,
@@ -466,6 +469,8 @@ class AssessmentService:
             if verdict is None:
                 status = "failed"
             else:
+                first_verdict = verdict
+                trust_evidence = None
                 review = verdict.should_update and needs_review(
                     verdict, interaction.text
                 )
@@ -489,6 +494,19 @@ class AssessmentService:
                         if cfg.assessment_mode == "tiered" and cfg.large_provider_id
                         else None
                     )
+                if verdict is not None and (
+                    first_verdict.event_type in TRUST_EVENTS
+                    or verdict.event_type in TRUST_EVENTS
+                ):
+                    try:
+                        # 单模型模式、复核升级为新的信任类别或引用不一致均不计 T。
+                        if not review:
+                            raise ValueError("缺少独立复核")
+                        trust_evidence = verify_trust_evidence(
+                            interaction, first_verdict, verdict, payload
+                        )
+                    except (ValueError, KeyError, TypeError):
+                        verdict = None
                 if trace is not None and verdict is not None:
                     trace.update(
                         event_type=verdict.event_type, confidence=verdict.confidence
@@ -505,12 +523,17 @@ class AssessmentService:
                         interaction.group_id,
                         interaction.user_id,
                         verdict.event_type,
-                        event_id=interaction.event_id,
+                        event_id=(
+                            trust_evidence.event_id
+                            if trust_evidence
+                            else interaction.event_id
+                        ),
                         reason=verdict.event_type,
                         message=verdict.evidence,
                         # 初评窗口由持久化调用账本控制；提交仅检查稳定 ID、额度及临时关系修订。
                         cooldown_sec=0,
                         expected_revision=temporary["revision"],
+                        trust_evidence=trust_evidence,
                     )
                     status = (
                         "accepted"

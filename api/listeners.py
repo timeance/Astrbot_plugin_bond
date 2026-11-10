@@ -50,6 +50,7 @@ class Deps:
     prompts: object | None = None
     bot_id: str = ""
     passive_activity: object | None = None
+    titles: object | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,13 @@ async def _freeze_relation(deps, event):
             description = deps.favor.describe_relation(
                 rec.familiarity, rec.favor, rec.trust
             )
+            if deps.titles is not None:
+                from dataclasses import replace
+
+                display = await deps.favor.read_relation_title(
+                    group_id, user_id, event=event, record=rec
+                )
+                description = replace(description, title=display["title"])
             block = deps.inject.build_relation_block(
                 template,
                 relationship=description.text,
@@ -360,6 +368,8 @@ async def on_group_message(
                     await deps.impressions.maybe_refresh(
                         group_id, user_id, umo=event.unified_msg_origin
                     )
+            if deps.titles is not None and (has_at_bot or is_reply_bot):
+                deps.titles.schedule(event)
         except Exception:
             # 意外异常属疑难：warning 必须带堆栈，否则后台静默死因不可查
             logger.warning(

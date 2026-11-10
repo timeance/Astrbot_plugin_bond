@@ -35,7 +35,7 @@ def db(tmp_path):
 
 
 def service(db, mode="realistic", *, rules=None, caps=None, event_caps=None, **kwargs):
-    # 此套回归固定旧维护语义；独立策略另由 test_independent_maintenance 覆盖。
+    # legacy 仅联动 F/A；T 仍只由合格的 T 事件结算和维护。
     kwargs.setdefault("maintenance_strategy", "legacy")
     policy, effective_caps = build_relation_profile(
         mode, rules=rules, event_caps=event_caps, caps=caps
@@ -141,10 +141,11 @@ def test_fractional_rewards_cannot_bypass_daily_or_total_bounds(db):
         assert event(unrestricted, "at-total")["delta"]["familiarity"] == 0
 
 
-def test_separate_positive_negative_usage_and_undo_does_not_refund(db):
+def test_synthetic_positive_negative_quotas_and_undo_do_not_refund(db):
+    # 显式合成 T 规则仅验证日额与撤销数学，不代表自动评分证据。
     rules = {
         "friendly": {"familiarity": 0, "affinity": 10, "trust": 2},
-        "insult": {"affinity": -8, "trust": -5},
+        "insult": {"affinity": -8, "trust": -8},
     }
     with patch("time.time", return_value=START):
         svc = service(db, rules=rules, event_caps={"friendly": 10, "insult": 8})
@@ -152,9 +153,9 @@ def test_separate_positive_negative_usage_and_undo_does_not_refund(db):
         event(svc, "up", "friendly")
         event(svc, "down", "insult")
         assert raw(db).favor == 2
-        assert raw(db).trust == -3
+        assert raw(db).trust == -6
         consumed = usage(db, svc)
-        assert consumed == (0, 0, 10, 8, 2, 5, 1)
+        assert consumed == (0, 0, 10, 8, 2, 8, 1)
         assert not any(event(svc, "no-more-up", "friendly")["delta"].values())
         assert not any(event(svc, "no-more-down", "insult")["delta"].values())
         run(svc.undo_log(log_for(db, "up")["id"]))
@@ -165,11 +166,12 @@ def test_separate_positive_negative_usage_and_undo_does_not_refund(db):
         )
         run(svc.undo_log(undo["id"]))
         assert raw(db).favor == 2
-        assert raw(db).trust == -3
+        assert raw(db).trust == -6
         assert usage(db, svc) == consumed
 
 
-def test_mode_switch_custom_caps_do_not_multiply_existing_state_or_refill(db):
+def test_synthetic_mode_switch_caps_do_not_multiply_existing_state_or_refill(db):
+    # 自定义 T 增量仅作为倍率与日额的数学输入，不代表自动评分证据。
     with patch("time.time", return_value=START):
         options = dict(
             rules={"friendly": {"familiarity": 0, "affinity": 3, "trust": 0.5}},
@@ -266,46 +268,41 @@ def test_separate_decay_halflives_and_f_does_not_decay(db, trust, grace_days):
 
 @pytest.mark.parametrize("grace_days", [0, 5])
 @pytest.mark.parametrize("trust", [40, -40])
-@pytest.mark.parametrize("kind", ["normal_question", "friendly"])
-def test_f_or_a_writes_and_undo_do_not_freeze_or_repeat_trust_decay(
+@pytest.mark.parametrize("kind", ["normal_question", "friendly", "insult"])
+def test_f_a_writes_and_undo_preserve_raw_trust_and_continuous_decay(
     db, kind, trust, grace_days
 ):
     with patch("time.time", return_value=START):
         svc = decaying(db, decay_grace_days=grace_days)
         seed(svc, a=40, t=trust)
-    previous = trust
-    for index, days in enumerate((30, 60, 90), start=1):
-        # 每次有效互动只结算距上次互动超过保温期的部分。
-        expected = trust * 0.5 ** (index * (30 - grace_days) / 180)
+    for days in (30, 60, 90):
+        # F-only、A-only 和 F/A 互动均不重授 T 保温期，按原始锚连续衰减。
+        expected = trust * 0.5 ** ((days - grace_days) / 180)
         with patch("time.time", return_value=START + days * DAY):
             assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
             result = event(svc, f"event-{days}", kind)
             assert result["delta"]["trust"] == 0
             assert result["before"]["trust"] == pytest.approx(expected)
             assert result["after"]["trust"] == pytest.approx(expected)
-            assert raw(db).trust == pytest.approx(expected)
-            assert raw(db).trust_updated_at == START + days * DAY
-            assert abs(raw(db).trust) < abs(previous)
+            assert raw(db).trust == trust
+            assert raw(db).trust_updated_at == raw(db).trust_maintained_at == START
             assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
             assert usage(db, svc)[4:6] == (0, 0)
-            previous = raw(db).trust
-    settled = raw(db).trust
-    anchor = START + 90 * DAY
     with patch("time.time", return_value=START + 120 * DAY):
-        expected = settled * 0.5 ** ((30 - grace_days) / 180)
+        expected = trust * 0.5 ** ((120 - grace_days) / 180)
         assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
         run(svc.undo_log(log_for(db, "event-90")["id"]))
-        # 撤销 F/A 增量不动已结算的 T，也不能让 T 再获得保温期。
-        assert raw(db).trust == settled
-        assert raw(db).trust_updated_at == anchor
+        # 撤销 F/A 增量同样保留 T 原始值及其结算、维护时钟。
+        assert raw(db).trust == trust
+        assert raw(db).trust_updated_at == raw(db).trust_maintained_at == START
         assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
         assert run(db.query_logs("g", "u"))[0]["relation_delta"]["trust"] == 0
     with patch("time.time", return_value=START + 180 * DAY):
-        expected = settled * 0.5 ** ((90 - grace_days) / 180)
+        expected = trust * 0.5 ** ((180 - grace_days) / 180)
         assert run(svc.get_relation("g", "u")).trust == round(expected, 1)
-        assert abs(expected) < abs(settled) < abs(trust)
-        assert raw(db).trust == settled
-        assert raw(db).trust_updated_at == anchor
+        assert abs(expected) < abs(trust)
+        assert raw(db).trust == trust
+        assert raw(db).trust_updated_at == raw(db).trust_maintained_at == START
         assert usage(db, svc) is None  # 读取衰减不消费互动扣分额度。
 
 
@@ -604,18 +601,24 @@ def test_v15_missing_history_keeps_net_proven_minimum_usage(tmp_path):
 
 @pytest.mark.parametrize("grace_days", [0, 5])
 @pytest.mark.parametrize("trust", [40, -40])
-def test_trust_change_settles_own_clock_and_undo_redo_does_not_duplicate_decay(
+def test_synthetic_trust_change_settles_own_clock_and_undo_redo_once(
     db, trust, grace_days
 ):
     with patch("time.time", return_value=START):
-        svc = decaying(db, decay_grace_days=grace_days)
+        # 合成 T 扣分隔离结算/撤销数学，真实新事件的证据校验由 test_trust_v2 覆盖。
+        svc = decaying(
+            db,
+            decay_grace_days=grace_days,
+            rules={"insult": {"trust": -1.5}},
+        )
         seed(svc, a=40, t=trust)
     with patch("time.time", return_value=START + 90 * DAY):
-        before = svc._effective_trust(raw(db).trust, raw(db).trust_updated_at)
+        before = trust * 0.5 ** ((90 - grace_days) / 180)
         result = event(svc, "breach", "insult")
         assert result["delta"]["trust"] == -1.5
         assert raw(db).trust == pytest.approx(before - 1.5)
         assert raw(db).trust_updated_at == START + 90 * DAY
+        assert raw(db).trust_maintained_at == START + 90 * DAY
         used = usage(db, svc)
         run(svc.undo_log(log_for(db, "breach")["id"]))
         assert raw(db).trust == pytest.approx(before)

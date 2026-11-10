@@ -436,6 +436,31 @@ class StorageBackend(ABC):
     async def assessment_stats(self):
         raise NotImplementedError
 
+    async def title_state(self, group_id, user_id, origin_group_id):
+        """一致读取称谓事实及提交指纹，不支持时由读取服务回退词典。"""
+        raise NotImplementedError
+
+    async def read_title_cache(self, group_id, user_id, context_id):
+        raise NotImplementedError
+
+    async def title_sources_valid(self, group_id, user_id, origin_group_id, sources):
+        raise NotImplementedError
+
+    async def title_day_calls(self, day):
+        raise NotImplementedError
+
+    async def reserve_title_call(self, group_id, user_id, context_id, day, cooldown):
+        raise NotImplementedError
+
+    async def commit_title(
+        self, group_id, user_id, origin_group_id, context_id, stamp, title, metadata
+    ):
+        """同一事务比较指纹并提交；不得覆盖更新后的关系或恢复后的数据。"""
+        raise NotImplementedError
+
+    async def clear_title_cache(self):
+        raise NotImplementedError
+
     @abstractmethod
     async def close(self) -> None:
         """关闭并释放资源。"""

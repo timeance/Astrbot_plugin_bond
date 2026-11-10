@@ -17,7 +17,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from astrbot_plugin_bond.core.assessment import Interaction, SYSTEM_PROMPT
+from astrbot_plugin_bond.core.assessment import (
+    Interaction,
+    SYSTEM_PROMPT,
+    TRUST_CONTRACT,
+)
 from astrbot_plugin_bond.core.levels import LevelTable
 from astrbot_plugin_bond.core.relation_policy import RelationPolicy, DEFAULT_RULES
 from astrbot_plugin_bond.core.taskregistry import TaskRegistry
@@ -697,7 +701,7 @@ async def replay(path, arms=("baseline", "model-a"), selected=None):
             schema_version=1,
             fixture_sha256=digest(data),
             baseline_commit=data["baseline_commit"],
-            protocol_sha256=digest(SYSTEM_PROMPT),
+            protocol_sha256=digest(SYSTEM_PROMPT + TRUST_CONTRACT),
             evaluation="synthetic_scripted_provider_not_semantic_accuracy",
             routing="current_checkout_production_hook_and_listener",
             arms=output,

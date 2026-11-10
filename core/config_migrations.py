@@ -2,8 +2,8 @@
 
 AstrBot 的配置持久化规则：已保存的键永远优先于 `_conf_schema.json` 的
 默认值，schema 默认值变更不会自动写回存量配置。因此"只改默认值"对保存
-过配置的旧安装不生效。唯一安全的迁移时机是存值与已知旧默认**逐字一致**；
-用户手改过的值与任何旧默认都不一致，绝不覆盖。
+过配置的旧安装不生效。普通文案仅替换已知旧默认；0.6.0 的信任配置是明确
+标注的不兼容升级，仅第一次统一 T 专属值，不触碰成员数据和共享设置。
 """
 
 # v1.24.0 → v1.24.1（PR #41）：主人版态度指引语义从"低段位＝赌气别扭"
@@ -24,6 +24,20 @@ _MASTER_GUIDANCE_V124 = {
     ),
 }
 
+TRUST_CONFIG_VERSION = 1
+TRUST_DEFAULTS = {
+    "relation_daily_caps": {"trust_up": 2, "trust_down": 8},
+    "decay": {"trust_enabled": True, "trust_half_life": 60, "trust_baseline": 20},
+}
+
+
+def trust_config_backup(cfg: dict) -> dict:
+    """仅备份即将覆盖的信任字段，不包含 Provider 或密钥。"""
+    return {
+        section: {key: (cfg.get(section) or {}).get(key) for key in defaults}
+        for section, defaults in TRUST_DEFAULTS.items()
+    }
+
 
 def migrate_saved_defaults(cfg: dict) -> list:
     """迁移旧默认及已知配置结构，保留用户的开关选择。
@@ -32,6 +46,17 @@ def migrate_saved_defaults(cfg: dict) -> list:
     迁移。态度指引只替换与旧默认逐字一致的值；眼熟开关仅转换结构，不改变真假值。
     """
     changed = []
+    version = cfg.get("trust_config_version", 0)
+    if type(version) is not int or version < 0:
+        raise ValueError("信任配置升级标记无效")
+    if version < TRUST_CONFIG_VERSION:
+        for section, defaults in TRUST_DEFAULTS.items():
+            values = cfg.setdefault(section, {})
+            for key, value in defaults.items():
+                values[key] = value
+                changed.append(f"{section}.{key}")
+        cfg["trust_config_version"] = TRUST_CONFIG_VERSION
+        changed.append("trust_config_version")
     # 0.5.7 将嵌套开关改为普通配置行，保留存量用户的明确选择。
     passive = cfg.get("passive_familiarity")
     if isinstance(passive, dict) and type(passive.get("enabled")) is bool:

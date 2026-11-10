@@ -780,7 +780,7 @@
           "legacy"
         ],
         "description": "关系维护策略",
-        "hint": "independent 分别维护熟悉、亲近和信任；legacy 沿用接纳事件统一保温。重载生效，保留历史数据，切换不发放新保温期。"
+        "hint": "independent 分别维护三个维度；legacy 仅联动熟悉度和亲近度。信任始终需要可信事件维护。重载生效，切换不发放新保温期。"
       },
       "grace_days": {
         "type": "float",
@@ -1182,6 +1182,24 @@
     "hint": "设置本机诊断记录，供管理员排查评估和关系变化。",
     "invisible": true
   },
+  "trust_config_version": {
+    "type": "int",
+    "default": 0,
+    "invisible": true,
+    "description": "信任配置升级标记（内部使用，请勿修改）"
+  },
+  "relation_title": {
+    "type": "object",
+    "description": "关系称谓",
+    "hint": "固定词典无需模型。动态称谓在互动后后台生成，查询只读缓存；与关系增长模式独立，保存后重载生效。",
+    "items": {
+      "mode": {"type": "string", "default": "fixed", "options": ["fixed", "llm"], "description": "称谓模式", "hint": "fixed：固定词典；llm：按当前人格生成。复杂或不适合公开的结果回退词典。"},
+      "provider_id": {"type": "string", "default": "", "_special": "select_provider", "description": "称谓生成模型", "hint": "选择已配置的文本模型；留空保持固定称谓。"},
+      "refresh_cooldown_hours": {"type": "float", "default": 6, "description": "刷新间隔（小时）", "hint": "合并关系变化后的刷新；旧称谓不再符合关系时立即回退词典。"},
+      "daily_generation_limit": {"type": "int", "default": 10, "description": "每个 Bot 每日生成上限", "hint": "所有群和关系空间合计，UTC 零点换日；0 暂停生成。失败调用也计入。"},
+      "generation_timeout_seconds": {"type": "float", "default": 30, "description": "生成超时（秒）", "hint": "生成失败不影响聊天、评分和查询。"}
+    }
+  },
   "relation_daily_caps": {
     "type": "object",
     "description": "每日分数额度",
@@ -1215,11 +1233,11 @@
         "type": "float",
         "default": 2,
         "description": "信任度每日加分上限",
-        "hint": "每人每天正向增信的额度；默认事件不增信。Galgame 为 2 倍，0 禁止增加。"
+        "hint": "可核验可信事件的每日加分额度；感谢、承诺和道歉本身不加信任。Galgame 为 2 倍，0 禁止增加。"
       },
       "trust_down": {
         "type": "float",
-        "default": 5,
+        "default": 8,
         "description": "信任度每日扣分上限",
         "hint": "每人每天最多扣多少信任度；0 禁止互动扣分，时间衰减另算。"
       }

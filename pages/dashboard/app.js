@@ -34,9 +34,16 @@ createApp({
       normal_question: "日常问答", friendly: "表达友好", thanks: "表达感谢",
       joke: "友善玩笑", criticism: "提出批评", insult: "辱骂冒犯",
       manipulation: "操纵诱导", apology: "表达歉意", uncertain: "无法确定",
+      verified_correction: "可核验纠错", promise_kept: "履行约定", repair_action: "实质修正",
+      boundary_violation: "明确越界", repeated_pressure: "重复施压",
+      deliberate_deception: "蓄意误导", severe_manipulation: "严重操纵",
     };
     const displayReason = reason => {
       const text = String(reason || "");
+      const kind = text.split(";", 1)[0];
+      if (Object.prototype.hasOwnProperty.call(reasonLabels, kind) && text.startsWith(`${kind}; current=`)) {
+        return reasonLabels[kind] + text.slice(kind.length).replace("; current=", " · 当前消息：").replace("; reference=", " · 核验来源：");
+      }
       return Object.prototype.hasOwnProperty.call(reasonLabels, text) ? reasonLabels[text] : text || "-";
     };
     const users = ref([]);

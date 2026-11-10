@@ -9,6 +9,7 @@ from astrbot_plugin_bond.core import relation_policy
 
 from astrbot_plugin_bond.scripts.replay_trust_evidence import (
     CATEGORIES,
+    HISTORICAL_EVENT_TYPES,
     digest,
     experiment,
     markdown_report,
@@ -40,6 +41,7 @@ def test_all_cases_account_for_identical_sources_without_analysis_writes(report)
     assert report["provider_calls"] == 0
     rules = report["historical_rules"]
     assert len(rules) == 9
+    assert set(rules) == HISTORICAL_EVENT_TYPES
     assert all(
         set(vector) == {"familiarity", "affinity", "trust"} for vector in rules.values()
     )

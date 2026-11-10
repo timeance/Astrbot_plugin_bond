@@ -58,13 +58,20 @@ def test_original_denominators_and_real_service_control(report):
     assert summary["original_denominators"] == dict(
         events=1201, forbidden=381, zero_trust=1195
     )
+    assert "不证明信任证据识别收益" in summary["trust_rule_note"]
+    for result in report["original"].values():
+        assert all(
+            row["delta"]["trust"] == 0
+            for case in result["scenarios"]
+            for row in case["rows"]
+        )
     expected = {
         # 原脚本让 350 条无信息寒暄返回 friendly，另有一条旧冷却样本现在入场。
-        # 不修改 gold/Provider 来追求旧指标；候选臂差异仍须逐项保持可解释。
-        "control": (357, 2, 0, 0),
-        "quoted_evidence": (355, 1, 0, 0),
-        "joke_abstain": (354, 2, 1, 0),
-        "manipulation_no_source": (356, 1, 4, 4),
+        # 保留历史 gold/Provider；当前普通 insult/manipulation 均不再改变 T。
+        "control": (357, 0, 0, 0),
+        "quoted_evidence": (355, 0, 0, 0),
+        "joke_abstain": (354, 0, 1, 0),
+        "manipulation_no_source": (356, 0, 4, 0),
     }
     for arm, (false_updates, false_trust, suppressed, negative) in expected.items():
         row = summary["original"][arm]

@@ -206,6 +206,12 @@ class JudgeService:
         API / 无会话 / 解析异常）静默回落 (bot_name, "")。"""
         if not self._follow_persona:
             return self._bot_name, ""
+        return await self.resolve_persona(umo, platform_name)
+
+    async def resolve_persona(
+        self, umo: str, platform_name: str = ""
+    ) -> tuple[str, str]:
+        """读取完整有效人格；动态称谓不受旧评审 follow_persona 开关影响。"""
         try:
             pm = getattr(self._context, "persona_manager", None)
             if pm is None:

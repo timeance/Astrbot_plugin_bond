@@ -17,7 +17,6 @@ sys.path.insert(0, str(ROOT.parent))
 
 from astrbot_plugin_bond.core.levels import LevelTable
 from astrbot_plugin_bond.core.relation_policy import (
-    EVENT_TYPES,
     RELATION_DIMENSIONS,
     RelationPolicy,
 )
@@ -41,6 +40,19 @@ CATEGORIES = (
 )
 WINDOW_DAYS = 30
 NOW = 1_800_000_000.0
+HISTORICAL_EVENT_TYPES = frozenset(
+    {
+        "normal_question",
+        "thanks",
+        "friendly",
+        "joke",
+        "criticism",
+        "insult",
+        "manipulation",
+        "apology",
+        "uncertain",
+    }
+)
 
 
 def digest(value):
@@ -213,6 +225,8 @@ async def run_case(root, case, historical_rules):
                 current = await service(target)
                 args = (target["group"], target["user"])
                 if op["action"] == "event":
+                    if op["event_type"] not in historical_rules:
+                        raise ValueError("事件不属于冻结历史规则")
                     await current.apply_relation_event(
                         *args,
                         op["event_type"],
@@ -319,10 +333,10 @@ async def experiment(runtime):
     ):
         raise ValueError("合成夹具版本或来源标记无效")
     rules = data["historical_rules"]
-    if set(rules) != set(EVENT_TYPES) or any(
+    if set(rules) != HISTORICAL_EVENT_TYPES or any(
         set(vector) != set(RELATION_DIMENSIONS) for vector in rules.values()
     ):
-        raise ValueError("历史规则快照必须完整覆盖全部事件及 F/A/T，禁止回退到生产默认")
+        raise ValueError("历史规则快照必须完整覆盖历史事件及 F/A/T，禁止回退到生产默认")
     names = [case["id"] for case in data["cases"]]
     if len(names) != len(set(names)) or any(
         not name or any(c not in "abcdefghijklmnopqrstuvwxyz_0123456789" for c in name)

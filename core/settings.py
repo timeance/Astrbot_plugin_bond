@@ -72,6 +72,7 @@ SECTIONS = {
             "decay.trust_baseline",
         ],
     ),
+    "titles": ("关系称谓", ["relation_title"]),
     "memory": (
         "印象与近期事件",
         ["inject", "impression", "judge.provider_id", "judge.timeout_sec"],
@@ -302,7 +303,7 @@ LABELS = {
     ),
     "relation_daily_caps.trust_up": (
         "信任度每日加分上限",
-        "每人每天正向增信的额度；默认事件不增信。Galgame 为 2 倍，0 禁止增加。",
+        "可核验可信事件的每日加分额度；感谢、承诺和道歉本身不加信任。Galgame 为 2 倍，0 禁止增加。",
     ),
     "relation_daily_caps.trust_down": (
         "信任度每日扣分上限",
@@ -443,6 +444,15 @@ def snapshot(config):
 def validate_patch(values):
     if not isinstance(values, dict) or not values:
         raise ValueError("请提交要修改的设置")
+    from .relation_titles import TitleConfig
+
+    TitleConfig(
+        **{
+            key.split(".", 1)[1]: value
+            for key, value in values.items()
+            if key.startswith("relation_title.")
+        }
+    )
     from .passive_familiarity import PassiveFamiliarityConfig
 
     passive_values = {

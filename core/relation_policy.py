@@ -46,9 +46,27 @@ class EventType(str, Enum):
     MANIPULATION = "manipulation"
     APOLOGY = "apology"
     UNCERTAIN = "uncertain"
+    VERIFIED_CORRECTION = "verified_correction"
+    PROMISE_KEPT = "promise_kept"
+    REPAIR_ACTION = "repair_action"
+    BOUNDARY_VIOLATION = "boundary_violation"
+    REPEATED_PRESSURE = "repeated_pressure"
+    DELIBERATE_DECEPTION = "deliberate_deception"
+    SEVERE_MANIPULATION = "severe_manipulation"
 
 
 EVENT_TYPES = tuple(event.value for event in EventType)
+TRUST_EVENTS = frozenset(
+    {
+        "verified_correction",
+        "promise_kept",
+        "repair_action",
+        "boundary_violation",
+        "repeated_pressure",
+        "deliberate_deception",
+        "severe_manipulation",
+    }
+)
 
 # F：确认的交互暴露；A：温暖/疏离；T：涉及风险时的可靠性、诚实和边界尊重。
 # 礼貌、示好或道歉本身不是可靠性修复证据。限幅仍由 FavorService/存储负责。
@@ -58,10 +76,17 @@ DEFAULT_RULES: dict[str, dict[str, float]] = {
     EventType.FRIENDLY: {"familiarity": 0.3, "affinity": 0.8, "trust": 0.0},
     EventType.JOKE: {"familiarity": 0.2, "affinity": 0.5},
     EventType.CRITICISM: {"familiarity": 0.1},
-    EventType.INSULT: {"affinity": -1.0, "trust": -1.5},
-    EventType.MANIPULATION: {"affinity": -0.5, "trust": -2.0},
+    EventType.INSULT: {"affinity": -1.0},
+    EventType.MANIPULATION: {"affinity": -0.5},
     EventType.APOLOGY: {"familiarity": 0.1, "affinity": 0.7, "trust": 0.0},
     EventType.UNCERTAIN: {},
+    EventType.VERIFIED_CORRECTION: {"trust": 0.5},
+    EventType.PROMISE_KEPT: {"trust": 0.5},
+    EventType.REPAIR_ACTION: {"trust": 0.5},
+    EventType.BOUNDARY_VIOLATION: {"trust": -1.0},
+    EventType.REPEATED_PRESSURE: {"trust": -2.0},
+    EventType.DELIBERATE_DECEPTION: {"trust": -4.0},
+    EventType.SEVERE_MANIPULATION: {"trust": -6.0},
 }
 
 # 单事件上限按维度配置，避免单条高强度事件绕过本地策略造成大幅跳变。
@@ -165,6 +190,9 @@ class RelationPolicy:
                 )
 
         self._event_caps = {event: dict(DEFAULT_EVENT_CAPS) for event in EVENT_TYPES}
+        for event in TRUST_EVENTS:
+            if self._rules[event].get("trust", 0) < 0:
+                self._event_caps[event]["trust"] = 6.0
         for raw_event, raw_caps in (event_caps or {}).items():
             event = _event_name(raw_event)
             if isinstance(raw_caps, Mapping):
@@ -223,7 +251,13 @@ class RelationPolicy:
             raise ValueError("intensity 不能为负")
         result = {}
         for dimension in RELATION_DIMENSIONS:
-            requested = self._rules[event].get(dimension, 0.0) * factor
+            # 信任严重程度由已复核的事件类别确定，强度不能再放大损失或奖励。
+            scale = (
+                float(factor > 0)
+                if event in TRUST_EVENTS and dimension == "trust"
+                else factor
+            )
+            requested = self._rules[event].get(dimension, 0.0) * scale
             cap = self._event_caps[event][dimension]
             result[dimension] = max(-cap, min(cap, requested)) if bounded else requested
         return result

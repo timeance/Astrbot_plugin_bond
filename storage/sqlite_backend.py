@@ -39,6 +39,7 @@ class SQLiteBackend(StorageBackend):
         self._initial_favor = 0.0
         self._maintenance_strategy = "legacy"
         self._effective_record = None
+        self._title_epoch = uuid.uuid4().hex
 
     def configure_initial_values(self, value, default_favor=0):
         self._initial_half_life = float(value)
@@ -290,7 +291,13 @@ class SQLiteBackend(StorageBackend):
                         self.configure_maintenance(
                             self._maintenance_strategy, self._effective_record
                         )
+                    # 缓存可重建；清理也属于恢复事务，失败时保留原库回退能力。
+                    with self._conn:
+                        self._conn.execute("DELETE FROM relation_title_cache")
                 except Exception as open_error:
+                    if self._conn is not None:
+                        self._conn.close()
+                        self._conn = None
                     self._remove_sidecars(db_path)
                     db_path.unlink(missing_ok=True)
                     if old_moved and old.exists():
@@ -303,6 +310,7 @@ class SQLiteBackend(StorageBackend):
                     raise open_error
                 if old.exists():
                     old.unlink(missing_ok=True)
+                self._title_epoch = uuid.uuid4().hex
             except Exception:
                 if self._conn is None:
                     try:
@@ -405,6 +413,136 @@ class SQLiteBackend(StorageBackend):
                 return rec, temporary, logs, now
             finally:
                 conn.rollback()
+
+    def _title_state_sync(self, group_id, user_id, origin_group_id):
+        from ..core.relation_titles import fingerprint
+
+        conn, now = self._c(), time.time()
+        temporary = self._override_state(group_id, user_id, now)
+        record = self._get_sync(group_id, user_id)
+        history = conn.execute(
+            "SELECT COUNT(*),MAX(id),COALESCE(SUM(reversed),0) FROM favor_log WHERE group_id=? AND user_id=?",
+            (group_id, user_id),
+        ).fetchone()
+        sources = conn.execute(
+            "SELECT id FROM favor_log WHERE group_id=? AND user_id=? AND origin_group_id=? AND reversed=0 ORDER BY id DESC LIMIT 3",
+            (group_id, user_id, origin_group_id),
+        ).fetchall()
+        # 全局聚合印象不能跨群披露；撤销后须重新刷新/确认印象才能引用。
+        impression = (
+            record.impression
+            if record and group_id != GLOBAL_GROUP and record.impression_at > 0
+            else ""
+        )
+        return dict(
+            record=record,
+            temporary=temporary,
+            now=now,
+            impression=impression,
+            sources=[r[0] for r in sources],
+            revoked=history[2],
+            stamp=fingerprint(
+                [
+                    vars(record) if record else None,
+                    temporary,
+                    history,
+                    self._title_epoch,
+                ]
+            ),
+        )
+
+    async def title_state(self, group_id, user_id, origin_group_id):
+        with self._lock, self._c() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            return self._title_state_sync(group_id, user_id, origin_group_id)
+
+    async def read_title_cache(self, group_id, user_id, context_id):
+        with self._lock:
+            row = (
+                self._c()
+                .execute(
+                    "SELECT title,metadata,attempted_at FROM relation_title_cache WHERE group_id=? AND user_id=? AND context_id=?",
+                    (group_id, user_id, context_id),
+                )
+                .fetchone()
+            )
+        if row is None:
+            return None
+        try:
+            return dict(title=row[0], metadata=json.loads(row[1]), attempted_at=row[2])
+        except (TypeError, ValueError):
+            return dict(title="", metadata={}, attempted_at=row[2])
+
+    async def title_sources_valid(self, group_id, user_id, origin_group_id, sources):
+        with self._lock:
+            return all(
+                self._c()
+                .execute(
+                    "SELECT 1 FROM favor_log WHERE id=? AND group_id=? AND user_id=? AND origin_group_id=? AND reversed=0",
+                    (source, group_id, user_id, origin_group_id),
+                )
+                .fetchone()
+                for source in sources
+            )
+
+    async def title_day_calls(self, day):
+        with self._lock:
+            row = (
+                self._c()
+                .execute("SELECT calls FROM relation_title_calls WHERE day=?", (day,))
+                .fetchone()
+            )
+            return row[0] if row else 0
+
+    async def reserve_title_call(self, group_id, user_id, context_id, day, cooldown):
+        with self._lock, self._c() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            now = time.time()
+            row = conn.execute(
+                "SELECT attempted_at FROM relation_title_cache WHERE group_id=? AND user_id=? AND context_id=?",
+                (group_id, user_id, context_id),
+            ).fetchone()
+            if row and now - row[0] < cooldown:
+                return False
+            conn.execute(
+                "INSERT INTO relation_title_cache(group_id,user_id,context_id,attempted_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(group_id,user_id,context_id) DO UPDATE SET attempted_at=excluded.attempted_at",
+                (group_id, user_id, context_id, now),
+            )
+            conn.execute(
+                "INSERT INTO relation_title_calls(day,calls) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1",
+                (day,),
+            )
+            conn.execute(
+                "DELETE FROM relation_title_calls WHERE day < date(?,'-90 day')", (day,)
+            )
+            return True
+
+    async def commit_title(
+        self, group_id, user_id, origin_group_id, context_id, stamp, title, metadata
+    ):
+        with self._lock, self._c() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            # 锁内再次核对关系、证据、临时覆盖和恢复世代；过期生成永不回写。
+            current = self._title_state_sync(group_id, user_id, origin_group_id)
+            if current["stamp"] != stamp or current["temporary"]["active"]:
+                return False
+            cursor = conn.execute(
+                "UPDATE relation_title_cache SET title=?,metadata=? WHERE group_id=? AND user_id=? AND context_id=?",
+                (
+                    title,
+                    json.dumps(metadata, ensure_ascii=False),
+                    group_id,
+                    user_id,
+                    context_id,
+                ),
+            )
+            return cursor.rowcount == 1
+
+    async def clear_title_cache(self):
+        with self._lock, self._c() as conn:
+            self._title_epoch = uuid.uuid4().hex
+            conn.execute("DELETE FROM relation_title_cache")
 
     def _compute_favor_write(
         self,
@@ -840,7 +978,9 @@ class SQLiteBackend(StorageBackend):
                         positive=real["affinity"] > 0,
                     )
                 maintained = (
-                    set(before) if self._maintenance_strategy == "legacy" else qualified
+                    {"familiarity", "affinity"} | (qualified & {"trust"})
+                    if self._maintenance_strategy == "legacy" and values is None
+                    else qualified
                 )
                 # 无关维度保留原始数值、结算锚、托底参考和巩固状态。
                 conn.execute(
@@ -1228,6 +1368,7 @@ class SQLiteBackend(StorageBackend):
                     "impression": (impression or "").strip(),
                     "tags": _json.dumps(list(tags or []), ensure_ascii=False),
                     "points": _json.dumps(list(points or []), ensure_ascii=False),
+                    "impression_at": time.time(),
                 },
             )
 
@@ -1669,6 +1810,7 @@ class SQLiteBackend(StorageBackend):
         # 生产标准：execute 的 SQL 保持全字面量（表名也不插值），值一律 ? 参数化
         if user_id is None:
             stmts = [
+                ("DELETE FROM relation_title_cache WHERE group_id=?", (group_id,)),
                 ("DELETE FROM impression_progress WHERE group_id=?", (group_id,)),
                 ("DELETE FROM favor WHERE group_id=?", (group_id,)),
                 ("DELETE FROM daily_gain WHERE group_id=?", (group_id,)),
@@ -1678,6 +1820,10 @@ class SQLiteBackend(StorageBackend):
             ]
         else:
             stmts = [
+                (
+                    "DELETE FROM relation_title_cache WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ),
                 (
                     "DELETE FROM impression_progress WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
@@ -1891,11 +2037,14 @@ class SQLiteBackend(StorageBackend):
         return self._log_record(row) if row is not None else None
 
     async def mark_reversed(self, log_id: int) -> None:
-        with self._lock:
-            self._c().execute(
-                "UPDATE favor_log SET reversed=1 WHERE id=?", (int(log_id),)
+        with self._lock, self._c() as conn:
+            # 保留原文供人工核对，清除有效刷新标记；新印象生成后可正常复用。
+            conn.execute(
+                "UPDATE favor SET impression_at=0 WHERE (group_id,user_id) IN "
+                "(SELECT group_id,user_id FROM favor_log WHERE id=? AND reversed=0)",
+                (int(log_id),),
             )
-            self._c().commit()
+            conn.execute("UPDATE favor_log SET reversed=1 WHERE id=?", (int(log_id),))
 
     async def apply_undo(
         self,
@@ -2027,6 +2176,10 @@ class SQLiteBackend(StorageBackend):
                     )
                 conn.execute(
                     "UPDATE favor_log SET reversed=1 WHERE id=?", (int(log_id),)
+                )
+                conn.execute(
+                    "UPDATE favor SET impression_at=0 WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
                 )
                 conn.commit()
             except BaseException:
