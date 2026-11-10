@@ -8,14 +8,14 @@
         "default": false,
         "description": "自动评估",
         "invisible": false,
-        "hint": "根据你与 Bot 的互动，更新熟悉度、亲近度和信任度。关闭后仅停止自动评估。"
+        "hint": "根据互动更新熟悉度、亲近度和信任度。"
       },
       "small_provider_id": {
         "type": "string",
         "default": "",
         "description": "日常评估模型",
         "invisible": false,
-        "hint": "启用时必填，手动选择已配置的文本模型；不自动跟随聊天模型。",
+        "hint": "启用自动评估时必选。",
         "_special": "select_provider"
       },
       "large_provider_id": {
@@ -23,7 +23,7 @@
         "default": "",
         "description": "复核模型（可选）",
         "invisible": false,
-        "hint": "用于复核难判互动。留空不调用；需要复核而无法完成时不评分。",
+        "hint": "复核难判互动。留空或复核失败时，需要复核的互动不评分。",
         "_special": "select_provider"
       },
       "assessment_mode": {
@@ -35,115 +35,115 @@
         ],
         "description": "评估模式",
         "invisible": false,
-        "hint": "单模型只用日常模型；分级复核会按需复核，必须复核却未完成时不评分。"
+        "hint": "单模型仅用日常模型，分级复核按需调用复核模型。"
       },
       "small_timeout_sec": {
         "type": "float",
         "default": 20,
         "description": "初评超时（秒）",
         "invisible": true,
-        "hint": "须大于 0。超时放弃本次评分，已发起的调用仍占初评预算。"
+        "hint": "须大于 0。超时不评分，已发起的调用仍计次。"
       },
       "large_timeout_sec": {
         "type": "float",
         "default": 30,
         "description": "复核超时（秒）",
         "invisible": true,
-        "hint": "须大于 0。超时放弃本次评分，已发起的调用仍占复核预算。"
+        "hint": "须大于 0。超时不评分，已发起的调用仍计次。"
       },
       "cooldown_sec": {
         "type": "float",
         "default": 120,
         "description": "旧评估冷却（已停用）",
         "invisible": true,
-        "hint": "保留用于兼容旧配置。当前改用滚动初评窗口，不叠加此冷却。"
+        "hint": "仅保留旧值，改用初评统计时段。"
       },
       "per_user_daily_large_cap": {
         "type": "int",
         "default": 8,
         "description": "每人每日复核上限",
         "invisible": true,
-        "hint": "同一 Bot 下每人每天最多发起的复核次数；跨群、跨关系空间共用，UTC 00:00 刷新。0 禁止复核；失败和超时也计次，不增加初评机会。"
+        "hint": "同一 Bot 跨群共用，UTC 00:00 重置。失败和超时计次，0 暂停复核。"
       },
       "per_bot_daily_large_cap": {
         "type": "int",
         "default": 100,
         "description": "每 Bot 每日复核上限",
         "invisible": true,
-        "hint": "同一 Bot 全部成员共用的每日复核次数，跨群和关系空间累计，UTC 00:00 刷新。0 禁止复核；已发起的失败、超时调用也计次。"
+        "hint": "所有群和数据空间合计，UTC 00:00 重置。失败和超时计次，0 暂停复核。"
       },
       "max_concurrent_assessments": {
         "type": "int",
         "default": 2,
-        "description": "评估并发上限",
+        "description": "同时评估上限",
         "invisible": true,
-        "hint": "范围 1～32，所有 Bot 共用。达到上限时跳过新候选，不排队等待。"
+        "hint": "范围 1～32，所有 Bot 共用。达到上限时跳过新评估。"
       },
       "window_sec": {
         "type": "int",
         "default": 300,
-        "description": "个人初评窗口（秒）",
+        "description": "初评统计时段（秒）",
         "invisible": true,
-        "hint": "须大于 0。限制最近这段时间内的初评调用数，同一 Bot 下跨群、跨关系空间共用；重启不清空已用记录。"
+        "hint": "须大于 0。同一成员在同一 Bot 跨群共用，重启保留用量。"
       },
       "window_max_calls": {
         "type": "int",
         "default": 5,
-        "description": "窗口内初评次数上限",
+        "description": "时段内初评次数",
         "invisible": true,
-        "hint": "每人在同一 Bot 的滚动窗口内最多发起的初评次数。0 禁止初评；失败和超时也计次，不限制窗口内不同有效事件分别计分。"
+        "hint": "不同互动可分别评分。失败和超时计次，0 暂停初评。"
       },
       "per_user_daily_small_cap": {
         "type": "int",
         "default": 30,
         "description": "每人每日初评上限",
         "invisible": true,
-        "hint": "同一 Bot 下每人每天最多发起的初评次数，跨群、跨关系空间共用，UTC 00:00 刷新。0 禁止初评；失败和超时也计次，本地跳过不计次。"
+        "hint": "同一 Bot 跨群共用，UTC 00:00 重置。失败和超时计次，0 暂停初评。"
       },
       "per_bot_daily_small_cap": {
         "type": "int",
         "default": 300,
         "description": "每 Bot 每日初评上限",
         "invisible": true,
-        "hint": "同一 Bot 全部成员共用的每日初评次数，跨群和关系空间累计，UTC 00:00 刷新。0 禁止初评；重启不清空当日用量。"
+        "hint": "所有群和数据空间合计，UTC 00:00 重置。失败和超时计次，0 暂停初评。"
       },
       "context_turns": {
         "type": "int",
         "default": 6,
-        "description": "近期上下文条数",
+        "description": "近期发言条数",
         "invisible": true,
-        "hint": "范围 0～20，只取同一 Bot、当前群、本成员的相关发言及 Bot 回复。0 关闭近期发言上下文，不关闭已计分摘要和当前引用。"
+        "hint": "范围 0～20，仅取同群、同成员的发言与 Bot 回复。0 不带近期发言。"
       },
       "context_chars": {
         "type": "int",
         "default": 4000,
-        "description": "历史上下文字符预算",
+        "description": "参考内容字符上限",
         "invisible": true,
-        "hint": "范围 0～20000，供当前引用、已计分摘要和近期发言共用；优先保留引用和摘要。0 不附带这些历史文本，当前消息和身份元数据仍保留。"
+        "hint": "范围 0～20000，引用、摘要和近期发言共用。0 不带这些内容，当前消息仍会送评。"
       },
       "context_days": {
         "type": "int",
         "default": 7,
-        "description": "上下文回顾天数",
+        "description": "历史回顾天数",
         "invisible": true,
-        "hint": "范围 0～90，同时限制近期发言和已计分摘要的时间范围。0 关闭两类历史上下文，仍可保留当前引用，不删除流水。"
+        "hint": "范围 0～90，限制发言与已计分摘要的回顾期。0 不带两类历史，仍可带当前引用。"
       },
       "context_events": {
         "type": "int",
         "default": 8,
         "description": "已计分摘要条数",
         "invisible": true,
-        "hint": "范围 0～20，仅取同一 Bot、当前群、本成员的已计分事件，辅助模型识别重复；历史不重新计分。0 关闭摘要，不关闭近期发言。"
+        "hint": "范围 0～20，仅取同群、同成员的事件。历史不重复计分，0 不带摘要。"
       }
     },
-    "hint": "先手动选择日常模型；窗口、预算和上下文参数在 Bond 评估页设置。",
+    "hint": "模型与开关也可在 Bond 基础设置中修改。",
     "invisible": false
   },
   "group_whitelist": {
     "type": "list",
     "description": "启用 Bond 的群",
     "default": [],
-    "hint": "留空启用所有群；填写后仅在所列群记录、评估、注入和响应指令。每项一个群号，对所有 Bot 生效，已有记录保留。",
+    "hint": "留空启用所有群。每项一个群号，对所有 Bot 生效。停用群保留已有记录。",
     "invisible": false
   },
   "default_scope_mode": {
@@ -154,7 +154,7 @@
       "per_group",
       "global"
     ],
-    "hint": "按群分别记录，或在同一 Bot 跨群共用关系；指定 Bot 的选择优先。切换不迁移历史，也不披露其他群的印象和流水。",
+    "hint": "按群记录或同一 Bot 跨群共用关系。指定 Bot 的选择优先。切换不迁移历史，印象和流水仍按群隔离。",
     "invisible": false
   },
   "master_ids": {
@@ -162,13 +162,13 @@
     "description": "主人 QQ",
     "default": "",
     "invisible": false,
-    "hint": "用于主人标记和仅主人查榜，不授予管理权限，也不免除评估。多个 QQ 用英文逗号分隔。"
+    "hint": "多个 QQ 用英文逗号分隔。用于主人标记和查榜权限，仍照常评估。"
   },
   "passive_familiarity": {
     "type": "bool",
     "default": true,
     "description": "眼熟模式",
-    "hint": "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
+    "hint": "群员活跃时被动增加熟悉度。"
   },
   "passive_familiarity_rules": {
     "type": "object",
@@ -178,77 +178,125 @@
       "amount": {
         "type": "float",
         "default": 0.3,
-        "description": "每次被动增加的熟悉度",
-        "hint": "范围 0～100；每位符合条件的成员每次最多增加此数，仍受被动上限和每日熟悉度额度限制。0 停止加分。"
+        "description": "每次增加熟悉度",
+        "hint": "范围 0～100，受被动上限和每日额度限制。0 停止加分。"
       },
       "ceiling": {
         "type": "float",
         "default": 60,
-        "description": "被动增加熟悉度上限",
-        "hint": "范围 0～100；被动增长最多达到此值，已有更高分数不降低。这不是衰减下限。"
+        "description": "被动增长上限",
+        "hint": "范围 0～100，已有更高分数保留。"
       },
       "cooldown_minutes": {
         "type": "int",
         "default": 30,
-        "description": "被动增长间隔（分钟）",
-        "hint": "至少 1 分钟；同一成员两次被动加分的最短间隔。仍由有人 @ Bot 触发检查，不是定时扫描。"
+        "description": "加分间隔（分钟）",
+        "hint": "至少 1 分钟，同一成员两次被动加分的最短间隔。"
       },
       "window_minutes": {
         "type": "int",
         "default": 10,
-        "description": "活跃检查范围（分钟）",
-        "hint": "至少 1 分钟；有人 @ Bot 时，检查同群最近这段时间发过言的其他成员。只缓存身份和收件时间，不保存普通群聊原文。"
+        "description": "活跃范围（分钟）",
+        "hint": "至少 1 分钟。有人 @ Bot 时，检查同群近期发言的其他成员。"
       },
       "member_limit": {
         "type": "int",
         "default": 3,
-        "description": "活跃检查范围（人数）",
-        "hint": "0 表示不限制人数，仍受分钟范围约束；触发时选取同群此前最近发言的不同成员，排除触发者，重复发言只算一人。先选人数再检查加分资格，跳过者不补位。"
+        "description": "活跃范围（人数）",
+        "hint": "选最近发言的不同成员。0 不限人数，仍受时间范围约束。不符合加分条件者不补位。"
       }
     }
   },
   "inject": {
     "type": "object",
-    "description": "回复中的关系信息",
+    "description": "个性化功能",
     "items": {
       "enabled": {
         "type": "bool",
-        "default": false,
+        "default": true,
         "description": "在回复中体现关系",
         "invisible": false,
-        "hint": "让 Bot 参考彼此的关系和对你的印象来回复。全局空间不带入其他群的印象和流水。"
+        "hint": "让 Bot 参考彼此的关系和对你的印象回复。"
       },
       "memory_count": {
         "type": "int",
         "default": 3,
         "description": "近期事件条数",
         "invisible": true,
-        "hint": "最多补充 10 条当前群的事件类别和理由，不带原文或分值。0 关闭；全局空间不注入近期事件。"
+        "hint": "最多 10 条，仅带当前群的类别和理由。0 关闭。跨群共用关系时不带近期事件。"
       },
       "memory_days": {
         "type": "int",
         "default": 7,
-        "description": "近期事件回顾天数",
+        "description": "事件回顾期（天）",
         "invisible": true,
-        "hint": "普通事件的回顾天数，重要事件可更久。0 取消时间筛选，不删除流水。"
+        "hint": "普通事件的回顾期，重要事件可更久。0 不限时间。"
       },
       "memory_sig_threshold": {
         "type": "float",
         "default": 1.0,
-        "description": "重要事件亲近度阈值",
+        "description": "重要事件阈值",
         "invisible": true,
-        "hint": "亲近度变化绝对值达到此数时，延长事件回顾期。0 关闭延长；不看其他两维。"
+        "hint": "亲近度变化的绝对值达到此数时，延长回顾期。0 关闭延长。"
       },
       "memory_sig_window_mult": {
         "type": "float",
         "default": 3.0,
         "description": "重要事件回顾倍数",
         "invisible": true,
-        "hint": "重要事件的回顾天数乘以此数；1 表示与普通事件相同。"
+        "hint": "重要事件的回顾期乘以此数。1 与普通事件相同。"
       }
     },
-    "hint": "控制补充给回复模型的关系、印象和近期事件，不改变宿主接话策略。",
+    "hint": "结合关系和印象调整回复。",
     "invisible": false
+  },
+  "relation_title": {
+    "type": "object",
+    "description": "动态称谓",
+    "hint": "根据当前人格与关系生成称谓，未生成时使用固定称谓。",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "default": false,
+        "description": "动态称谓",
+        "hint": "按当前人格生成，生成与校验均调用模型。"
+      },
+      "mode": {
+        "type": "string",
+        "default": "",
+        "description": "旧称谓模式（已停用）",
+        "hint": "仅用于升级旧配置。",
+        "invisible": true
+      },
+      "provider_id": {
+        "type": "string",
+        "default": "",
+        "_special": "select_provider",
+        "description": "称谓模型（可选）",
+        "hint": "留空跟随复核模型。两者均未配置时无法生成。"
+      },
+      "refresh_cooldown_hours": {
+        "type": "float",
+        "default": 12,
+        "slider": {"min": 12, "max": 720, "step": 1},
+        "description": "刷新间隔（小时）",
+        "hint": "范围 12～720，最短 12 小时。关系变化后按此间隔刷新。"
+      },
+      "daily_generation_limit": {
+        "type": "int",
+        "default": 30,
+        "slider": {"min": 0, "max": 30, "step": 1},
+        "description": "每 Bot 每日调用上限",
+        "hint": "范围 0～30，跨群共用，UTC 00:00 重置。生成、校验、重试和失败均计次，0 暂停。"
+      },
+      "generation_timeout_seconds": {
+        "type": "float",
+        "default": 30,
+        "slider": {"min": 1, "max": 120, "step": 1},
+        "description": "调用超时（秒）",
+        "hint": "范围 1～120。超时沿用有效称谓，聊天和评分照常进行。"
+      }
+    }
   },
   "relation_mode": {
     "type": "string",
@@ -258,14 +306,14 @@
       "realistic",
       "galgame"
     ],
-    "hint": "基础模式使用所填参数；Galgame 将加分及每日加分上限各乘 2，其余不变。不改写设置，不重算历史。",
+    "hint": "Galgame 将互动加分和每日加分上限乘 2。切换不重算历史。",
     "invisible": false
   },
   "ignored_bot_ids": {
     "description": "忽略的机器人账号",
     "type": "list",
     "default": [],
-    "hint": "每项一个平台账号 ID；这些账号不参与成员记录和关系评估。",
+    "hint": "每项一个平台账号 ID，跳过记录和评估。",
     "invisible": false
   },
   "command": {
@@ -280,31 +328,31 @@
           "master"
         ],
         "description": "排行查询权限",
-        "hint": "可设所有人或仅主人。仅主人按主人 QQ 名单核验，未填名单则无人可查；所有查询入口共用此权限，群内其他人仍能看到已发出的榜单。"
+        "hint": "仅主人按主人 QQ 名单核验，名单为空则无人可查。群内其他成员仍能看到已发出的榜单。"
       },
       "ranking_image": {
         "type": "bool",
         "default": true,
         "description": "图片排行",
-        "hint": "图片最多展示 10 人的昵称、头像和关系，不显示分值。头像由 QQ 提供，生成图片失败时改用文字。"
+        "hint": "展示昵称、QQ 头像和关系。生成失败时改用文字。"
       },
       "ranking_limit": {
         "type": "int",
         "default": 10,
         "description": "排行显示人数",
-        "hint": "公开排行最多显示 10 人，超出 10 的设置不生效。"
+        "hint": "最多显示 10 人，超出按 10 人展示。"
       },
       "text_wake_enabled": {
         "type": "bool",
         "default": false,
         "description": "文字查榜",
-        "hint": "开启后可用指定短语查询本群排行，无需斜杠，仍遵守排行权限。关闭仅停用文字查榜。"
+        "hint": "用指定短语查询本群排行，遵守排行权限。"
       },
       "text_wake_ranking": {
         "type": "string",
         "default": "好感排行,好感榜单,好感排名",
-        "description": "排行唤醒短语",
-        "hint": "多个短语用英文逗号分隔，须匹配整条消息；忽略首尾空白。"
+        "description": "查榜短语",
+        "hint": "多个短语用英文逗号分隔，须匹配整条消息。"
       },
       "impression_mode": {
         "type": "string",
@@ -315,11 +363,11 @@
           "大模型总结"
         ],
         "description": "我的印象",
-        "hint": "关闭、仅输出关系称谓，或使用当前会话聊天模型和人设总结一句话。总结失败回退关系称谓；支持 /我的印象 和模型识别的自然语言查询。/我的关系 始终保留原有行为。"
+        "hint": "可选择关闭、关系称谓或模型概括。模型概括使用当前会话模型，失败时显示关系称谓。支持指令和自然语言查询。"
       }
     },
     "invisible": false,
-    "hint": "设置我的印象、公开排行的查询权限、展示方式和文字唤醒。"
+    "hint": ""
   },
   "max_favor": {
     "type": "float",
@@ -378,7 +426,7 @@
         "_special": "select_provider",
         "default": "",
         "description": "印象汇总模型（可选）",
-        "hint": "留空使用宿主默认模型，可能不同于当前群模型。汇总另行调用，不占互动评估预算。"
+        "hint": "留空使用宿主默认模型。汇总调用单独计费。"
       },
       "cooldown_sec": {
         "type": "int",
@@ -390,7 +438,7 @@
         "type": "int",
         "default": 60,
         "description": "印象汇总超时（秒）",
-        "hint": "超时保留原印象；0 表示不设超时。"
+        "hint": "超时保留原印象。0 不设超时。"
       },
       "max_abs_delta": {
         "type": "float",
@@ -755,14 +803,14 @@
       "font_path": {
         "type": "string",
         "default": "",
-        "description": "排行图片字体路径",
-        "hint": "留空使用内置开源中文字体，无需下载；自定义字体不可用时回退内置字体。"
+        "description": "排行字体路径",
+        "hint": "留空或自定义字体不可用时，使用内置中文字体。"
       },
       "rows_per_col": {
         "type": "int",
         "default": 12,
         "description": "旧每列行数（已停用）",
-        "hint": "当前排行固定单列，最多 10 人，此项不改变布局。"
+        "hint": "仅保留旧值。"
       }
     },
     "invisible": true,
@@ -779,87 +827,87 @@
           "independent",
           "legacy"
         ],
-        "description": "关系维护策略",
-        "hint": "independent 分别维护三个维度；legacy 仅联动熟悉度和亲近度。信任始终需要可信事件维护。重载生效，切换不发放新保温期。"
+        "description": "关系维护方式",
+        "hint": "分别维护各维度，或联动维护熟悉度与亲近度。信任仅由可信事件维护。切换不重置保温期。"
       },
       "grace_days": {
         "type": "float",
         "default": 5.0,
         "description": "关系保温期（天）",
-        "hint": "即使一段时间没有互动，彼此的熟悉感也不会马上消失。超过这段时间后，关系才会逐渐淡化。0 表示不设保温期。",
+        "hint": "超过保温期后开始衰减。0 不设保温期。",
         "invisible": true
       },
       "familiarity_baseline": {
         "type": "float",
         "default": 10,
         "description": "熟悉度基线",
-        "hint": "范围 0～100；高于基线时逐渐靠近基线，低于或等于基线时不变。"
+        "hint": "范围 0～100，高于基线时向其回落。"
       },
       "familiarity_enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用熟悉度衰减",
-        "hint": "开启后随时间向基线下降，低于或等于基线时不变；关闭后停止。临时关系期间暂停。"
+        "description": "熟悉度衰减",
+        "hint": "随时间向基线回落，临时关系期间暂停。"
       },
       "familiarity_half_life": {
         "type": "float",
         "default": 30,
         "description": "熟悉度半衰期（天）",
-        "hint": "至少 5 天。每经过此天数，熟悉度距基线的差值约减半，对已有和新成员均生效。"
+        "hint": "至少 5 天。每经过此天数，距基线的差值减半。"
       },
       "affinity_baseline": {
         "type": "float",
         "default": 0,
         "description": "亲近度对称基线",
-        "hint": "范围 0～100。填 20 时，高于 +20 向 +20 靠近，低于 −20 向 −20 靠近，区间内不变；托底可能更早止跌。"
+        "hint": "范围 0～100。正负值分别向同号基线靠近，区间内保持。档位托底可提前止跌。"
       },
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用亲近度衰减",
-        "hint": "开启后向同号基线靠近，正负基线之间不变；关闭后停止。临时关系期间暂停。"
+        "description": "亲近度衰减",
+        "hint": "向同号基线靠近，临时关系期间暂停。"
       },
       "floor_enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用亲近度档位托底",
-        "hint": "为较高的亲近度保留衰减下限，避免长期不互动后降得过低。只影响亲近度，不保证关系称谓保持不变。"
+        "description": "亲近度档位托底",
+        "hint": "较高档位保留衰减下限，称谓仍可能变化。"
       },
       "half_life_base": {
         "type": "float",
         "default": 30,
         "description": "亲近度半衰期（天）",
-        "hint": "至少 5 天。距同号基线的差值按此速度减半，托底可提前止跌；巩固倍数大于 1 时，此值为个人半衰期下限。"
+        "hint": "至少 5 天。距同号基线的差值减半所需天数，档位托底可提前止跌。"
       },
       "half_life_growth": {
         "type": "float",
         "default": 1.0,
-        "description": "亲近度半衰期巩固倍数",
-        "hint": "1 为固定半衰期；大于 1 时，每次亲近度实际增加后延长半衰期，直到上限。不重算历史互动。"
+        "description": "半衰期巩固倍数",
+        "hint": "1 为固定半衰期。大于 1 时，每次实际加分后延长，直到上限。"
       },
       "half_life_max": {
         "type": "float",
         "default": 120,
-        "description": "亲近度最长半衰期（天）",
-        "hint": "仅巩固倍数大于 1 时使用，也限制已有成员；不应低于所设的亲近度半衰期。"
+        "description": "最长半衰期（天）",
+        "hint": "巩固后的上限，不得低于基础半衰期。"
       },
       "trust_baseline": {
         "type": "float",
         "default": 20,
         "description": "信任度对称基线",
-        "hint": "范围 0～100。填 20 时，高于 +20 向 +20 靠近，低于 −20 向 −20 靠近，区间内不变。"
+        "hint": "范围 0～100。正负值分别向同号基线靠近，区间内保持。"
       },
       "trust_enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用信任度衰减",
-        "hint": "开启后向同号基线靠近，正负基线之间不变；关闭后停止。临时关系期间暂停。"
+        "description": "信任度衰减",
+        "hint": "向同号基线靠近，临时关系期间暂停。"
       },
       "trust_half_life": {
         "type": "float",
         "default": 60,
         "description": "信任度半衰期（天）",
-        "hint": "至少 5 天。每经过此天数，信任度距同号基线的差值约减半，不越过基线或变号。"
+        "hint": "至少 5 天。每经过此天数，距同号基线的差值减半。"
       }
     },
     "invisible": true,
@@ -889,56 +937,56 @@
       "enabled": {
         "type": "bool",
         "default": true,
-        "description": "启用亲近度增长规则",
-        "hint": "控制亲近度的过滤、倍率、同日递减和增长抑制；关闭则跳过。不影响另两维、模式倍率或每日额度。"
+        "description": "亲近度增长规则",
+        "hint": "调整过滤、倍率、同日递减和扣分后的增长抑制。"
       },
       "noise_floor": {
         "type": "float",
         "default": 0.5,
-        "description": "亲近度微小变化阈值",
-        "hint": "亲近度增减的绝对值小于此数时不计入亲近度，先过滤再算倍率；0 关闭过滤。"
+        "description": "微小变化阈值",
+        "hint": "亲近度增减小于此数时忽略。0 关闭过滤。"
       },
       "negative_weight": {
         "type": "float",
         "default": 1.0,
         "description": "亲近度扣分倍率",
-        "hint": "亲近度扣分乘以此数；1 不变，0 不扣。不影响信任扣分，仍受单次和每日上限限制。"
+        "hint": "扣分乘以此数，仍受单次和每日上限限制。1 不变，0 不扣。"
       },
       "same_day_decay": {
         "type": "float",
         "default": 0.25,
-        "description": "同日亲近度增长递减",
-        "hint": "范围 0～1，仅减少亲近度加分。默认同日依次为 100%、75%、50%、25%，最低 25%；0 关闭。"
+        "description": "同日增长递减",
+        "hint": "范围 0～1，每次加分后减少此比例，最低保留 25%。0 关闭。"
       },
       "repair_threshold": {
         "type": "float",
         "default": 0.0,
-        "description": "亲近度增长抑制触发值",
-        "hint": "单次亲近度扣分达到此数后，暂时降低后续加分；0 关闭。不恢复信任度。"
+        "description": "增长抑制触发值",
+        "hint": "单次亲近度扣分达到此数后，暂时降低加分。0 关闭。"
       },
       "repair_hours": {
         "type": "float",
         "default": 48,
-        "description": "亲近度增长抑制时长（小时）",
-        "hint": "触发后持续多久，再按关系档位系数调整。0 关闭抑制窗口。"
+        "description": "增长抑制时长（小时）",
+        "hint": "基础时长，按关系档位系数调整。0 关闭。"
       },
       "repair_factor": {
         "type": "float",
         "default": 0.5,
-        "description": "抑制期亲近度加分倍率",
-        "hint": "范围 0～1。0.5 按一半加分，0 暂停加分，1 不抑制；亲密档位系数可进一步压低。"
+        "description": "抑制期加分倍率",
+        "hint": "范围 0～1。0 暂停加分，1 不抑制。亲密档位可进一步降低倍率。"
       },
       "repair_scale_high": {
         "type": "float",
         "default": 1.5,
         "description": "亲密档位抑制系数",
-        "hint": "亲近度处于亲密及以上时，按此倍数延长抑制时间，并降低加分倍率；1 不额外调整。"
+        "hint": "亲密及以上延长抑制时间，并降低加分倍率。1 不额外调整。"
       },
       "repair_scale_low": {
         "type": "float",
         "default": 1.0,
-        "description": "一般档位抑制时长系数",
-        "hint": "友好及以下的抑制时间乘以此数，1 不延长；亲密系数为 1 时也使用此值。"
+        "description": "一般档位时长系数",
+        "hint": "友好及以下的抑制时长乘以此数。1 不延长。亲密系数为 1 时也使用此值。"
       },
       "level_mult": {
         "type": "object",
@@ -948,46 +996,46 @@
             "type": "float",
             "default": 1,
             "description": "亲近度 −100～不足 0 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           },
           "mosheng": {
             "type": "float",
             "default": 1,
             "description": "亲近度 0～不足 10 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           },
           "renshi": {
             "type": "float",
             "default": 1,
             "description": "亲近度 10～不足 30 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           },
           "youhao": {
             "type": "float",
             "default": 0.75,
             "description": "亲近度 30～不足 55 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           },
           "qinmi": {
             "type": "float",
             "default": 0.55,
             "description": "亲近度 55～不足 80 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           },
           "zhiyou": {
             "type": "float",
             "default": 0.35,
             "description": "亲近度 80～不足 95 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           },
           "zhiai": {
             "type": "float",
             "default": 0.2,
             "description": "亲近度 95～100 加分倍率",
-            "hint": "此段亲近度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+            "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
           }
         },
-        "hint": "按亲近度选段，只作用于加分；Galgame 再乘 2。显示区间为默认阈值，自定义阈值仍有效。"
+        "hint": "按当前分值选段，仅影响加分。"
       }
     },
     "invisible": true,
@@ -1000,14 +1048,14 @@
       "interval": {
         "type": "int",
         "default": 8,
-        "description": "印象更新频率",
-        "hint": "每积累设定条数的未汇总评估流水（默认 8 条），在关系变化后尝试更新。撤销记录不计，零变化流水计入；原文会发给模型，失败保留原印象。"
+        "description": "印象更新间隔（条）",
+        "hint": "积累此条数的评估记录后尝试更新，零变化计入、撤销不计。原文会发给模型，失败保留原印象。"
       },
       "points_mode": {
         "type": "bool",
         "default": false,
         "description": "分点记录印象",
-        "hint": "开启后分点记录、合并相近要点，保留现有标签；关闭时汇总成一句话并更新标签。不清除分值和流水。"
+        "hint": "开启时合并相近要点并保留标签，关闭时汇总为一句话并更新标签。"
       }
     },
     "invisible": true,
@@ -1158,7 +1206,7 @@
         "type": "bool",
         "default": false,
         "description": "记录系统诊断",
-        "hint": "记录评估与关系变化，按所选详细程度保留诊断内容。"
+        "hint": "记录评估与关系变化。"
       },
       "detail_level": {
         "type": "string",
@@ -1170,13 +1218,13 @@
           "full"
         ],
         "description": "诊断详细程度",
-        "hint": "按所选级别记录；完整上下文包含 Bond 观察到的回复请求。"
+        "hint": "完整上下文会记录 Bond 观察到的回复请求。"
       },
       "max_size_mb": {
         "type": "int",
         "default": 100,
         "description": "诊断容量上限（MB）",
-        "hint": "所有 Bot 和数据空间合计；达到上限后清理旧记录。"
+        "hint": "所有 Bot 和数据空间合计，达到上限时清理旧记录。"
       }
     },
     "hint": "设置本机诊断记录，供管理员排查评估和关系变化。",
@@ -1188,18 +1236,6 @@
     "invisible": true,
     "description": "信任配置升级标记（内部使用，请勿修改）"
   },
-  "relation_title": {
-    "type": "object",
-    "description": "关系称谓",
-    "hint": "固定词典无需模型。动态称谓在互动后后台生成，查询只读缓存；与关系增长模式独立，保存后重载生效。",
-    "items": {
-      "mode": {"type": "string", "default": "fixed", "options": ["fixed", "llm"], "description": "称谓模式", "hint": "fixed：固定词典；llm：按当前人格生成。复杂或不适合公开的结果回退词典。"},
-      "provider_id": {"type": "string", "default": "", "_special": "select_provider", "description": "称谓生成模型", "hint": "选择已配置的文本模型；留空保持固定称谓。"},
-      "refresh_cooldown_hours": {"type": "float", "default": 6, "description": "刷新间隔（小时）", "hint": "合并关系变化后的刷新；旧称谓不再符合关系时立即回退词典。"},
-      "daily_generation_limit": {"type": "int", "default": 10, "description": "每个 Bot 每日生成上限", "hint": "所有群和关系空间合计，UTC 零点换日；0 暂停生成。失败调用也计入。"},
-      "generation_timeout_seconds": {"type": "float", "default": 30, "description": "生成超时（秒）", "hint": "生成失败不影响聊天、评分和查询。"}
-    }
-  },
   "relation_daily_caps": {
     "type": "object",
     "description": "每日分数额度",
@@ -1209,37 +1245,37 @@
         "type": "float",
         "default": 5,
         "description": "熟悉度每日加分上限",
-        "hint": "每人每天最多增加多少熟悉度。Galgame 为此值的 2 倍；0 表示不增加。"
+        "hint": "每人每日额度，Galgame 为 2 倍。0 停止加分。"
       },
       "familiarity_down": {
         "type": "float",
         "default": 0,
         "description": "熟悉度每日扣分上限",
-        "hint": "每人每天最多扣多少熟悉度；0 禁止互动扣分，时间衰减另算。"
+        "hint": "每人每日额度。0 禁止互动扣分，时间衰减另算。"
       },
       "affinity_up": {
         "type": "float",
         "default": 10,
         "description": "亲近度每日加分上限",
-        "hint": "每人每天最多增加多少亲近度。Galgame 为此值的 2 倍；0 表示不增加。"
+        "hint": "每人每日额度，Galgame 为 2 倍。0 停止加分。"
       },
       "affinity_down": {
         "type": "float",
         "default": 8,
         "description": "亲近度每日扣分上限",
-        "hint": "每人每天最多扣多少亲近度；0 禁止扣分。加分不抵消已用额度，时间衰减另算。"
+        "hint": "每人每日额度。0 禁止互动扣分，时间衰减另算。"
       },
       "trust_up": {
         "type": "float",
         "default": 2,
         "description": "信任度每日加分上限",
-        "hint": "可核验可信事件的每日加分额度；感谢、承诺和道歉本身不加信任。Galgame 为 2 倍，0 禁止增加。"
+        "hint": "仅可信事件加分，Galgame 额度为 2 倍。0 停止加分。"
       },
       "trust_down": {
         "type": "float",
         "default": 8,
         "description": "信任度每日扣分上限",
-        "hint": "每人每天最多扣多少信任度；0 禁止互动扣分，时间衰减另算。"
+        "hint": "每人每日额度。0 禁止互动扣分，时间衰减另算。"
       }
     },
     "hint": "加分和扣分分别累计，互不抵消；时间衰减不占额度。Galgame 仅将加分额度乘 2。"
@@ -1253,39 +1289,39 @@
         "type": "float",
         "default": 1.5,
         "description": "熟悉度 0～不足 10 加分倍率",
-        "hint": "此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
       },
       "under30": {
         "type": "float",
         "default": 1.2,
         "description": "熟悉度 10～不足 30 加分倍率",
-        "hint": "此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
       },
       "under55": {
         "type": "float",
         "default": 0.8,
         "description": "熟悉度 30～不足 55 加分倍率",
-        "hint": "此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
       },
       "under80": {
         "type": "float",
         "default": 0.5,
         "description": "熟悉度 55～不足 80 加分倍率",
-        "hint": "此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
       },
       "under95": {
         "type": "float",
         "default": 0.3,
         "description": "熟悉度 80～不足 95 加分倍率",
-        "hint": "此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
       },
       "at95": {
         "type": "float",
         "default": 0.15,
         "description": "熟悉度 95～100 加分倍率",
-        "hint": "此段熟悉度加分乘以这个数，Galgame 再乘 2；0 暂停此段加分。"
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。"
       }
     },
-    "hint": "按当前熟悉度选段，只作用于加分；Galgame 再乘 2。"
+    "hint": "按当前分值选段，仅影响加分。"
   }
 }

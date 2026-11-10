@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.6.0",
+    "0.7.0",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -319,9 +319,10 @@ class BondPlugin(Star):
             judge,
             context,
             self._registry,
-            TitleConfig(**(config.get("relation_title") or {})),
+            TitleConfig.from_config(config.get("relation_title") or {}),
             self._title_capacity,
             budget_stores,
+            review_provider_id=assessment_cfg.get("large_provider_id", ""),
         )
         favor.bind_titles(titles)
 
@@ -342,7 +343,7 @@ class BondPlugin(Star):
             inject=inject,
             impressions=impressions,
             registry=self._registry,
-            inject_enabled=bool(inject_cfg.get("enabled", False)),
+            inject_enabled=bool(inject_cfg.get("enabled", True)),
             memory_count=int(inject_cfg.get("memory_count", 3)),
             memory_days=int(inject_cfg.get("memory_days", 7)),
             memory_sig_threshold=float(inject_cfg.get("memory_sig_threshold", 1.0)),
@@ -410,6 +411,7 @@ class BondPlugin(Star):
                     avatar_service=self._ranking_avatars,
                 )
                 if reply is not None:
+                    event._bond_cmd_done = True
                     kind, payload = reply
                     if kind == "image":
                         try:

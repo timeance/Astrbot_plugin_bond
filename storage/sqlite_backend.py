@@ -494,7 +494,110 @@ class SQLiteBackend(StorageBackend):
             )
             return row[0] if row else 0
 
-    async def reserve_title_call(self, group_id, user_id, context_id, day, cooldown):
+    def sync_title_mode(self, enabled, snapshot_record):
+        """装配时同步全部缓存的模式与当前基线，无需成员被访问或解析人格。"""
+        from ..core.relation_titles import TITLE_VERSION, score_buckets
+
+        with self._lock, self._c() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                "SELECT group_id,user_id,context_id,title,metadata FROM relation_title_cache"
+            ).fetchall()
+            for group_id, user_id, context_id, title, raw in rows:
+                try:
+                    metadata = json.loads(raw)
+                except (TypeError, ValueError):
+                    metadata = {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                old = metadata.get("tracking")
+                if isinstance(old, dict) and old.get("enabled") == enabled:
+                    continue
+                state = self._title_state_sync(group_id, user_id, group_id)
+                rec = snapshot_record(
+                    group_id, user_id, state["record"], state["temporary"], state["now"]
+                )
+                buckets = score_buckets([rec.familiarity, rec.favor, rec.trust])
+                try:
+                    verified = (
+                        score_buckets(metadata["values"])
+                        if metadata.get("version") == TITLE_VERSION
+                        and len(metadata.get("values", [])) == 3
+                        else None
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    verified = None
+                tracking = dict(old) if isinstance(old, dict) else {}
+                tracking.update(
+                    buckets=buckets,
+                    enabled=enabled,
+                    pending=False,
+                    require_fresh=bool(title and verified != buckets),
+                    revision=(old.get("revision", 0) if isinstance(old, dict) else 0)
+                    + 1,
+                )
+                metadata["tracking"] = tracking
+                conn.execute(
+                    "UPDATE relation_title_cache SET metadata=? WHERE group_id=? AND user_id=? AND context_id=?",
+                    (
+                        json.dumps(metadata, ensure_ascii=False),
+                        group_id,
+                        user_id,
+                        context_id,
+                    ),
+                )
+
+    async def update_title_tracking(
+        self,
+        group_id,
+        user_id,
+        context_id,
+        tracking,
+        *,
+        expected_metadata,
+        origin_group_id,
+        expected_stamp,
+        expected_buckets,
+        expected_version,
+        snapshot_record,
+    ):
+        """事务内核对关系快照、有效分桶、协议版本和缓存，只写观察状态。"""
+        from ..core.relation_titles import TITLE_VERSION, score_buckets
+
+        with self._lock, self._c() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            state = self._title_state_sync(group_id, user_id, origin_group_id)
+            if state["stamp"] != expected_stamp or expected_version != TITLE_VERSION:
+                return False
+            rec = snapshot_record(
+                group_id, user_id, state["record"], state["temporary"], state["now"]
+            )
+            if (
+                score_buckets([rec.familiarity, rec.favor, rec.trust])
+                != expected_buckets
+            ):
+                return False
+            cached = await self.read_title_cache(group_id, user_id, context_id)
+            current = cached["metadata"] if cached else None
+            if current != expected_metadata:
+                return False
+            metadata = dict(current) if isinstance(current, dict) else {}
+            metadata["tracking"] = tracking
+            conn.execute(
+                "INSERT INTO relation_title_cache(group_id,user_id,context_id,metadata) VALUES(?,?,?,?) "
+                "ON CONFLICT(group_id,user_id,context_id) DO UPDATE SET metadata=excluded.metadata",
+                (
+                    group_id,
+                    user_id,
+                    context_id,
+                    json.dumps(metadata, ensure_ascii=False),
+                ),
+            )
+            return True
+
+    async def reserve_title_call(
+        self, group_id, user_id, context_id, day, cooldown=None
+    ):
         with self._lock, self._c() as conn:
             conn.execute("BEGIN IMMEDIATE")
             now = time.time()
@@ -502,13 +605,15 @@ class SQLiteBackend(StorageBackend):
                 "SELECT attempted_at FROM relation_title_cache WHERE group_id=? AND user_id=? AND context_id=?",
                 (group_id, user_id, context_id),
             ).fetchone()
-            if row and now - row[0] < cooldown:
+            # 只有首个真实调用检查并推进刷新时钟，后续生成/复核独立计费。
+            if cooldown is not None and row and row[0] > 0 and now - row[0] < cooldown:
                 return False
-            conn.execute(
-                "INSERT INTO relation_title_cache(group_id,user_id,context_id,attempted_at) VALUES(?,?,?,?) "
-                "ON CONFLICT(group_id,user_id,context_id) DO UPDATE SET attempted_at=excluded.attempted_at",
-                (group_id, user_id, context_id, now),
-            )
+            if cooldown is not None:
+                conn.execute(
+                    "INSERT INTO relation_title_cache(group_id,user_id,context_id,attempted_at) VALUES(?,?,?,?) "
+                    "ON CONFLICT(group_id,user_id,context_id) DO UPDATE SET attempted_at=excluded.attempted_at",
+                    (group_id, user_id, context_id, now),
+                )
             conn.execute(
                 "INSERT INTO relation_title_calls(day,calls) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1",
                 (day,),
@@ -519,7 +624,16 @@ class SQLiteBackend(StorageBackend):
             return True
 
     async def commit_title(
-        self, group_id, user_id, origin_group_id, context_id, stamp, title, metadata
+        self,
+        group_id,
+        user_id,
+        origin_group_id,
+        context_id,
+        stamp,
+        title,
+        metadata,
+        *,
+        expected_metadata=None,
     ):
         with self._lock, self._c() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -527,6 +641,10 @@ class SQLiteBackend(StorageBackend):
             current = self._title_state_sync(group_id, user_id, origin_group_id)
             if current["stamp"] != stamp or current["temporary"]["active"]:
                 return False
+            if expected_metadata is not None:
+                cached = await self.read_title_cache(group_id, user_id, context_id)
+                if cached is None or cached["metadata"] != expected_metadata:
+                    return False
             cursor = conn.execute(
                 "UPDATE relation_title_cache SET title=?,metadata=? WHERE group_id=? AND user_id=? AND context_id=?",
                 (
@@ -794,6 +912,160 @@ class SQLiteBackend(StorageBackend):
             capped,
         )
 
+    def _stage_trust_evidence(self, conn, group_id, user_id, evidence, now):
+        """在关系事务内核对来源、去重并登记证据；返回可消费的三件证据。"""
+        for source in evidence.source_events:
+            if not conn.execute(
+                "SELECT 1 FROM trust_evidence e JOIN favor_log l ON l.id=e.source_log_id "
+                "WHERE e.group_id=? AND e.user_id=? AND e.origin_group_id=? AND e.event_id=? "
+                "AND e.invalidated=0 AND l.reversed=0",
+                (group_id, user_id, evidence.group_id, source),
+            ).fetchone():
+                raise ValueError("信任来源已撤销或失效")
+        positive = evidence.event_type in {
+            "boundary_respected",
+            "verified_correction",
+            "promise_kept",
+            "repair_action",
+        }
+        if (
+            positive
+            and conn.execute(
+                "SELECT 1 FROM trust_evidence WHERE group_id=? AND user_id=? "
+                "AND event_type IN ('boundary_respected','verified_correction','promise_kept','repair_action') "
+                "AND (behavior_key IN (?,?) OR current_key IN (?,?) OR fingerprint=?)",
+                (
+                    group_id,
+                    user_id,
+                    evidence.behavior_key,
+                    evidence.current_key,
+                    evidence.behavior_key,
+                    evidence.current_key,
+                    evidence.fingerprint,
+                ),
+            ).fetchone()
+        ):
+            return None
+        conn.execute(
+            "UPDATE trust_evidence SET invalidated=1 WHERE group_id=? AND user_id=? "
+            "AND event_type='boundary_respected' AND consumed_by='' AND observed_at<?",
+            (group_id, user_id, now - 14 * 86400),
+        )
+        # 窗口外只保留去重、撤销和消费墓碑，不长期保留证据原文。
+        conn.execute(
+            "UPDATE trust_evidence SET reference_excerpt='',behavior_excerpt='' "
+            "WHERE group_id=? AND user_id=? AND observed_at<?",
+            (group_id, user_id, now - 14 * 86400),
+        )
+        if evidence.event_type in {
+            "boundary_violation",
+            "repeated_pressure",
+            "deliberate_deception",
+            "severe_manipulation",
+        }:
+            conn.execute(
+                "UPDATE trust_evidence SET invalidated=1 WHERE group_id=? AND user_id=? "
+                "AND event_type='boundary_respected' AND consumed_by=''",
+                (group_id, user_id),
+            )
+            conn.execute(
+                "INSERT INTO cooldown(group_id,user_id,key,last_ts) VALUES(?,?,'boundary_reset',?) "
+                "ON CONFLICT(group_id,user_id,key) DO UPDATE SET last_ts=excluded.last_ts",
+                (group_id, user_id, now),
+            )
+        reset = conn.execute(
+            "SELECT last_ts FROM cooldown WHERE group_id=? AND user_id=? AND key='boundary_reset'",
+            (group_id, user_id),
+        ).fetchone()
+        invalidated = evidence.event_type == "boundary_respected" and (
+            evidence.observed_at < now - 14 * 86400
+            or evidence.observed_at > now
+            or (reset is not None and evidence.observed_at < reset[0])
+        )
+        conn.execute(
+            "INSERT INTO trust_evidence(group_id,user_id,origin_group_id,event_id,event_type,current_id,"
+            "current_key,reference_id,reference_excerpt,reference_at,behavior_id,behavior_key,behavior_excerpt,"
+            "fingerprint,observed_at,source_log_id,source_events,invalidated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
+            (
+                group_id,
+                user_id,
+                evidence.group_id,
+                evidence.event_id,
+                evidence.event_type,
+                evidence.current_id,
+                evidence.current_key,
+                evidence.reference_id,
+                evidence.reference_excerpt,
+                evidence.reference_at,
+                evidence.behavior_id,
+                evidence.behavior_key,
+                evidence.behavior_excerpt,
+                evidence.fingerprint,
+                evidence.observed_at,
+                json.dumps(evidence.source_events),
+                int(invalidated),
+            ),
+        )
+        last = conn.execute(
+            "SELECT last_ts FROM cooldown WHERE group_id=? AND user_id=? AND key='boundary_respected'",
+            (group_id, user_id),
+        ).fetchone()
+        if (
+            evidence.event_type != "boundary_respected"
+            or invalidated
+            or (last and now - last[0] < 5 * 86400)
+        ):
+            return []
+        rows = conn.execute(
+            "SELECT e.event_id FROM trust_evidence e LEFT JOIN favor_log l ON l.id=e.source_log_id "
+            "WHERE e.group_id=? AND e.user_id=? AND e.event_type='boundary_respected' "
+            "AND e.invalidated=0 AND e.consumed_by='' AND e.observed_at>=? "
+            "AND (l.reversed=0 OR (e.source_log_id=0 AND e.event_id=?)) "
+            # 当前证据必须参与本批，避免奖励流水本身再成为后续奖励的来源。
+            "ORDER BY (e.event_id=?) DESC,e.observed_at,e.event_id LIMIT 3",
+            (group_id, user_id, now - 14 * 86400, evidence.event_id, evidence.event_id),
+        ).fetchall()
+        return [row[0] for row in rows] if len(rows) == 3 else []
+
+    async def boundary_evidence_context(self, group_id, user_id, *, origin_group_id):
+        """返回本群的最小已复核窗口，供重启后识别边界及语义重复。"""
+        with self._lock:
+            rows = (
+                self._c()
+                .execute(
+                    "SELECT e.event_id,e.reference_id,e.reference_excerpt,e.reference_at,e.behavior_id,"
+                    "e.behavior_excerpt,e.observed_at,e.consumed_by,e.invalidated,l.reversed,e.event_type,l.message "
+                    "FROM trust_evidence e JOIN favor_log l ON l.id=e.source_log_id "
+                    "WHERE e.group_id=? AND e.user_id=? AND e.origin_group_id=? "
+                    "AND e.event_type IN ('boundary_respected','verified_correction','promise_kept','repair_action') AND e.observed_at>=? "
+                    "ORDER BY e.observed_at DESC,e.event_id LIMIT 20",
+                    (group_id, user_id, origin_group_id, time.time() - 14 * 86400),
+                )
+                .fetchall()
+            )
+        return [
+            dict(
+                zip(
+                    (
+                        "event_id",
+                        "reference_id",
+                        "reference_excerpt",
+                        "reference_at",
+                        "behavior_id",
+                        "behavior_excerpt",
+                        "observed_at",
+                        "consumed_by",
+                        "invalidated",
+                        "reversed",
+                        "event_type",
+                        "message",
+                    ),
+                    row,
+                )
+            )
+            for row in rows
+        ]
+
     async def apply_relation_change(
         self,
         group_id,
@@ -819,6 +1091,7 @@ class SQLiteBackend(StorageBackend):
         day_start=None,
         day_end=None,
         origin_group_id="",
+        trust_evidence=None,
     ):
         """在同一事务计算阶段倍率、独立额度、精度余量、分值和流水。"""
         now = time.time()
@@ -889,6 +1162,12 @@ class SQLiteBackend(StorageBackend):
                     "SELECT last_ts FROM cooldown WHERE group_id=? AND user_id=? AND key='relation'",
                     (group_id, user_id),
                 ).fetchone()
+                batch = []
+                if not duplicate and trust_evidence is not None:
+                    batch = self._stage_trust_evidence(
+                        conn, group_id, user_id, trust_evidence, now
+                    )
+                    duplicate = batch is None
                 if duplicate or (
                     values is None and last and now - last[0] < cooldown_sec
                 ):
@@ -917,6 +1196,13 @@ class SQLiteBackend(StorageBackend):
                 )
                 if transform is not None and values is None:
                     deltas = transform(dict(before), positive_count)
+                if (
+                    trust_evidence is not None
+                    and trust_evidence.event_type == "boundary_respected"
+                    and not batch
+                ):
+                    deltas = dict.fromkeys(before, 0.0)
+                    original_deltas = dict(deltas)
                 adjusted = dict(deltas)
                 after, real, qualified, allowed, reasons = {}, {}, set(), {}, {}
                 for key in before:
@@ -1009,7 +1295,7 @@ class SQLiteBackend(StorageBackend):
                         "ON CONFLICT(group_id,user_id,key) DO UPDATE SET last_ts=excluded.last_ts",
                         (group_id, user_id, now),
                     )
-                conn.execute(
+                log = conn.execute(
                     "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts,message,relation_delta,event_id,origin_group_id) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
@@ -1027,6 +1313,21 @@ class SQLiteBackend(StorageBackend):
                         origin_group_id,
                     ),
                 )
+                if trust_evidence is not None:
+                    conn.execute(
+                        "UPDATE trust_evidence SET source_log_id=? WHERE group_id=? AND user_id=? AND event_id=?",
+                        (log.lastrowid, group_id, user_id, event_id),
+                    )
+                    if batch and real["trust"] > 0:
+                        conn.executemany(
+                            "UPDATE trust_evidence SET consumed_by=? WHERE group_id=? AND user_id=? AND event_id=?",
+                            [(event_id, group_id, user_id, item) for item in batch],
+                        )
+                        conn.execute(
+                            "INSERT INTO cooldown(group_id,user_id,key,last_ts) VALUES(?,?,'boundary_respected',?) "
+                            "ON CONFLICT(group_id,user_id,key) DO UPDATE SET last_ts=excluded.last_ts",
+                            (group_id, user_id, now),
+                        )
                 conn.commit()
                 maintenance.update(
                     intent=original_deltas,
@@ -1810,6 +2111,7 @@ class SQLiteBackend(StorageBackend):
         # 生产标准：execute 的 SQL 保持全字面量（表名也不插值），值一律 ? 参数化
         if user_id is None:
             stmts = [
+                ("DELETE FROM trust_evidence WHERE group_id=?", (group_id,)),
                 ("DELETE FROM relation_title_cache WHERE group_id=?", (group_id,)),
                 ("DELETE FROM impression_progress WHERE group_id=?", (group_id,)),
                 ("DELETE FROM favor WHERE group_id=?", (group_id,)),
@@ -1820,6 +2122,10 @@ class SQLiteBackend(StorageBackend):
             ]
         else:
             stmts = [
+                (
+                    "DELETE FROM trust_evidence WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
+                ),
                 (
                     "DELETE FROM relation_title_cache WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
@@ -2036,8 +2342,43 @@ class SQLiteBackend(StorageBackend):
             )
         return self._log_record(row) if row is not None else None
 
+    def _invalidate_trust_source(self, conn, log_id, *, reverse_rewards=True):
+        """消费标记永不回退；撤销来源时同时失效并撤回依赖的奖励。"""
+        affected = conn.execute(
+            "WITH RECURSIVE affected(group_id,user_id,event_id,consumed_by) AS ("
+            "SELECT group_id,user_id,event_id,consumed_by FROM trust_evidence WHERE source_log_id=? "
+            "UNION SELECT e.group_id,e.user_id,e.event_id,e.consumed_by FROM trust_evidence e "
+            "JOIN affected a ON e.group_id=a.group_id AND e.user_id=a.user_id "
+            "WHERE (a.consumed_by!='' AND e.consumed_by=a.consumed_by) "
+            "OR EXISTS(SELECT 1 FROM json_each(e.source_events) WHERE value=a.event_id)) "
+            "SELECT group_id,user_id,event_id,consumed_by FROM affected",
+            (int(log_id),),
+        ).fetchall()
+        conn.executemany(
+            "UPDATE trust_evidence SET invalidated=1 WHERE group_id=? AND user_id=? AND event_id=?",
+            [(group, user, event) for group, user, event, _ in affected],
+        )
+        dependent_trust = 0.0
+        if reverse_rewards:
+            for group, user, reward in {
+                (group, user, reward) for group, user, _, reward in affected if reward
+            }:
+                row = conn.execute(
+                    "SELECT id,relation_delta FROM favor_log WHERE group_id=? AND user_id=? "
+                    "AND event_id=? AND reversed=0 AND id!=?",
+                    (group, user, reward, int(log_id)),
+                ).fetchone()
+                if row:
+                    dependent_trust += float(json.loads(row[1]).get("trust", 0))
+                    conn.execute(
+                        "UPDATE favor_log SET reversed=1 WHERE id=?", (row[0],)
+                    )
+        return dependent_trust
+
     async def mark_reversed(self, log_id: int) -> None:
         with self._lock, self._c() as conn:
+            # 此低层接口保持只标记契约；数值撤销统一经 apply_undo。
+            self._invalidate_trust_source(conn, log_id, reverse_rewards=False)
             # 保留原文供人工核对，清除有效刷新标记；新印象生成后可正常复用。
             conn.execute(
                 "UPDATE favor SET impression_at=0 WHERE (group_id,user_id) IN "
@@ -2097,6 +2438,9 @@ class SQLiteBackend(StorageBackend):
                         current["trust"],
                     )
                 vector = json.loads(row[4])
+                dependent_trust = self._invalidate_trust_source(conn, log_id)
+                if dependent_trust:
+                    vector["trust"] = float(vector.get("trust", 0)) + dependent_trust
                 low, high = affinity_bounds_for_undo(
                     vector, legacy_min=min_favor, legacy_max=max_favor
                 )

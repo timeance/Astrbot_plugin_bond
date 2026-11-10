@@ -72,6 +72,83 @@ def values(record):
     return record.familiarity, record.favor, record.trust
 
 
+@pytest.mark.parametrize(
+    "values,options,expected",
+    [
+        ((50, 0, 0), {}, ["familiarity"]),
+        ((50, 30, 0), {}, ["familiarity", "affinity"]),
+        ((50, 30, -50), {}, ["familiarity", "affinity", "trust"]),
+        ((0, 0, -50), {}, ["trust"]),
+        ((10, 0, -20), {}, []),
+        ((50, 30, -50), {"trust_decay_enabled": False}, ["familiarity", "affinity"]),
+    ],
+)
+def test_overview_decay_axes_use_current_conditions_before_rounding(
+    db, values, options, expected
+):
+    svc = service(
+        db, decay_grace_days=5, familiarity_baseline=10, trust_baseline=20, **options
+    )
+    with patch("time.time", return_value=START):
+        run(
+            svc.set_relation(
+                "123",
+                "456",
+                familiarity=values[0],
+                affinity=values[1],
+                trust=values[2],
+                event_id="seed",
+            )
+        )
+    with patch("time.time", return_value=START + 5 * DAY):
+        assert run(svc.standings("123"))[0]["decaying_dimensions"] == []
+    with patch("time.time", return_value=START + 5 * DAY + 1):
+        row = run(svc.standings("123"))[0]
+        assert row["decaying_dimensions"] == expected
+        assert row["decayed"] == bool(expected)
+        # 刚进入衰减，显示值未必已变化；负 T 变大仍标记 T 衰减。
+        assert row["familiarity"] == values[0]
+        assert row["trust"] == values[2]
+
+
+def test_overview_familiarity_maintenance_does_not_hide_trust_decay(db):
+    svc = service(
+        db,
+        decay_grace_days=5,
+        maintenance_strategy="independent",
+        relation_caps=dict.fromkeys(("familiarity", "affinity", "trust"), (100, 100)),
+    )
+    with patch("time.time", return_value=START):
+        seed(svc)
+    with patch("time.time", return_value=START + 6 * DAY):
+        event(svc, "only-familiarity")
+        row = run(svc.standings("123"))[0]
+        assert row["decaying_dimensions"] == ["affinity", "trust"]
+        run(
+            svc.set_temporary(
+                "123", "456", dict(familiarity=80, affinity=80, trust=80), 60, "fixture"
+            )
+        )
+        row = run(svc.standings("123"))[0]
+        assert row["temporary"]["active"]
+        assert row["decaying_dimensions"] == []
+        assert not row["decayed"]
+
+
+def test_overview_stops_reporting_decay_at_affinity_floor(db):
+    svc = service(db, decay_floor_enabled=True)
+    with patch("time.time", return_value=START):
+        run(
+            svc.set_relation(
+                "123", "456", familiarity=0, affinity=95, trust=0, event_id="seed"
+            )
+        )
+    with patch("time.time", return_value=START + 365 * DAY):
+        row = run(svc.standings("123"))[0]
+        assert row["affinity"] == svc._decay_floor(95, 0)
+        assert row["decaying_dimensions"] == []
+
+
 @pytest.mark.parametrize("grace", [0, 2.5, 5])
 @pytest.mark.parametrize("stored,baseline", [(80, 20), (-80, -20)])
 def test_only_excess_time_decays_with_fractional_days(grace, stored, baseline):
@@ -264,6 +341,8 @@ def test_temporary_relation_pauses_remaining_grace_without_new_grace(db):
             familiarity=80, affinity=80, trust=-80
         )
     with patch("time.time", return_value=START + 15 * DAY):
+        # 列表首次读到覆盖到期时，应使用平移后的时钟，不能误报正在衰减。
+        assert run(svc.standings("123"))[0]["decaying_dimensions"] == []
         assert values(run(svc.get("123", "456"))) == (80, 80, -80)
         assert anchors(raw(db, svc)) == (START + 10 * DAY,) * 3
     with patch("time.time", return_value=START + 25 * DAY):

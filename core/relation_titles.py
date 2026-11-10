@@ -1,4 +1,4 @@
-"""动态称谓的公开表达契约；不允许模型输出数值、身份或自由文本资料。"""
+"""自由称谓的配置、公开格式与独立语义复核协议。"""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ import math
 import unicodedata
 from dataclasses import dataclass
 
-from .relation_lexicon import LEXICON_VERSION, CELLS, TERMS
+from .relation_lexicon import LEXICON_VERSION
 
-TITLE_VERSION = "1:" + LEXICON_VERSION
+TITLE_VERSION = "2:" + LEXICON_VERSION
 
 
 def fingerprint(value):
@@ -19,19 +19,33 @@ def fingerprint(value):
     ).hexdigest()
 
 
+def score_buckets(values):
+    return [math.floor(value / 5) for value in values]
+
+
 @dataclass(frozen=True)
 class TitleConfig:
-    mode: str = "fixed"
+    enabled: bool = False
     provider_id: str = ""
-    refresh_cooldown_hours: float = 6
-    daily_generation_limit: int = 10
+    refresh_cooldown_hours: float = 12
+    daily_generation_limit: int = 30
     generation_timeout_seconds: float = 30
 
+    @classmethod
+    def from_config(cls, raw):
+        values = dict(raw or {})
+        mode = values.pop("mode", "")
+        if "enabled" not in values and mode:
+            if mode not in {"fixed", "llm"}:
+                raise ValueError("称谓模式无效")
+            values["enabled"] = mode == "llm"
+        return cls(**values)
+
     def __post_init__(self):
-        if self.mode not in {"fixed", "llm"} or not isinstance(self.provider_id, str):
-            raise ValueError("称谓模式或模型配置无效")
+        if type(self.enabled) is not bool or not isinstance(self.provider_id, str):
+            raise ValueError("称谓开关或模型配置无效")
         for key, lo, hi in (
-            ("refresh_cooldown_hours", 0.1, 720),
+            ("refresh_cooldown_hours", 12, 720),
             ("generation_timeout_seconds", 1, 120),
         ):
             value = getattr(self, key)
@@ -43,61 +57,48 @@ class TitleConfig:
                 raise ValueError(f"{key} 应在 {lo}..{hi} 范围内")
         if (
             type(self.daily_generation_limit) is not int
-            or not 0 <= self.daily_generation_limit <= 1000
+            or not 0 <= self.daily_generation_limit <= 30
         ):
-            raise ValueError("称谓每日调用上限应为 0..1000")
+            raise ValueError("称谓每日调用上限应为 0..30")
 
 
-def allowed_titles(description):
-    """按关系事实约束词族；负向混合关系暂不开启动态表达。
+def _object(raw):
+    def unique_fields(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("JSON 字段重复")
+            result[key] = value
+        return result
 
-    所有可输出文字来自本地审定词族，模型只能选择措辞，不能复制印象中
-    的姓名、私人资料、虚构经历或关系承诺。人格不同不强求词语不同。
-    """
-    f, a, t = description.bands
-    if f == 0 or a < 2 or t < 2:
-        return ()
-    nouns = (
-        (),
-        ("新相识", "眼熟之人"),
-        ("相识", "熟面孔"),
-        ("熟人",),
-        ("熟人", "老熟人"),
-    )[f]
-    if a >= 3 and f >= 2:
-        nouns = ("朋友", "伙伴")
-    if a == 2:
-        prefixes = {
-            2: ("平常往来的", "偶尔聊聊的"),
-            3: ("相处放心的", "可以放心的"),
-            4: ("值得信赖的", "可信的"),
-        }[t]
-    elif a == 3:
-        prefixes = {
-            2: ("有好感的", "想亲近的"),
-            3: ("亲切又放心的", "亲近而放心的"),
-            4: ("亲近又可信的", "亲切而信赖的"),
-        }[t]
-    else:
-        prefixes = {
-            2: ("亲密而保留的", "亲近但仍保留的"),
-            3: ("亲密又放心的", "亲密而安心的"),
-            4: ("亲密又信赖的", "亲密而可信的"),
-        }[t]
-    # 词典的 F3/F8/F20/A25 展示边界不单独使动态称谓失效。
-    base_title = TERMS[CELLS[f][a][t]][0]
-    return tuple(dict.fromkeys([base_title] + [p + n for p in prefixes for n in nouns]))
+    if not isinstance(raw, str) or len(raw) > 512:
+        raise ValueError("称谓响应须为有界 JSON")
+    data = json.loads(raw, object_pairs_hook=unique_fields)
+    if not isinstance(data, dict):
+        raise ValueError("称谓响应须为 JSON 对象")
+    return data
 
 
-def parse_title(raw, description):
-    data = json.loads(raw)
-    if (
-        not isinstance(data, dict)
-        or set(data) != {"title"}
-        or not isinstance(data["title"], str)
-    ):
+def parse_title(raw, description=None):
+    """本地只检验公开格式；关系含义交给独立模型复核。"""
+    data = _object(raw)
+    if set(data) != {"title"} or not isinstance(data["title"], str):
         raise ValueError("称谓须只含 title 字段")
-    title = unicodedata.normalize("NFKC", data["title"])
-    if not 2 <= len(title) <= 12 or title not in allowed_titles(description):
-        raise ValueError("称谓超出当前关系允许的公开表达")
+    value = data["title"]
+    # 归一化前检查，避免控制符、全角账号和数字变体藏入公开文字。
+    if any(unicodedata.category(char)[0] in "CNZ" for char in value):
+        raise ValueError("称谓不能包含控制字符、数字或空白")
+    title = unicodedata.normalize("NFKC", value)
+    if not 2 <= len(title) <= 12 or any(
+        not unicodedata.category(char).startswith("L") and char not in "·、"
+        for char in title
+    ):
+        raise ValueError("称谓须为 2..12 字，不含账号、URL 或格式标记")
     return title
+
+
+def parse_title_review(raw):
+    data = _object(raw)
+    if set(data) != {"valid"} or type(data["valid"]) is not bool:
+        raise ValueError("称谓复核须只含布尔 valid 字段")
+    return data["valid"]

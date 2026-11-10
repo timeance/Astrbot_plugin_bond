@@ -1,6 +1,6 @@
 # 开发与交付
 
-贡献入口见 [CONTRIBUTING](../CONTRIBUTING.md)。本文说明环境、代码位置、检查范围和发布步骤；功能与配置以 [README](../README.md) 为准。
+贡献入口见 [CONTRIBUTING](../CONTRIBUTING.md)。本文说明环境、代码位置、检查范围和发布步骤；功能与配置以 [用户指南](USER_GUIDE.md) 为准。
 
 ## 准备环境
 
@@ -54,7 +54,7 @@ source .venv/bin/activate
 
 关系修改统一经过 `FavorService`，分值、额度、流水与冷却原子提交。Bot、群和成员身份来自可信平台事件；不从消息正文猜测。保持 Bot 与作用域隔离，私聊不进入自动关系评估、印象和注入。后台任务由 `TaskRegistry` 管理，评估失败不能阻断聊天。
 
-注入只追加本次请求的关系资料，保留宿主人格和接话策略；页面写操作在服务端校验权限。自动评估、注入和诊断默认关闭。LivingMemory 集成已移除，不因参考其工程做法恢复相关探测、配置或依赖。
+注入只追加本次请求的关系资料，保留宿主人格和接话策略；页面写操作在服务端校验权限。自动评估和诊断默认关闭；新安装的关系注入默认开启，已有显式 `inject.enabled=false` 保留。LivingMemory 集成已移除，不因参考其工程做法恢复相关探测、配置或依赖。
 
 存储变更须同步 `storage/migrations.py` 中的 `MIGRATIONS`、`SCHEMA_VERSION` 与 `storage/pragma_version.py` 的迁移分支，验证升级、失败和回滚边界。亲近度沿用 `favor` 列，熟悉度和信任度独立存储，不维护三维总分。印象、标签、点集与已汇总流水进度原子提交，失败不能推进进度。`PromptService` 使用独立 JSON。升级和回滚前备份整个插件数据目录，不直接操作线上数据库调试。
 
@@ -82,6 +82,38 @@ python scripts/build_package.py --output artifacts/bond-check.zip
 ```
 
 脚本拒绝已跟踪文件中的未提交改动；未跟踪文件不会进入归档。它检查运行文件、Logo、依赖声明、许可和提示词资源，排除开发及运行数据，并限制 ZIP 不超过 16,000,000 字节。成功后生成同名 `.sha256` 校验和。测试、脚本、工作流和开发依赖不进入安装包；参与开发请克隆仓库。
+
+## 原生面板合成预览
+
+在仓库根目录运行以下命令，使用 Python 标准库启动只读模拟服务器。
+
+```text
+python scripts/preview_dashboard.py --port 8765
+```
+
+本机浅色入口为 `http://localhost:8765/?theme=light`，深色为 `http://localhost:8765/?theme=dark`。点击原生“详情”查看成员。按 `Ctrl+C` 停止。服务器绑定 `localhost`，只读取 `pages/dashboard/index.html`、`app.js`、`app.css` 与 `tests/fixtures/dashboard_demo.json`，在响应中注入模拟 bridge 和醒目的演示标识。Bot、群、800000xxx 演示号、昵称、印象、标签、流水和调用统计全部合成。
+
+原生页面使用 Vue 3.4.38 的既有 CDN。需要完全离线渲染时，将已有的同版本 `vue.global.js` 放在本机并传入路径，例如以下命令。此参数只替换当前演示 HTML 的 Vue 地址，演示脚本依赖 Python 标准库。
+
+```text
+python scripts/preview_dashboard.py --port 8765 --vue-js artifacts/vue.global.js
+```
+
+模拟 `window.AstrBotPluginPage` 提供 `ready()`、`getContext()`、`onContext(callback)`、`apiGet(endpoint, params)`、`apiPost(endpoint, body)`。上下文提供 `isDark`，只读请求发到同源 `/api/<endpoint>`，返回与原生页面一致的 `success` 及业务字段，并附 `demo=true`、`read_only=true`。
+
+| GET 端点 | 合成响应与支持参数 |
+| --- | --- |
+| `bots`、`settings` | Bot 列表、页面配置、合成 Provider 和配置版本。 |
+| `groups`、`today_summary` | 群列表及今日调用、变动成员统计。 |
+| `users` | `bot_id`、`scope_mode`、`group_id`、QQ `search`、`include_zero` 与分页。 |
+| `member` | 同一组群与成员数据，近期评审由合成流水派生。 |
+| `logs` | 按群、QQ、`fuzzy`、`dimension`、自动评估来源与数量筛选。 |
+| `models`、`assessment_stats` | 已保存与运行中的合成评估配置、调用及来源统计。 |
+| `prompts`、`diagnostics` | 合成模板、关闭的空诊断状态，可导出空合成诊断。 |
+
+除 `bots` 与 `settings` 外，读取按模拟 Bot 和 `per_group` 空间校验。演示只提供按群空间，切换空间通过原生写接口返回拒绝提示。所有写方法及备份、恢复、撤销等动作返回 HTTP 405 和“仅演示，不影响真实环境”的说明。服务只提供明确允许的静态文件与合成读取接口。
+
+fixture 在每次启动时将合成时间整体平移到启动时点，临时关系保留相对有效期。修改 fixture 后重新启动预览以载入新值。关系数值与衰减轴为预设场景，近期评审从同一流水读取，今日统计按同一合成调用和事件计算。此预览验证页面协议与合成展示，实际宿主认证、数据库迁移、模型效果与聊天链路分别按下文验证。
 
 ## 真实框架与合成回放
 

@@ -276,6 +276,9 @@ async def on_group_message(
     has_at_bot, is_reply_bot = _chain_flags(event)
     reply_metadata = _reply_metadata(event)
     original_event = event
+    title_interaction = not getattr(
+        event, "_bond_cmd_done", False
+    ) and not text.lstrip().startswith(("/", "!", "！"))
     passive_batch = None
     passive_activity = getattr(deps, "passive_activity", None)
     if (
@@ -368,8 +371,6 @@ async def on_group_message(
                     await deps.impressions.maybe_refresh(
                         group_id, user_id, umo=event.unified_msg_origin
                     )
-            if deps.titles is not None and (has_at_bot or is_reply_bot):
-                deps.titles.schedule(event)
         except Exception:
             # 意外异常属疑难：warning 必须带堆栈，否则后台静默死因不可查
             logger.warning(
@@ -378,6 +379,10 @@ async def on_group_message(
 
         finally:
             CURRENT.reset(diagnostic_token)
+
+        # 普通群消息也观察跨桶；取消卸载时不再发起后续后台工作。
+        if deps.titles is not None and title_interaction:
+            await deps.titles.observe(event)
 
     deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
 

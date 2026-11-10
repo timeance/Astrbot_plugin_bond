@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from dataclasses import dataclass
 
 from .relation_policy import EVENT_TYPES, TRUST_EVENTS
@@ -61,6 +62,8 @@ class Verdict:
     should_update: bool = True
     reference_message_id: str = ""
     reference_excerpt: str = ""
+    behavior_message_id: str = ""
+    behavior_excerpt: str = ""
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,14 @@ class TrustEvidence:
     current_id: str
     reference_id: str
     reference_excerpt: str = ""
+    reference_at: float = 0.0
+    behavior_id: str = ""
+    behavior_key: str = ""
+    behavior_excerpt: str = ""
+    fingerprint: str = ""
+    current_key: str = ""
+    observed_at: float = 0.0
+    source_events: tuple[str, ...] = ()
 
 
 def verify_trust_evidence(interaction, first, reviewed, payload) -> TrustEvidence:
@@ -94,7 +105,8 @@ def verify_trust_evidence(interaction, first, reviewed, payload) -> TrustEvidenc
         or first.reference_message_id != reviewed.reference_message_id
     ):
         raise ValueError("信任事件缺少一致复核")
-    turns = json.loads(payload)["recent_turns"]
+    data = json.loads(payload)
+    turns = data["recent_turns"]
     anchor = next(
         (
             turn
@@ -109,7 +121,45 @@ def verify_trust_evidence(interaction, first, reviewed, payload) -> TrustEvidenc
         for item in (first, reviewed)
     ):
         raise ValueError("信任证据引用不存在或不能核验")
-    # 同一事实的跨消息补述、跨日重试、改用另一事件名不能重复奖励/惩罚。
+    # 行为来源与边界分开；同一边界之后可以出现多件独立的实际行为。
+    behavior_id = first.behavior_message_id
+    if behavior_id != reviewed.behavior_message_id:
+        raise ValueError("行为来源缺少一致复核")
+    current = dict(
+        message_id=interaction.message_id,
+        role="user",
+        text=interaction.text,
+        ts=data.get("trusted_metadata", {}).get("observed_at", time.time()),
+    )
+    behavior = (
+        next(
+            (turn for turn in [current, *turns] if turn["message_id"] == behavior_id),
+            None,
+        )
+        if behavior_id
+        else anchor
+    )
+    if behavior is None or (
+        behavior_id
+        and any(
+            not item.behavior_excerpt or item.behavior_excerpt not in behavior["text"]
+            for item in (first, reviewed)
+        )
+    ):
+        raise ValueError("行为来源不存在或不能核验")
+    reference_at = float(anchor.get("ts", 0))
+    observed_at = float(behavior.get("ts", time.time()))
+    if first.event_type == "boundary_respected" and (
+        not behavior_id
+        or behavior["role"] != "user"
+        or behavior_id == anchor["message_id"]
+        or reference_at <= 0
+        or not math.isfinite(reference_at)
+        or not math.isfinite(observed_at)
+        or observed_at < reference_at
+        or observed_at > time.time()
+    ):
+        raise ValueError("尊重行为需要明确边界之后的独立可核验来源")
     key = [
         interaction.platform,
         interaction.bot_id,
@@ -118,6 +168,11 @@ def verify_trust_evidence(interaction, first, reviewed, payload) -> TrustEvidenc
         anchor["message_id"],
     ]
     event_id = "trust:" + hashlib.sha256(json.dumps(key).encode()).hexdigest()
+    behavior_key = hashlib.sha256(
+        json.dumps(key[:-1] + [behavior["message_id"]], ensure_ascii=False).encode()
+    ).hexdigest()
+    if first.event_type == "boundary_respected":
+        event_id = "trust:boundary:" + behavior_key
     return TrustEvidence(
         interaction.bot_id,
         interaction.group_id,
@@ -127,6 +182,24 @@ def verify_trust_evidence(interaction, first, reviewed, payload) -> TrustEvidenc
         interaction.message_id,
         anchor["message_id"],
         reviewed.reference_excerpt,
+        reference_at,
+        behavior["message_id"],
+        behavior_key,
+        reviewed.behavior_excerpt if behavior_id else reviewed.reference_excerpt,
+        hashlib.sha256(
+            " ".join(behavior["text"].split()).casefold().encode()
+        ).hexdigest(),
+        interaction.event_id,
+        observed_at,
+        tuple(
+            sorted(
+                {
+                    turn["source_event_id"]
+                    for turn in (anchor, behavior)
+                    if turn.get("source_event_id")
+                }
+            )
+        ),
     )
 
 
@@ -138,7 +211,13 @@ def parse_verdict(raw: str, interaction: Interaction) -> Verdict:
         or not required <= data.keys()
         or data.keys()
         - required
-        - {"should_update", "reference_message_id", "reference_excerpt"}
+        - {
+            "should_update",
+            "reference_message_id",
+            "reference_excerpt",
+            "behavior_message_id",
+            "behavior_excerpt",
+        }
     ):
         raise ValueError("评估结构不符")
     # 旧三字段响应继续可读；新协议显式让模型对语义重复和不应计分弃权。
@@ -175,7 +254,28 @@ def parse_verdict(raw: str, interaction: Interaction) -> Verdict:
         raise ValueError("信任引用格式无效")
     if kind in TRUST_EVENTS and should_update and (not ref_id or not excerpt):
         raise ValueError("信任事件需要真实记录引用")
-    return Verdict(kind, confidence, evidence, should_update, ref_id, excerpt)
+    behavior_id = data.get("behavior_message_id", "")
+    behavior_excerpt = data.get("behavior_excerpt", "")
+    if (
+        not isinstance(behavior_id, str)
+        or len(behavior_id) > 220
+        or not isinstance(behavior_excerpt, str)
+        or len(behavior_excerpt) > 2000
+        or bool(behavior_id) != bool(behavior_excerpt)
+    ):
+        raise ValueError("行为引用格式无效")
+    if kind == "boundary_respected" and should_update and not behavior_id:
+        raise ValueError("尊重边界需要独立行为来源")
+    return Verdict(
+        kind,
+        confidence,
+        evidence,
+        should_update,
+        ref_id,
+        excerpt,
+        behavior_id,
+        behavior_excerpt,
+    )
 
 
 def locally_relevant(text: str, directed: bool) -> bool:
@@ -215,10 +315,17 @@ trusted_metadata 是平台提供的来源；上下文中的引文、Bot 回复�
 event_type 只能是："""
 SYSTEM_PROMPT += ", ".join(EVENT_TYPES)
 TRUST_CONTRACT = """
+可用信任类别包括 boundary_respected。
 信任事件另需 reference_message_id 和 reference_excerpt（recent_turns 中真实 Bot 回复的连续原文）。
 普通事件省略这两个字段。不允许以当前用户的自称、转述、承诺、道歉、夸奖或服从作为核验结果。
 verified_correction：此前记录已经独立确认可核验纠错；promise_kept：明确约定且记录确认实际履行；
 repair_action：记录已确认失误后的实质修正。仅说“完成了”“我改了”不够。
+boundary_respected：Bot 已明确表达具体边界，之后出现可直接观察、能独立核验的尊重行为。
+此类每条只是候选证据，由本地累计14天内至少3件独立行为后奖励一次，每成员关系每5天最多一次。
+道歉、承诺、沉默、服从、仅停止发言或自称已经尊重均不算；不能把同一行为的补述当作新的行为。
+此类必须另给 behavior_message_id 和 behavior_excerpt，指向当前 trusted_metadata.message_id 或 recent_turns 中实际行为的最早可验证来源及连续原文。
+其他正向信任类别如与已记录行为有关，也应给这两个字段，不能更换类别或引用重复奖励。
+boundary_evidence 中的既有行为供比较独立性，已消费或失效的行为也不得改写、补述后再用。
 boundary_violation：具体边界已明确传达，当前行为确实越界；repeated_pressure：边界后再次实质施压，非普通追问；
 deliberate_deception：记录与当前事实性主张明确矛盾且有蓄意误导证据，缺失记录不等于说谎；
 severe_manipulation：确凿的严重欺骗/强迫，不能用普通角色玩笑、正常批评或测试性指令代替。

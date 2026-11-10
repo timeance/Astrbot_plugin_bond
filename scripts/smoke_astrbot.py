@@ -339,7 +339,11 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         await _check_persona(context, old_deps.judge)
         # 通过真实 main 装配确认新安装默认，而非仅检查配置快照。
         assert config["relation_mode"] == "galgame"
-        assert config["relation_title"]["mode"] == "fixed"
+        assert config["relation_title"]["enabled"] is False
+        assert config["relation_title"]["mode"] == ""
+        assert old_deps.titles.config.enabled is False
+        assert old_deps.titles.config.refresh_cooldown_hours == 12
+        assert old_deps.titles.config.daily_generation_limit == 30
         assert old_deps.favor._relation_caps == dict(
             familiarity=(10, 0), affinity=(20, 8), trust=(4, 8)
         )
@@ -669,10 +673,12 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
             "trusted_metadata",
             "recent_turns",
             "scored_events",
+            "boundary_evidence",
         }
         assert isinstance(seen["payload"]["trusted_metadata"], dict)
         assert isinstance(seen["payload"]["recent_turns"], list)
         assert isinstance(seen["payload"]["scored_events"], list)
+        assert isinstance(seen["payload"]["boundary_evidence"], list)
         old_record = await old_deps.favor.get(OLD_GROUP, OLD_USER)
         assert old_record is not None and old_record.favor > 0
         mutated_record = await old_deps.favor.get("9001", "9002")
@@ -1187,6 +1193,9 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert plugin2._prompts.load_error
         # 保留旧亲近度关闭输入，并直接核验真实工厂收到三维独立基线。
         deps2 = await plugin2._runtime.select(BOT_IDS[0], "per_group")
+        assert config2["relation_title"]["enabled"] is False
+        assert config2["relation_title"]["mode"] == ""
+        assert deps2.titles.config.enabled is False
         # 重载已装配全部既有空间，切换不等待下次消息。
         assert assembled_favor.call_count == len(BOT_IDS) * 2
         assert assembled_favor.call_args.kwargs["familiarity_baseline"] == 10

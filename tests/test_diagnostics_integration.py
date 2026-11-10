@@ -4,6 +4,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from astrbot_plugin_bond.core.assessment import Interaction
 from astrbot_plugin_bond.core.levels import LevelTable
 from astrbot_plugin_bond.core.relation_policy import RelationPolicy
@@ -14,6 +16,12 @@ from astrbot_plugin_bond.services.assessment_service import (
 )
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
+
+
+@pytest.fixture
+def fixed_clock(monkeypatch):
+    # 顺序对照场景固定观察时间，仍完整比较包含 observed_at 的模型调用。
+    monkeypatch.setattr("time.time", lambda: 1_794_268_800.0)
 
 
 class Collector:
@@ -104,7 +112,9 @@ async def run_case(
         await store.close()
 
 
-def test_enabled_and_disabled_observe_identical_real_transactions(tmp_path):
+def test_enabled_and_disabled_observe_identical_real_transactions(
+    tmp_path, fixed_clock
+):
     async def run():
         off = await run_case(tmp_path / "off", False)
         on = await run_case(tmp_path / "on", True)
@@ -115,7 +125,7 @@ def test_enabled_and_disabled_observe_identical_real_transactions(tmp_path):
         assert relation["after"] == on["state"]
         assert relation["delta"] == on["logs"][0]["relation_delta"]
         assert relation["term_before"] == "r13"
-        assert relation["policy_version"] == "0.6.0"
+        assert relation["policy_version"] == "0.7.0"
         assert len(relation["config_hash"]) == 64
         call = next(r for r in on["rows"] if r["kind"] == "call")
         assert call["tokens"] is None
@@ -151,7 +161,9 @@ def test_rule_snapshot_cannot_modify_policy():
     assert policy.deltas("thanks")["trust"] == 0
 
 
-def test_real_writer_and_unwritable_path_preserve_business_results(tmp_path):
+def test_real_writer_and_unwritable_path_preserve_business_results(
+    tmp_path, fixed_clock
+):
     async def run():
         off = await run_case(tmp_path / "off", False, disk=True)
         on = await run_case(tmp_path / "on", True, disk=True)
@@ -247,7 +259,9 @@ def test_global_reset_preserves_origin_and_undo_never_links_unknown_group(tmp_pa
     asyncio.run(run())
 
 
-def test_four_levels_capture_only_selected_inputs_and_same_business(tmp_path):
+def test_four_levels_capture_only_selected_inputs_and_same_business(
+    tmp_path, fixed_clock
+):
     async def run():
         results = {}
         for level in ("assessment", "raw", "evaluation", "full"):

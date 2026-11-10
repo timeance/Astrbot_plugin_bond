@@ -48,17 +48,19 @@ def check_project(root: Path = ROOT) -> str:
         raise ValueError("源码地址不是 Bond 目标仓库")
 
     schema = json.loads((root / "_conf_schema.json").read_text(encoding="utf-8"))
-    # PR-0 尚无多 Bot 隔离和通用人格语义，不默认打开上游自动行为。
+    # 自动模型调用、诊断与联动默认关闭。
     for section, key in (
         ("judge", "enabled"),
         ("judge", "follow_maisoul_replyer"),
-        ("inject", "enabled"),
+        ("relation_title", "enabled"),
         ("coupling", "enabled"),
         ("assessment", "enabled"),
         ("diagnostics", "enabled"),
     ):
         if schema[section]["items"][key]["default"] is not False:
             raise ValueError(f"开发基线要求 {section}.{key} 默认关闭")
+    if schema["inject"]["items"]["enabled"]["default"] is not True:
+        raise ValueError("在回复中体现关系应默认开启")
 
     init = next(
         node

@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -194,6 +194,12 @@ MIGRATIONS: dict[int, list[str]] = {
     19: [
         "CREATE TABLE relation_title_cache (group_id TEXT NOT NULL,user_id TEXT NOT NULL,context_id TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',metadata TEXT NOT NULL DEFAULT '{}',attempted_at REAL NOT NULL DEFAULT 0,PRIMARY KEY(group_id,user_id,context_id))",
         "CREATE TABLE relation_title_calls (day TEXT PRIMARY KEY,calls INTEGER NOT NULL DEFAULT 0)",
+    ],
+    # v20：只保存已复核来源和消费标记，不从历史流水推断尊重边界。
+    20: [
+        "CREATE TABLE trust_evidence (group_id TEXT NOT NULL,user_id TEXT NOT NULL,origin_group_id TEXT NOT NULL,event_id TEXT NOT NULL,event_type TEXT NOT NULL,current_id TEXT NOT NULL,current_key TEXT NOT NULL,reference_id TEXT NOT NULL,reference_excerpt TEXT NOT NULL,reference_at REAL NOT NULL,behavior_id TEXT NOT NULL,behavior_key TEXT NOT NULL,behavior_excerpt TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at REAL NOT NULL,source_log_id INTEGER NOT NULL,source_events TEXT NOT NULL DEFAULT '[]',consumed_by TEXT NOT NULL DEFAULT '',invalidated INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(group_id,user_id,event_id))",
+        "CREATE INDEX idx_trust_window ON trust_evidence(group_id,user_id,event_type,invalidated,consumed_by,observed_at)",
+        "CREATE INDEX idx_trust_source ON trust_evidence(source_log_id)",
     ],
 }
 
