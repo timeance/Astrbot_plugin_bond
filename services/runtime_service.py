@@ -171,7 +171,7 @@ class RuntimeService:
             AssessmentCapacity(limit)
             from ..core.relation_titles import TitleConfig
 
-            TitleConfig(**(candidate.get("relation_title") or {}))
+            TitleConfig.from_config(candidate.get("relation_title") or {})
             try:
                 self._config.update(candidate)
                 self._config.save_config()

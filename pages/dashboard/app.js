@@ -246,6 +246,14 @@ createApp({
       if (selected && !options.some(option => option.id === selected)) options.push({id: selected, label: `${selected}（暂不可用）`});
       return options;
     };
+    const providerPlaceholder = path => ({
+      "assessment.large_provider_id": "不使用复核模型",
+      "relation_title.provider_id": "跟随复核模型",
+      "judge.provider_id": "跟随宿主默认模型",
+    })[path] || "选择模型";
+    const titleProviderMissing = computed(() => !!detailValues.value["relation_title.enabled"]
+      && !String(detailValues.value["relation_title.provider_id"] || "").trim()
+      && !String(detailValues.value["assessment.large_provider_id"] || "").trim());
     const loadSettings = () => settingsSaving ? Promise.resolve() : Promise.all([settingsRequest(), diagnosticRequest("status")]);
     const saveSettings = () => settingsRequest(true);
     const restoreSectionDefaults = (group) => {
@@ -301,18 +309,18 @@ createApp({
       context_events: 8,
     };
     const evaluationFields = [
-      {key:"small_timeout_sec", label:"初评超时（秒）", hint:"等待日常模型的最长时间。超时后本次不评分，已发起的调用仍计入用量。", min:0.1, step:0.1},
-      {key:"large_timeout_sec", label:"复核超时（秒）", hint:"等待复核模型的最长时间。必须复核的互动若超时，本次不评分。", min:0.1, step:0.1},
-      {key:"window_sec", label:"初评统计时段（秒）", hint:"向前回看这段时间，限制同一成员的初评次数。同一 Bot 下跨群合计。", min:1, step:1},
-      {key:"window_max_calls", label:"时段内初评次数", hint:"每名成员在窗口内最多初评多少次。不同互动可分别评分；0 表示暂停初评。", min:0, step:1},
-      {key:"per_user_daily_small_cap", label:"每人每日初评上限", hint:"同一 Bot 每天为每名成员初评的次数，跨群合计。UTC 00:00 重置；0 表示暂停初评。", min:0, step:1},
-      {key:"per_user_daily_large_cap", label:"每人每日复核上限", hint:"每名成员每天最多复核多少次。复核来自已初评的互动；0 表示不复核。UTC 00:00 重置。", min:0, step:1},
-      {key:"per_bot_daily_small_cap", label:"每 Bot 每日初评上限", hint:"这个 Bot 每天的初评总次数，跨群和数据空间合计。UTC 00:00 重置；0 表示暂停初评。", min:0, step:1},
-      {key:"per_bot_daily_large_cap", label:"每 Bot 每日复核上限", hint:"这个 Bot 每天的复核总次数，跨群和数据空间合计。UTC 00:00 重置；0 表示不复核。", min:0, step:1},
-      {key:"context_turns", label:"近期发言条数", hint:"给模型参考的近期发言与 Bot 回复条数，仅限同群、同成员。0 表示不带近期发言。", min:0, max:20, step:1},
-      {key:"context_chars", label:"参考内容字数上限", hint:"限制引用、近期发言和已计分摘要的总长度。0 表示不带这些内容，当前消息仍会送评。", min:0, max:20000, step:1},
-      {key:"context_days", label:"历史回顾天数", hint:"只参考这些天内的发言和已计分摘要，帮助模型理解上下文。0 表示不回顾历史。", min:0, max:90, step:1},
-      {key:"context_events", label:"已评估互动条数", hint:"最多参考多少条本群已计分事件，帮助识别重复表达。历史不再计分；0 表示不带摘要。", min:0, max:20, step:1},
+      {key:"small_timeout_sec", label:"初评超时（秒）", hint:"须大于 0。超时不评分，已发起的调用仍计次。", min:0.1, step:0.1},
+      {key:"large_timeout_sec", label:"复核超时（秒）", hint:"须大于 0。超时不评分，已发起的调用仍计次。", min:0.1, step:0.1},
+      {key:"window_sec", label:"初评统计时段（秒）", hint:"须大于 0。同一成员在同一 Bot 跨群共用，重启保留用量。", min:1, step:1},
+      {key:"window_max_calls", label:"时段内初评次数", hint:"不同互动可分别评分。失败和超时计次，0 暂停初评。", min:0, step:1},
+      {key:"per_user_daily_small_cap", label:"每人每日初评上限", hint:"同一 Bot 跨群共用，UTC 00:00 重置。失败和超时计次，0 暂停初评。", min:0, step:1},
+      {key:"per_user_daily_large_cap", label:"每人每日复核上限", hint:"同一 Bot 跨群共用，UTC 00:00 重置。失败和超时计次，0 暂停复核。", min:0, step:1},
+      {key:"per_bot_daily_small_cap", label:"每 Bot 每日初评上限", hint:"所有群和数据空间合计，UTC 00:00 重置。失败和超时计次，0 暂停初评。", min:0, step:1},
+      {key:"per_bot_daily_large_cap", label:"每 Bot 每日复核上限", hint:"所有群和数据空间合计，UTC 00:00 重置。失败和超时计次，0 暂停复核。", min:0, step:1},
+      {key:"context_turns", label:"近期发言条数", hint:"范围 0～20，仅取同群、同成员的发言与 Bot 回复。0 不带近期发言。", min:0, max:20, step:1},
+      {key:"context_chars", label:"参考内容字符上限", hint:"范围 0～20000，引用、摘要和近期发言共用。0 不带这些内容，当前消息仍会送评。", min:0, max:20000, step:1},
+      {key:"context_days", label:"历史回顾天数", hint:"范围 0～90，限制发言与已计分摘要的回顾期。0 不带两类历史，仍可带当前引用。", min:0, max:90, step:1},
+      {key:"context_events", label:"已计分摘要条数", hint:"范围 0～20，仅取同群、同成员的事件。历史不重复计分，0 不带摘要。", min:0, max:20, step:1},
     ];
     const evaluationDirty = computed(() => !!savedEvaluation.value && (
       evaluationFields.some(({key}) => modelConfig.value[key] !== savedEvaluation.value.config[key]) ||
@@ -431,6 +439,9 @@ createApp({
       if (!Number.isFinite(n)) return "-";
       return fmtDelta(n);
     };
+    const decayAxes = user => user.temporary?.active ? [] : logDimensions
+      .filter(item => Array.isArray(user.decaying_dimensions) && user.decaying_dimensions.includes(item.key))
+      .map(item => item.key);
     const dimBarStyle = (dim, val) => {
       const n = Number(val);
       if (val == null || val === "" || !Number.isFinite(n)) {
@@ -1337,7 +1348,7 @@ createApp({
       resetUserPage, changeUserPage, changeListFilter,
       bots, selectedBot, selectedMode, selectedBotInfo, scopeLabel,
       scopeLoading, modeLoading, backupLoading, restoreName, latestBackup,
-      fmtTime, fmtNum, fmtOptionalNum, fmtSignedNum, dimBarStyle, fmtDelta, fmtIdle, fmtUser, sourceLabel,
+      fmtTime, fmtNum, fmtOptionalNum, fmtSignedNum, decayAxes, dimBarStyle, fmtDelta, fmtIdle, fmtUser, sourceLabel,
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, selectedLogGroup, showDetail, showLogMember, backToLogGroup, closeDetail,
       isPassiveLog, isPassiveGroup, passiveLogMembers, passiveLogPreview, passiveLogDelta, logGroupLabel, isLogReversed,
@@ -1353,7 +1364,7 @@ createApp({
       maxConcurrentAssessments, activeMaxConcurrentAssessments, assessmentStats, modelNotice, modelNoticeError,
       loadEvaluation, saveModels, modelRevision,
       displayReason, displayStatus, detailSettings, detailValues, listInputs, detailDirty, detailNeedsReload, detailLoading, detailNotice, detailNoticeError, detailGroups, loadSettings, saveSettings,
-      restoreSectionDefaults, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions,
+      restoreSectionDefaults, activeRuleSummary, updateListSetting, listPlaceholder, providerOptions, providerPlaceholder, titleProviderMissing,
       evaluationFields, evaluationDirty, evaluationNeedsReload, restoreEvaluationDefaults,
       diagnosticStats, diagnosticLoading, diagnosticNotice, diagnosticDownload, diagnosticConfirm, diagnosticRequest, diagnosticSize,
     };
@@ -1536,9 +1547,13 @@ createApp({
                 </div>
               </td>
               <td class="xx-overview-status-cell">
-                <span v-if="u.decayed" class="xx-tag">衰减中</span>
+                <span v-if="u.temporary?.active" class="xx-tag">临时关系</span>
+                <span v-else-if="decayAxes(u).length" class="xx-tag xx-decay-status">
+                  <template v-if="decayAxes(u).length < 3"><span v-for="axis in decayAxes(u)" :key="axis" :class="['xx-decay-axis', 'xx-decay-' + axis]" :aria-label="({familiarity:'熟悉度',affinity:'亲近度',trust:'信任度'})[axis]">{{ ({familiarity:'F',affinity:'A',trust:'T'})[axis] }}</span></template>
+                  <span>衰减中</span>
+                </span>
                 <span v-else-if="u.idle_days != null && u.idle_days >= 3" class="xx-tag">{{ u.idle_days }}天未动</span>
-                <span v-else class="xx-muted-text">-</span>
+                <span v-else class="xx-muted-text">—</span>
               </td>
               <td class="xx-imp-cell" data-label="标签">
                 <div class="xx-imp">
@@ -1795,13 +1810,14 @@ createApp({
             <input :id="'setting-' + field.path" v-if="field.type === 'bool'" type="checkbox" v-model="detailValues[field.path]" :disabled="detailLoading">
             <div v-else-if="field.special === 'select_provider'" class="xx-provider-field">
               <select :id="'setting-' + field.path" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :aria-describedby="'provider-hint-' + field.path">
-                <option value="">{{ field.path === 'assessment.large_provider_id' ? '不使用复核模型' : '选择模型' }}</option>
+                <option value="">{{ providerPlaceholder(field.path) }}</option>
                 <option v-for="provider in providerOptions(field.path)" :key="provider.id" :value="provider.id">{{ provider.label }}</option>
               </select>
               <p v-if="!detailSettings.providers?.length" class="xx-help" :id="'provider-hint-' + field.path">暂无可用模型，请先在 AstrBot 配置文本模型。</p>
+              <p v-if="field.path === 'relation_title.provider_id' && titleProviderMissing" class="xx-help" role="status">请配置复核模型或选择称谓模型。</p>
             </div>
-            <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading || (field.path === 'diagnostics.detail_level' && !detailValues['diagnostics.enabled'])"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用",assessment:"评估记录",raw:"原文+评估",evaluation:"评估上下文",full:"完整上下文"})[option] || option }}</option></select>
-            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path === 'diagnostics.max_size_mb' ? 1 : field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path === 'diagnostics.max_size_mb' ? 10000 : field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
+            <select :id="'setting-' + field.path" v-else-if="field.options?.length" class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading || (field.path === 'diagnostics.detail_level' && !detailValues['diagnostics.enabled'])"><option v-for="option in field.options" :key="option" :value="option">{{ ({default:"标准",galgame:"Galgame · 正向×2",realistic:"基础",single:"单模型",tiered:"分级复核",all:"所有人",master:"仅主人",per_group:"按群分别记录",global:"同一 Bot 跨群共用",independent:"分别维护各维度",legacy:"联动维护熟悉与亲近",assessment:"评估记录",raw:"原文+评估",evaluation:"评估上下文",full:"完整上下文"})[option] || option }}</option></select>
+            <input :id="'setting-' + field.path" v-else-if="field.type === 'int' || field.type === 'float'" class="xx-input" type="number" :step="field.type === 'int' ? 1 : 'any'" :min="field.path === 'relation_title.refresh_cooldown_hours' ? 12 : field.path === 'relation_title.daily_generation_limit' ? 0 : field.path === 'diagnostics.max_size_mb' ? 1 : field.path.endsWith('_baseline') ? 0 : undefined" :max="field.path === 'relation_title.refresh_cooldown_hours' ? 720 : field.path === 'relation_title.daily_generation_limit' ? 30 : field.path === 'diagnostics.max_size_mb' ? 10000 : field.path.endsWith('_baseline') ? 100 : undefined" v-model.number="detailValues[field.path]" :disabled="detailLoading">
             <input :id="'setting-' + field.path" v-else-if="field.type === 'list'" class="xx-input" :value="listInputs[field.path] ?? (detailValues[field.path] || []).join(', ')" @input="updateListSetting(field.path, $event.target.value)" :disabled="detailLoading" :placeholder="listPlaceholder(field.path)">
             <input :id="'setting-' + field.path" v-else class="xx-input" v-model="detailValues[field.path]" :disabled="detailLoading" :placeholder="field.path === 'master_ids' ? listPlaceholder(field.path) : ''">
           </div>

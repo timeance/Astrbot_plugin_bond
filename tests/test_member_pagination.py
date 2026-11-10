@@ -145,7 +145,7 @@ def test_page_uses_decay_effective_order(tmp_path):
             await favor.set_favor("123", "8001", 80)
             await favor.set_favor("123", "8002", 20)
             # 仅替换有效值计算，证明排序和零值折叠不按正式分数抢先 LIMIT。
-            favor._effective_record = lambda rec, *args: dict(
+            favor._effective_record = lambda rec, *args, **kwargs: dict(
                 affinity=0 if rec.favor == 80 else rec.favor,
                 familiarity=rec.familiarity,
                 trust=rec.trust,

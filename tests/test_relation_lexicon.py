@@ -38,7 +38,7 @@ def test_all_combinations_have_distinct_dimension_meanings():
         )
     }
     assert seen == set(TERMS)
-    assert len(seen) == 75
+    assert len(seen) == 76
     assert len(CELLS) == 5
     assert len({title for title, _ in TERMS.values()}) == len(TERMS)
 
@@ -98,10 +98,10 @@ def test_mixed_attitudes_keep_trust_independent_and_do_not_invent_history():
 @pytest.mark.parametrize(
     "before,after,old_title,new_title",
     [
-        ((2.9, 0, 0), (3, 0, 0), "眼熟之人", "新相识"),
-        ((4.9, 0, 0), (5, 0, 0), "新相识", "泛泛之交"),
-        ((7.9, 0, 0), (8, 0, 0), "泛泛之交", "渐熟的相识"),
-        ((19.9, 0, 0), (20, 0, 0), "渐熟的相识", "相熟之人"),
+        ((2.9, 0, 0), (3, 0, 0), "眼熟之人", "浅交之人"),
+        ((4.9, 0, 0), (5, 0, 0), "浅交之人", "泛泛之交"),
+        ((7.9, 0, 0), (8, 0, 0), "泛泛之交", "寻常相识"),
+        ((19.9, 0, 0), (20, 0, 0), "寻常相识", "相熟之人"),
         ((20, 24.9, 0), (20, 25, 0), "友好之交", "亲近的相识"),
         ((20, 24.9, 20), (20, 25, 20), "亲切之交", "亲近之交"),
     ],
@@ -110,6 +110,21 @@ def test_early_display_boundaries(before, after, old_title, new_title):
     resolver = RelationResolver()
     assert resolver.resolve(RelationState(*before)) == old_title
     assert resolver.resolve(RelationState(*after)) == new_title
+
+
+def test_reviewed_mapping_preserves_mixed_facts_and_early_sequence():
+    resolver = RelationResolver()
+    assert [resolver.resolve(RelationState(f, 20, 20)) for f in (0, 1, 3, 5)] == [
+        "初识而亲切",
+        "初识而亲切",
+        "亲切的新相识",
+        "亲切之交",
+    ]
+    for f in (40, 70, 100):
+        assert resolver.resolve(RelationState(f, -50, -50)) == "疏远而戒备的熟人"
+        assert resolver.resolve(RelationState(f, 0, -50)) == "戒备的熟人"
+    assert resolver.resolve(RelationState(3, 0, 60)) == "交浅却信赖"
+    assert resolver.resolve(RelationState(3, 25, 60)) == "投缘而信赖"
 
 
 def test_explicit_legacy_configuration_and_description_remain_consistent():

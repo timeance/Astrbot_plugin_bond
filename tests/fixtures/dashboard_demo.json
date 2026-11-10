@@ -1,0 +1,1730 @@
+{
+  "synthetic": true,
+  "notice": "全部资料为人工合成演示数据，800000xxx 均为演示号。",
+  "snapshot_at": 1794283200.0,
+  "bots": [
+    {
+      "bot_id": "800000001",
+      "nickname": "演示 Bot",
+      "scope_mode": "per_group",
+      "connected": true
+    }
+  ],
+  "groups": [
+    {
+      "group_id": "800000101",
+      "group_name": "合成演示群",
+      "member_count": 8,
+      "count": 8
+    }
+  ],
+  "users": [
+    {
+      "group_id": "800000101",
+      "user_id": "800000201",
+      "nickname": "青禾",
+      "familiarity": 1.8,
+      "affinity": 0,
+      "trust": 0,
+      "favor": 0,
+      "stored_favor": 0,
+      "relation_title": "眼熟之人",
+      "decayed": false,
+      "decaying_dimensions": [],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 1.8,
+        "affinity": 0,
+        "trust": 0
+      },
+      "temporary_audit": [],
+      "level": "陌生",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。偶尔参与群聊，目前只有浅浅的印象。",
+      "tags": [
+        "安静旁听"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000202",
+      "nickname": "小满",
+      "familiarity": 3.6,
+      "affinity": 2.4,
+      "trust": 0,
+      "favor": 2.4,
+      "stored_favor": 2.4,
+      "relation_title": "浅交之人",
+      "decayed": false,
+      "decaying_dimensions": [],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 3.6,
+        "affinity": 2.4,
+        "trust": 0
+      },
+      "temporary_audit": [],
+      "level": "陌生",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。刚开始交流，问题具体，相处自然。",
+      "tags": [
+        "认真提问",
+        "表达清楚"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000203",
+      "nickname": "纸舟",
+      "familiarity": 12.4,
+      "affinity": 4.8,
+      "trust": 0,
+      "favor": 4.8,
+      "stored_favor": 4.8,
+      "relation_title": "寻常相识",
+      "decayed": true,
+      "decaying_dimensions": [
+        "familiarity"
+      ],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 12.4,
+        "affinity": 4.8,
+        "trust": 0
+      },
+      "temporary_audit": [],
+      "level": "陌生",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。相处平和，最近带来了一段有趣的讨论，熟悉感正在淡化。",
+      "tags": [
+        "轻松交流"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000204",
+      "nickname": "云岚",
+      "familiarity": 3.8,
+      "affinity": 0,
+      "trust": 46,
+      "favor": 0,
+      "stored_favor": 0,
+      "relation_title": "交浅却信赖",
+      "decayed": true,
+      "decaying_dimensions": [
+        "trust"
+      ],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 3.8,
+        "affinity": 0,
+        "trust": 46
+      },
+      "temporary_audit": [],
+      "level": "陌生",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。交流还少，对可靠性的判断较为积极，仍在慢慢认识。",
+      "tags": [
+        "言行可靠"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000205",
+      "nickname": "星屿",
+      "familiarity": 82,
+      "affinity": 62,
+      "trust": 56,
+      "favor": 62,
+      "stored_favor": 62,
+      "relation_title": "亲密挚友",
+      "decayed": true,
+      "decaying_dimensions": [
+        "affinity",
+        "trust"
+      ],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 82,
+        "affinity": 62,
+        "trust": 56
+      },
+      "temporary_audit": [],
+      "level": "亲密",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。熟悉而亲近，交流时能接住彼此的话题，也会尊重已经说明的界限。",
+      "tags": [
+        "有来有往",
+        "细心可靠"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000206",
+      "nickname": "白榆",
+      "familiarity": 54,
+      "affinity": 24,
+      "trust": -52,
+      "favor": 24,
+      "stored_favor": 24,
+      "relation_title": "亲近却戒备",
+      "decayed": true,
+      "decaying_dimensions": [
+        "trust"
+      ],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 54,
+        "affinity": 24,
+        "trust": -52
+      },
+      "temporary_audit": [],
+      "level": "认识",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。相处有亲近感，仍保留戒心，负信任正随时间向基线恢复。",
+      "tags": [
+        "直率表达",
+        "需要界限"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000207",
+      "nickname": "雾川",
+      "familiarity": 68,
+      "affinity": -52,
+      "trust": -56,
+      "favor": -52,
+      "stored_favor": -52,
+      "relation_title": "疏远而戒备的熟人",
+      "decayed": true,
+      "decaying_dimensions": [
+        "familiarity",
+        "affinity",
+        "trust"
+      ],
+      "temporary": {
+        "active": false
+      },
+      "formal_relation": {
+        "familiarity": 68,
+        "affinity": -52,
+        "trust": -56
+      },
+      "temporary_audit": [],
+      "level": "厌恶",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。虽然熟悉，亲近和信任都较低，目前倾向保留距离。",
+      "tags": [
+        "保持距离",
+        "谨慎往来"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 18
+    },
+    {
+      "group_id": "800000101",
+      "user_id": "800000208",
+      "nickname": "夏灯",
+      "familiarity": 88,
+      "affinity": 84,
+      "trust": 64,
+      "favor": 84,
+      "stored_favor": 14,
+      "relation_title": "亲密挚友",
+      "decayed": false,
+      "decaying_dimensions": [],
+      "temporary": {
+        "active": true,
+        "created_at": 1794282900.0,
+        "expires_at": 1794286800.0,
+        "values": {
+          "familiarity": 88,
+          "affinity": 84,
+          "trust": 64
+        },
+        "reason": "合成演示临时体验"
+      },
+      "formal_relation": {
+        "familiarity": 22,
+        "affinity": 14,
+        "trust": 2
+      },
+      "temporary_audit": [
+        {
+          "ts": 1794282900.0,
+          "actor": "演示管理员",
+          "action": "created",
+          "details": {
+            "values": {
+              "familiarity": 88,
+              "affinity": 84,
+              "trust": 64
+            },
+            "expires_at": 1794286800.0,
+            "reason": "合成演示临时体验"
+          }
+        }
+      ],
+      "level": "挚友",
+      "relationship": "",
+      "is_master": false,
+      "impression": "演示印象。正在体验临时关系。到期后回到原有的正式关系。",
+      "tags": [
+        "临时体验",
+        "温和交流"
+      ],
+      "impression_at": 1794283080.0,
+      "idle_days": 0
+    }
+  ],
+  "logs": [
+    {
+      "id": 7006,
+      "ts": 1794282900.0,
+      "group_id": "800000101",
+      "origin_group_id": "800000101",
+      "user_id": "800000206",
+      "nickname": "白榆",
+      "source": "judge",
+      "actor": "演示评估",
+      "delta": 0,
+      "relation_delta": {
+        "familiarity": 0.4,
+        "affinity": 0,
+        "trust": 0
+      },
+      "relation_before": {
+        "familiarity": 53.6,
+        "affinity": 24,
+        "trust": -52
+      },
+      "relation_after": {
+        "familiarity": 54,
+        "affinity": 24,
+        "trust": -52
+      },
+      "favor_before": 24,
+      "favor_after": 24,
+      "reason": "normal_question",
+      "message": "合成发言。我先问清楚这项说明的适用范围。",
+      "reversed": false
+    },
+    {
+      "id": 7005,
+      "ts": 1794282600.0,
+      "group_id": "800000101",
+      "origin_group_id": "800000101",
+      "user_id": "800000205",
+      "nickname": "星屿",
+      "source": "judge",
+      "actor": "演示评估",
+      "delta": 0,
+      "relation_delta": {
+        "familiarity": 0.5,
+        "affinity": 0,
+        "trust": 0
+      },
+      "relation_before": {
+        "familiarity": 81.5,
+        "affinity": 62,
+        "trust": 56
+      },
+      "relation_after": {
+        "familiarity": 82,
+        "affinity": 62,
+        "trust": 56
+      },
+      "favor_before": 62,
+      "favor_after": 62,
+      "reason": "normal_question",
+      "message": "合成发言。上次讨论的方案，我又想到一个问题。",
+      "reversed": false
+    },
+    {
+      "id": 7004,
+      "ts": 1794282300.0,
+      "group_id": "800000101",
+      "origin_group_id": "800000101",
+      "user_id": "800000204",
+      "nickname": "云岚",
+      "source": "judge",
+      "actor": "演示评估",
+      "delta": 0,
+      "relation_delta": {
+        "familiarity": 0.8,
+        "affinity": 0,
+        "trust": 0
+      },
+      "relation_before": {
+        "familiarity": 3.0,
+        "affinity": 0,
+        "trust": 46
+      },
+      "relation_after": {
+        "familiarity": 3.8,
+        "affinity": 0,
+        "trust": 46
+      },
+      "favor_before": 0,
+      "favor_after": 0,
+      "reason": "normal_question",
+      "message": "合成发言。我们先确认一下这一步的条件好吗？",
+      "reversed": false
+    },
+    {
+      "id": 7003,
+      "ts": 1794282000.0,
+      "group_id": "800000101",
+      "origin_group_id": "800000101",
+      "user_id": "800000203",
+      "nickname": "纸舟",
+      "source": "judge",
+      "actor": "演示评估",
+      "delta": 0.8,
+      "relation_delta": {
+        "familiarity": 0,
+        "affinity": 0.8,
+        "trust": 0
+      },
+      "relation_before": {
+        "familiarity": 12.4,
+        "affinity": 4.0,
+        "trust": 0
+      },
+      "relation_after": {
+        "familiarity": 12.4,
+        "affinity": 4.8,
+        "trust": 0
+      },
+      "favor_before": 4.0,
+      "favor_after": 4.8,
+      "reason": "friendly",
+      "message": "合成发言。这个比喻很有趣，让讨论轻松了不少。",
+      "reversed": false
+    },
+    {
+      "id": 7002,
+      "ts": 1794281700.0,
+      "group_id": "800000101",
+      "origin_group_id": "800000101",
+      "user_id": "800000202",
+      "nickname": "小满",
+      "source": "judge",
+      "actor": "演示评估",
+      "delta": 0.4,
+      "relation_delta": {
+        "familiarity": 0.6,
+        "affinity": 0.4,
+        "trust": 0
+      },
+      "relation_before": {
+        "familiarity": 3.0,
+        "affinity": 2.0,
+        "trust": 0
+      },
+      "relation_after": {
+        "familiarity": 3.6,
+        "affinity": 2.4,
+        "trust": 0
+      },
+      "favor_before": 2.0,
+      "favor_after": 2.4,
+      "reason": "friendly",
+      "message": "合成发言。我把问题整理好了，方便时一起看看吧。",
+      "reversed": false
+    },
+    {
+      "id": 7001,
+      "ts": 1794281400.0,
+      "group_id": "800000101",
+      "origin_group_id": "800000101",
+      "user_id": "800000201",
+      "nickname": "青禾",
+      "source": "passive_familiarity",
+      "actor": "演示规则",
+      "delta": 0,
+      "relation_delta": {
+        "familiarity": 0.3,
+        "affinity": 0,
+        "trust": 0
+      },
+      "relation_before": {
+        "familiarity": 1.5,
+        "affinity": 0,
+        "trust": 0
+      },
+      "relation_after": {
+        "familiarity": 1.8,
+        "affinity": 0,
+        "trust": 0
+      },
+      "favor_before": 0,
+      "favor_after": 0,
+      "reason": "合成演示。群聊活跃获得熟悉度，未刷新保温。",
+      "message": "",
+      "reversed": false
+    }
+  ],
+  "settings": {
+    "fields": [
+      {
+        "path": "assessment.enabled",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "自动评估",
+        "hint": "根据互动更新熟悉度、亲近度和信任度。",
+        "type": "bool",
+        "default": false,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "assessment.small_provider_id",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "日常评估模型",
+        "hint": "启用自动评估时必选。",
+        "type": "string",
+        "default": "",
+        "options": [],
+        "special": "select_provider"
+      },
+      {
+        "path": "assessment.large_provider_id",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "复核模型（可选）",
+        "hint": "复核难判互动。留空或复核失败时，需要复核的互动不评分。",
+        "type": "string",
+        "default": "",
+        "options": [],
+        "special": "select_provider"
+      },
+      {
+        "path": "assessment.assessment_mode",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "评估模式",
+        "hint": "单模型仅用日常模型，分级复核按需调用复核模型。",
+        "type": "string",
+        "default": "tiered",
+        "options": [
+          "single",
+          "tiered"
+        ],
+        "special": null
+      },
+      {
+        "path": "group_whitelist",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "启用 Bond 的群",
+        "hint": "留空启用所有群。每项一个群号，对所有 Bot 生效。停用群保留已有记录。",
+        "type": "list",
+        "default": [],
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "default_scope_mode",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "默认数据空间",
+        "hint": "按群记录或同一 Bot 跨群共用关系。指定 Bot 的选择优先。切换不迁移历史，印象和流水仍按群隔离。",
+        "type": "string",
+        "default": "per_group",
+        "options": [
+          "per_group",
+          "global"
+        ],
+        "special": null
+      },
+      {
+        "path": "master_ids",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "主人 QQ",
+        "hint": "多个 QQ 用英文逗号分隔。用于主人标记和查榜权限，仍照常评估。",
+        "type": "string",
+        "default": "",
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "passive_familiarity",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "眼熟模式",
+        "hint": "群员活跃时被动增加熟悉度。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_mode",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "关系模式",
+        "hint": "Galgame 将互动加分和每日加分上限乘 2。切换不重算历史。",
+        "type": "string",
+        "default": "galgame",
+        "options": [
+          "realistic",
+          "galgame"
+        ],
+        "special": null
+      },
+      {
+        "path": "ignored_bot_ids",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "忽略的机器人账号",
+        "hint": "每项一个平台账号 ID，跳过记录和评估。",
+        "type": "list",
+        "default": [],
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.grace_days",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "关系保温期（天）",
+        "hint": "超过保温期后开始衰减。0 不设保温期。",
+        "type": "float",
+        "default": 5.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.maintenance_strategy",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "关系维护方式",
+        "hint": "分别维护各维度，或联动维护熟悉度与亲近度。信任仅由可信事件维护。切换不重置保温期。",
+        "type": "string",
+        "default": "independent",
+        "options": [
+          "independent",
+          "legacy"
+        ],
+        "special": null
+      },
+      {
+        "path": "timezone",
+        "group": "basic",
+        "title": "基础设置",
+        "label": "关系额度换日时区",
+        "hint": "如 Asia/Shanghai，决定关系额度和同日递减的换日时间；调用预算固定在 UTC 00:00 刷新。",
+        "type": "string",
+        "default": "Asia/Shanghai",
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "inject.enabled",
+        "group": "titles",
+        "title": "个性化功能",
+        "label": "在回复中体现关系",
+        "hint": "让 Bot 参考彼此的关系和对你的印象回复。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_title.enabled",
+        "group": "titles",
+        "title": "个性化功能",
+        "label": "动态称谓",
+        "hint": "按当前人格生成，生成与校验均调用模型。",
+        "type": "bool",
+        "default": false,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_title.provider_id",
+        "group": "titles",
+        "title": "个性化功能",
+        "label": "称谓模型（可选）",
+        "hint": "留空跟随复核模型。两者均未配置时无法生成。",
+        "type": "string",
+        "default": "",
+        "options": [],
+        "special": "select_provider"
+      },
+      {
+        "path": "relation_title.refresh_cooldown_hours",
+        "group": "titles",
+        "title": "个性化功能",
+        "label": "刷新间隔（小时）",
+        "hint": "范围 0.1～720。关系变化后按此间隔刷新。",
+        "type": "float",
+        "default": 12,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_title.daily_generation_limit",
+        "group": "titles",
+        "title": "个性化功能",
+        "label": "每 Bot 每日调用上限",
+        "hint": "范围 0～1000，跨群共用，UTC 00:00 重置。生成、校验、重试和失败均计次，0 暂停。",
+        "type": "int",
+        "default": 30,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_title.generation_timeout_seconds",
+        "group": "titles",
+        "title": "个性化功能",
+        "label": "调用超时（秒）",
+        "hint": "范围 1～120。超时保留固定称谓，聊天和评分照常进行。",
+        "type": "float",
+        "default": 30,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_daily_caps.familiarity_up",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度每日加分上限",
+        "hint": "每人每日额度，Galgame 为 2 倍。0 停止加分。",
+        "type": "float",
+        "default": 5,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_daily_caps.familiarity_down",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度每日扣分上限",
+        "hint": "每人每日额度。0 禁止互动扣分，时间衰减另算。",
+        "type": "float",
+        "default": 0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "passive_familiarity_rules.amount",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "每次增加熟悉度",
+        "hint": "范围 0～100，受被动上限和每日额度限制。0 停止加分。",
+        "type": "float",
+        "default": 0.3,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "passive_familiarity_rules.ceiling",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "被动增长上限",
+        "hint": "范围 0～100，已有更高分数保留。",
+        "type": "float",
+        "default": 60,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "passive_familiarity_rules.cooldown_minutes",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "加分间隔（分钟）",
+        "hint": "至少 1 分钟，同一成员两次被动加分的最短间隔。",
+        "type": "int",
+        "default": 30,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "passive_familiarity_rules.window_minutes",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "活跃范围（分钟）",
+        "hint": "至少 1 分钟。有人 @ Bot 时，检查同群近期发言的其他成员。",
+        "type": "int",
+        "default": 10,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "passive_familiarity_rules.member_limit",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "活跃范围（人数）",
+        "hint": "选最近发言的不同成员。0 不限人数，仍受时间范围约束。不符合加分条件者不补位。",
+        "type": "int",
+        "default": 3,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "familiarity_growth.under10",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度 0～不足 10 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 1.5,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "familiarity_growth.under30",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度 10～不足 30 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 1.2,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "familiarity_growth.under55",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度 30～不足 55 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.8,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "familiarity_growth.under80",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度 55～不足 80 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.5,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "familiarity_growth.under95",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度 80～不足 95 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.3,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "familiarity_growth.at95",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度 95～100 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.15,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.familiarity_enabled",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度衰减",
+        "hint": "随时间向基线回落，临时关系期间暂停。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.familiarity_half_life",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度半衰期（天）",
+        "hint": "至少 5 天。每经过此天数，距基线的差值减半。",
+        "type": "float",
+        "default": 30,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.familiarity_baseline",
+        "group": "familiarity",
+        "title": "熟悉度变化",
+        "label": "熟悉度基线",
+        "hint": "范围 0～100，高于基线时向其回落。",
+        "type": "float",
+        "default": 10,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_daily_caps.affinity_up",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度每日加分上限",
+        "hint": "每人每日额度，Galgame 为 2 倍。0 停止加分。",
+        "type": "float",
+        "default": 10,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_daily_caps.affinity_down",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度每日扣分上限",
+        "hint": "每人每日额度。0 禁止互动扣分，时间衰减另算。",
+        "type": "float",
+        "default": 8,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.enabled",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度增长规则",
+        "hint": "调整过滤、倍率、同日递减和扣分后的增长抑制。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.noise_floor",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "微小变化阈值",
+        "hint": "亲近度增减小于此数时忽略。0 关闭过滤。",
+        "type": "float",
+        "default": 0.5,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.negative_weight",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度扣分倍率",
+        "hint": "扣分乘以此数，仍受单次和每日上限限制。1 不变，0 不扣。",
+        "type": "float",
+        "default": 1.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.same_day_decay",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "同日增长递减",
+        "hint": "范围 0～1，每次加分后减少此比例，最低保留 25%。0 关闭。",
+        "type": "float",
+        "default": 0.25,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.repair_threshold",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "增长抑制触发值",
+        "hint": "单次亲近度扣分达到此数后，暂时降低加分。0 关闭。",
+        "type": "float",
+        "default": 0.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.repair_hours",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "增长抑制时长（小时）",
+        "hint": "基础时长，按关系档位系数调整。0 关闭。",
+        "type": "float",
+        "default": 48,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.repair_factor",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "抑制期加分倍率",
+        "hint": "范围 0～1。0 暂停加分，1 不抑制。亲密档位可进一步降低倍率。",
+        "type": "float",
+        "default": 0.5,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.repair_scale_high",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲密档位抑制系数",
+        "hint": "亲密及以上延长抑制时间，并降低加分倍率。1 不额外调整。",
+        "type": "float",
+        "default": 1.5,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.repair_scale_low",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "一般档位时长系数",
+        "hint": "友好及以下的抑制时长乘以此数。1 不延长。亲密系数为 1 时也使用此值。",
+        "type": "float",
+        "default": 1.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.yanwu",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 −100～不足 0 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 1,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.mosheng",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 0～不足 10 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 1,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.renshi",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 10～不足 30 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 1,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.youhao",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 30～不足 55 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.75,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.qinmi",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 55～不足 80 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.55,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.zhiyou",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 80～不足 95 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.35,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "economy.level_mult.zhiai",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度 95～100 加分倍率",
+        "hint": "此段加分乘以此数，Galgame 再乘 2。0 暂停此段加分。",
+        "type": "float",
+        "default": 0.2,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.enabled",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度衰减",
+        "hint": "向同号基线靠近，临时关系期间暂停。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.half_life_base",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度半衰期（天）",
+        "hint": "至少 5 天。距同号基线的差值减半所需天数，档位托底可提前止跌。",
+        "type": "float",
+        "default": 30,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.half_life_growth",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "半衰期巩固倍数",
+        "hint": "1 为固定半衰期。大于 1 时，每次实际加分后延长，直到上限。",
+        "type": "float",
+        "default": 1.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.half_life_max",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "最长半衰期（天）",
+        "hint": "巩固后的上限，不得低于基础半衰期。",
+        "type": "float",
+        "default": 120,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.affinity_baseline",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度对称基线",
+        "hint": "范围 0～100。正负值分别向同号基线靠近，区间内保持。档位托底可提前止跌。",
+        "type": "float",
+        "default": 0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.floor_enabled",
+        "group": "affinity",
+        "title": "亲近度变化",
+        "label": "亲近度档位托底",
+        "hint": "较高档位保留衰减下限，称谓仍可能变化。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_daily_caps.trust_up",
+        "group": "trust",
+        "title": "信任度变化",
+        "label": "信任度每日加分上限",
+        "hint": "仅可信事件加分，Galgame 额度为 2 倍。0 停止加分。",
+        "type": "float",
+        "default": 2,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "relation_daily_caps.trust_down",
+        "group": "trust",
+        "title": "信任度变化",
+        "label": "信任度每日扣分上限",
+        "hint": "每人每日额度。0 禁止互动扣分，时间衰减另算。",
+        "type": "float",
+        "default": 8,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.trust_enabled",
+        "group": "trust",
+        "title": "信任度变化",
+        "label": "信任度衰减",
+        "hint": "正信任回落，负信任恢复至 0。临时关系期间暂停。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.trust_half_life",
+        "group": "trust",
+        "title": "信任度变化",
+        "label": "信任度半衰期（天）",
+        "hint": "至少 5 天。正信任距基线的差值或负信任距 0 的差值减半。",
+        "type": "float",
+        "default": 60,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "decay.trust_baseline",
+        "group": "trust",
+        "title": "信任度变化",
+        "label": "信任度基线",
+        "hint": "范围 0～100。正信任高于基线时回落，负信任逐渐恢复至 0。",
+        "type": "float",
+        "default": 20,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "inject.memory_count",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "近期事件条数",
+        "hint": "最多 10 条，仅带当前群的类别和理由。0 关闭。跨群共用关系时不带近期事件。",
+        "type": "int",
+        "default": 3,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "inject.memory_days",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "事件回顾期（天）",
+        "hint": "普通事件的回顾期，重要事件可更久。0 不限时间。",
+        "type": "int",
+        "default": 7,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "inject.memory_sig_threshold",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "重要事件阈值",
+        "hint": "亲近度变化的绝对值达到此数时，延长回顾期。0 关闭延长。",
+        "type": "float",
+        "default": 1.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "inject.memory_sig_window_mult",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "重要事件回顾倍数",
+        "hint": "重要事件的回顾期乘以此数。1 与普通事件相同。",
+        "type": "float",
+        "default": 3.0,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "impression.interval",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "印象更新间隔（条）",
+        "hint": "积累此条数的评估记录后尝试更新，零变化计入、撤销不计。原文会发给模型，失败保留原印象。",
+        "type": "int",
+        "default": 8,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "impression.points_mode",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "分点记录印象",
+        "hint": "开启时合并相近要点并保留标签，关闭时汇总为一句话并更新标签。",
+        "type": "bool",
+        "default": false,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "judge.provider_id",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "印象汇总模型（可选）",
+        "hint": "留空使用宿主默认模型。汇总调用单独计费。",
+        "type": "string",
+        "default": "",
+        "options": [],
+        "special": "select_provider"
+      },
+      {
+        "path": "judge.timeout_sec",
+        "group": "memory",
+        "title": "印象与近期事件",
+        "label": "印象汇总超时（秒）",
+        "hint": "超时保留原印象。0 不设超时。",
+        "type": "int",
+        "default": 60,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "command.ranking_access",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "排行查询权限",
+        "hint": "仅主人按主人 QQ 名单核验，名单为空则无人可查。群内其他成员仍能看到已发出的榜单。",
+        "type": "string",
+        "default": "all",
+        "options": [
+          "all",
+          "master"
+        ],
+        "special": null
+      },
+      {
+        "path": "command.ranking_image",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "图片排行",
+        "hint": "展示昵称、QQ 头像和关系。生成失败时改用文字。",
+        "type": "bool",
+        "default": true,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "command.ranking_limit",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "排行显示人数",
+        "hint": "最多显示 10 人，超出按 10 人展示。",
+        "type": "int",
+        "default": 10,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "command.text_wake_enabled",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "文字查榜",
+        "hint": "用指定短语查询本群排行，遵守排行权限。",
+        "type": "bool",
+        "default": false,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "command.text_wake_ranking",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "查榜短语",
+        "hint": "多个短语用英文逗号分隔，须匹配整条消息。",
+        "type": "string",
+        "default": "好感排行,好感榜单,好感排名",
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "command.impression_mode",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "我的印象",
+        "hint": "可选择关闭、关系称谓或模型概括。模型概括使用当前会话模型，失败时显示关系称谓。支持指令和自然语言查询。",
+        "type": "string",
+        "default": "关闭",
+        "options": [
+          "关闭",
+          "输出关系称谓",
+          "大模型总结"
+        ],
+        "special": null
+      },
+      {
+        "path": "render.font_path",
+        "group": "commands",
+        "title": "查询与排行",
+        "label": "排行字体路径",
+        "hint": "留空或自定义字体不可用时，使用内置中文字体。",
+        "type": "string",
+        "default": "",
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "diagnostics.enabled",
+        "group": "diagnostics",
+        "title": "系统诊断",
+        "label": "记录系统诊断",
+        "hint": "记录评估与关系变化。",
+        "type": "bool",
+        "default": false,
+        "options": [],
+        "special": null
+      },
+      {
+        "path": "diagnostics.detail_level",
+        "group": "diagnostics",
+        "title": "系统诊断",
+        "label": "诊断详细程度",
+        "hint": "完整上下文会记录 Bond 观察到的回复请求。",
+        "type": "string",
+        "default": "assessment",
+        "options": [
+          "assessment",
+          "raw",
+          "evaluation",
+          "full"
+        ],
+        "special": null
+      },
+      {
+        "path": "diagnostics.max_size_mb",
+        "group": "diagnostics",
+        "title": "系统诊断",
+        "label": "诊断容量上限（MB）",
+        "hint": "所有 Bot 和数据空间合计，达到上限时清理旧记录。",
+        "type": "int",
+        "default": 100,
+        "options": [],
+        "special": null
+      }
+    ],
+    "values": {
+      "assessment.enabled": true,
+      "assessment.small_provider_id": "demo-initial",
+      "assessment.large_provider_id": "demo-review",
+      "assessment.assessment_mode": "tiered",
+      "group_whitelist": [
+        "800000101"
+      ],
+      "default_scope_mode": "per_group",
+      "master_ids": "",
+      "passive_familiarity": true,
+      "relation_mode": "galgame",
+      "ignored_bot_ids": [],
+      "decay.grace_days": 5.0,
+      "decay.maintenance_strategy": "independent",
+      "timezone": "Asia/Hong_Kong",
+      "inject.enabled": true,
+      "relation_title.enabled": false,
+      "relation_title.provider_id": "",
+      "relation_title.refresh_cooldown_hours": 12,
+      "relation_title.daily_generation_limit": 30,
+      "relation_title.generation_timeout_seconds": 30,
+      "relation_daily_caps.familiarity_up": 5,
+      "relation_daily_caps.familiarity_down": 0,
+      "passive_familiarity_rules.amount": 0.3,
+      "passive_familiarity_rules.ceiling": 60,
+      "passive_familiarity_rules.cooldown_minutes": 30,
+      "passive_familiarity_rules.window_minutes": 10,
+      "passive_familiarity_rules.member_limit": 3,
+      "familiarity_growth.under10": 1.5,
+      "familiarity_growth.under30": 1.2,
+      "familiarity_growth.under55": 0.8,
+      "familiarity_growth.under80": 0.5,
+      "familiarity_growth.under95": 0.3,
+      "familiarity_growth.at95": 0.15,
+      "decay.familiarity_enabled": true,
+      "decay.familiarity_half_life": 30,
+      "decay.familiarity_baseline": 10,
+      "relation_daily_caps.affinity_up": 10,
+      "relation_daily_caps.affinity_down": 8,
+      "economy.enabled": true,
+      "economy.noise_floor": 0.5,
+      "economy.negative_weight": 1.0,
+      "economy.same_day_decay": 0.25,
+      "economy.repair_threshold": 0.0,
+      "economy.repair_hours": 48,
+      "economy.repair_factor": 0.5,
+      "economy.repair_scale_high": 1.5,
+      "economy.repair_scale_low": 1.0,
+      "economy.level_mult.yanwu": 1,
+      "economy.level_mult.mosheng": 1,
+      "economy.level_mult.renshi": 1,
+      "economy.level_mult.youhao": 0.75,
+      "economy.level_mult.qinmi": 0.55,
+      "economy.level_mult.zhiyou": 0.35,
+      "economy.level_mult.zhiai": 0.2,
+      "decay.enabled": true,
+      "decay.half_life_base": 30,
+      "decay.half_life_growth": 1.0,
+      "decay.half_life_max": 120,
+      "decay.affinity_baseline": 0,
+      "decay.floor_enabled": true,
+      "relation_daily_caps.trust_up": 2,
+      "relation_daily_caps.trust_down": 8,
+      "decay.trust_enabled": true,
+      "decay.trust_half_life": 60,
+      "decay.trust_baseline": 20,
+      "inject.memory_count": 3,
+      "inject.memory_days": 7,
+      "inject.memory_sig_threshold": 1.0,
+      "inject.memory_sig_window_mult": 3.0,
+      "impression.interval": 8,
+      "impression.points_mode": false,
+      "judge.provider_id": "",
+      "judge.timeout_sec": 60,
+      "command.ranking_access": "all",
+      "command.ranking_image": true,
+      "command.ranking_limit": 10,
+      "command.text_wake_enabled": false,
+      "command.text_wake_ranking": "好感排行,好感榜单,好感排名",
+      "command.impression_mode": "关闭",
+      "render.font_path": "",
+      "diagnostics.enabled": false,
+      "diagnostics.detail_level": "assessment",
+      "diagnostics.max_size_mb": 100
+    },
+    "active_values": {
+      "assessment.enabled": true,
+      "assessment.small_provider_id": "demo-initial",
+      "assessment.large_provider_id": "demo-review",
+      "assessment.assessment_mode": "tiered",
+      "group_whitelist": [
+        "800000101"
+      ],
+      "default_scope_mode": "per_group",
+      "master_ids": "",
+      "passive_familiarity": true,
+      "relation_mode": "galgame",
+      "ignored_bot_ids": [],
+      "decay.grace_days": 5.0,
+      "decay.maintenance_strategy": "independent",
+      "timezone": "Asia/Hong_Kong",
+      "inject.enabled": true,
+      "relation_title.enabled": false,
+      "relation_title.provider_id": "",
+      "relation_title.refresh_cooldown_hours": 12,
+      "relation_title.daily_generation_limit": 30,
+      "relation_title.generation_timeout_seconds": 30,
+      "relation_daily_caps.familiarity_up": 5,
+      "relation_daily_caps.familiarity_down": 0,
+      "passive_familiarity_rules.amount": 0.3,
+      "passive_familiarity_rules.ceiling": 60,
+      "passive_familiarity_rules.cooldown_minutes": 30,
+      "passive_familiarity_rules.window_minutes": 10,
+      "passive_familiarity_rules.member_limit": 3,
+      "familiarity_growth.under10": 1.5,
+      "familiarity_growth.under30": 1.2,
+      "familiarity_growth.under55": 0.8,
+      "familiarity_growth.under80": 0.5,
+      "familiarity_growth.under95": 0.3,
+      "familiarity_growth.at95": 0.15,
+      "decay.familiarity_enabled": true,
+      "decay.familiarity_half_life": 30,
+      "decay.familiarity_baseline": 10,
+      "relation_daily_caps.affinity_up": 10,
+      "relation_daily_caps.affinity_down": 8,
+      "economy.enabled": true,
+      "economy.noise_floor": 0.5,
+      "economy.negative_weight": 1.0,
+      "economy.same_day_decay": 0.25,
+      "economy.repair_threshold": 0.0,
+      "economy.repair_hours": 48,
+      "economy.repair_factor": 0.5,
+      "economy.repair_scale_high": 1.5,
+      "economy.repair_scale_low": 1.0,
+      "economy.level_mult.yanwu": 1,
+      "economy.level_mult.mosheng": 1,
+      "economy.level_mult.renshi": 1,
+      "economy.level_mult.youhao": 0.75,
+      "economy.level_mult.qinmi": 0.55,
+      "economy.level_mult.zhiyou": 0.35,
+      "economy.level_mult.zhiai": 0.2,
+      "decay.enabled": true,
+      "decay.half_life_base": 30,
+      "decay.half_life_growth": 1.0,
+      "decay.half_life_max": 120,
+      "decay.affinity_baseline": 0,
+      "decay.floor_enabled": true,
+      "relation_daily_caps.trust_up": 2,
+      "relation_daily_caps.trust_down": 8,
+      "decay.trust_enabled": true,
+      "decay.trust_half_life": 60,
+      "decay.trust_baseline": 20,
+      "inject.memory_count": 3,
+      "inject.memory_days": 7,
+      "inject.memory_sig_threshold": 1.0,
+      "inject.memory_sig_window_mult": 3.0,
+      "impression.interval": 8,
+      "impression.points_mode": false,
+      "judge.provider_id": "",
+      "judge.timeout_sec": 60,
+      "command.ranking_access": "all",
+      "command.ranking_image": true,
+      "command.ranking_limit": 10,
+      "command.text_wake_enabled": false,
+      "command.text_wake_ranking": "好感排行,好感榜单,好感排名",
+      "command.impression_mode": "关闭",
+      "render.font_path": "",
+      "diagnostics.enabled": false,
+      "diagnostics.detail_level": "assessment",
+      "diagnostics.max_size_mb": 100
+    },
+    "providers": [
+      {
+        "id": "demo-initial",
+        "model": "合成初评模型"
+      },
+      {
+        "id": "demo-review",
+        "model": "合成复核模型"
+      }
+    ],
+    "revision": "demo-read-only"
+  },
+  "models": {
+    "configured": {
+      "enabled": true,
+      "small_provider_id": "demo-initial",
+      "large_provider_id": "demo-review",
+      "assessment_mode": "tiered",
+      "small_timeout_sec": 20,
+      "large_timeout_sec": 30,
+      "cooldown_sec": 120,
+      "per_user_daily_large_cap": 8,
+      "per_bot_daily_large_cap": 100,
+      "max_concurrent_assessments": 2,
+      "window_sec": 300,
+      "window_max_calls": 5,
+      "per_user_daily_small_cap": 30,
+      "per_bot_daily_small_cap": 300,
+      "context_turns": 6,
+      "context_chars": 4000,
+      "context_days": 7,
+      "context_events": 8
+    },
+    "active": {
+      "enabled": true,
+      "small_provider_id": "demo-initial",
+      "large_provider_id": "demo-review",
+      "assessment_mode": "tiered",
+      "small_timeout_sec": 20,
+      "large_timeout_sec": 30,
+      "cooldown_sec": 120,
+      "per_user_daily_large_cap": 8,
+      "per_bot_daily_large_cap": 100,
+      "max_concurrent_assessments": 2,
+      "window_sec": 300,
+      "window_max_calls": 5,
+      "per_user_daily_small_cap": 30,
+      "per_bot_daily_small_cap": 300,
+      "context_turns": 6,
+      "context_chars": 4000,
+      "context_days": 7,
+      "context_events": 8
+    },
+    "max_concurrent_assessments": 2,
+    "active_max_concurrent_assessments": 2,
+    "revision": "demo-read-only"
+  },
+  "assessment_stats": {
+    "calls": [
+      {
+        "day": "2026-11-10",
+        "group_id": "800000101",
+        "tier": "small",
+        "status": "ok",
+        "count": 6,
+        "tokens": 4800
+      },
+      {
+        "day": "2026-11-10",
+        "group_id": "800000101",
+        "tier": "small",
+        "status": "failed",
+        "count": 1,
+        "tokens": null
+      },
+      {
+        "day": "2026-11-10",
+        "group_id": "800000101",
+        "tier": "small",
+        "status": "timeout",
+        "count": 1,
+        "tokens": null
+      },
+      {
+        "day": "2026-11-10",
+        "group_id": "800000101",
+        "tier": "large",
+        "status": "ok",
+        "count": 2,
+        "tokens": 2600
+      },
+      {
+        "day": "2026-11-10",
+        "group_id": "800000101",
+        "tier": "large",
+        "status": "invalid",
+        "count": 1,
+        "tokens": 900
+      }
+    ],
+    "events": {
+      "accepted": 5,
+      "abstained": 1,
+      "failed": 1,
+      "timeout": 1
+    },
+    "currency_cost": null
+  },
+  "prompts": {
+    "behavior": "合成演示模板。结合当前人格，参考关系称谓与本群印象组织回复。",
+    "assessment": "合成演示模板。依据可信来源和当前互动判断事件，证据不足时弃权。"
+  },
+  "diagnostics": {
+    "enabled": false,
+    "detail_level": "assessment",
+    "size_available": true,
+    "disk_bytes": 0,
+    "total_disk_bytes": 0,
+    "max_bytes": 100000000,
+    "queued": 0,
+    "queued_bytes": 0,
+    "total_queued_bytes": 0,
+    "counters": {
+      "written": 0,
+      "dropped": 0,
+      "write_errors": 0
+    },
+    "gap": false
+  }
+}

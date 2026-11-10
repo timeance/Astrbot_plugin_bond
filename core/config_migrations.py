@@ -62,6 +62,32 @@ def migrate_saved_defaults(cfg: dict) -> list:
     if isinstance(passive, dict) and type(passive.get("enabled")) is bool:
         cfg["passive_familiarity"] = passive["enabled"]
         changed.append("passive_familiarity")
+    title = cfg.get("relation_title")
+    if isinstance(title, dict):
+        mode = title.get("mode")
+        if mode:
+            if mode not in {"fixed", "llm"}:
+                raise ValueError("旧称谓模式无效")
+            title["enabled"] = mode == "llm"
+            title["mode"] = ""
+            changed.extend(["relation_title.enabled", "relation_title.mode"])
+            # 仅旧模式下的已知默认额度升级为 30，保留新配置中有效的小额度。
+            for key, old, new in (
+                ("refresh_cooldown_hours", 6, 12),
+                ("daily_generation_limit", 10, 30),
+            ):
+                if type(title.get(key)) in (int, float) and title[key] == old:
+                    title[key] = new
+                    changed.append(f"relation_title.{key}")
+        # 存量越界值显式迁移并持久化，避免运行时静默忽略已保存的设置。
+        for key, minimum, maximum, default in (
+            ("refresh_cooldown_hours", 12, 720, 12),
+            ("daily_generation_limit", 0, 30, 30),
+        ):
+            value = title.get(key)
+            if type(value) in (int, float) and not minimum <= value <= maximum:
+                title[key] = default
+                changed.append(f"relation_title.{key}")
     levels = cfg.get("levels")
     if not isinstance(levels, dict):
         return changed

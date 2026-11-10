@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc"><title id="title">三个维度，理解不同的相处状态</title><desc id="desc">熟悉度、亲近度、信任度各分五档，125种状态组合对应75个关系称谓。关系资料供当前人格参考；后台评估与印象更新各自说明，不表示串行执行。</desc><style>text { font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }</style>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc"><title id="title">三个维度，理解不同的相处状态</title><desc id="desc">熟悉度、亲近度、信任度各分五档，125种主状态结合局部细分提供76个关系称谓。关系资料供当前人格参考；后台评估与印象更新各自说明，不表示串行执行。</desc><style>text { font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }</style>
 <rect x="1" y="1" width="1198" height="758" rx="18" fill="#EFF3FA" stroke="#CFDCEB"/>
 <text x="36" y="43" font-size="14" font-weight="600" fill="#1B4480">BOND · 关系好感系统</text>
 <text x="36" y="88" font-size="28" font-weight="700" fill="#10213A">三个维度，理解不同的相处状态</text>
@@ -10,7 +10,7 @@
 <rect x="420" y="146" width="360" height="572" rx="12" fill="#FAFCFF" stroke="#CFDCEB"/>
 <path d="M440 146h70" stroke="#1B4480" stroke-width="3" stroke-linecap="round"/>
 <text x="440" y="180" font-size="20" font-weight="700" fill="#10213A">02  理解当前关系</text>
-<text x="440" y="207" font-size="14" font-weight="400" fill="#465978">125 种组合，对应 75 个中文称谓</text>
+<text x="440" y="207" font-size="14" font-weight="400" fill="#465978">125 种主状态，76 个中文称谓</text>
 <rect x="804" y="146" width="360" height="572" rx="12" fill="#FAFCFF" stroke="#CFDCEB"/>
 <path d="M824 146h70" stroke="#9E7322" stroke-width="3" stroke-linecap="round"/>
 <text x="824" y="180" font-size="20" font-weight="700" fill="#10213A">03  让人格自然表达</text>

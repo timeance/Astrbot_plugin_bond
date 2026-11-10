@@ -239,6 +239,37 @@ class AssessmentService:
             )
         remaining = max(0, cfg.context_chars - (len(reply["text"]) if reply else 0))
         bounded_events, bounded_turns = [], []
+        bounded_boundary = []
+        boundary = await self.storage.boundary_evidence_context(
+            self.favor.group_key(interaction.group_id),
+            interaction.user_id,
+            origin_group_id=interaction.group_id,
+        )
+        # 固定14天证据窗口独立于普通聊天回看天数；仍受总字符预算约束。
+        for item in boundary:
+            anchor = dict(
+                role="bot",
+                message_id=item["reference_id"],
+                text=item["reference_excerpt"],
+                ts=item["reference_at"],
+                source_event_id=item["event_id"],
+            )
+            add_anchor = (
+                item["event_type"] == "boundary_respected"
+                and not item["invalidated"]
+                and not item["reversed"]
+                and not any(
+                    turn["message_id"] == anchor["message_id"] for turn in bounded_turns
+                )
+            )
+            cost = len(json.dumps(item, ensure_ascii=False)) + (
+                len(json.dumps(anchor, ensure_ascii=False)) if add_anchor else 0
+            )
+            if cost <= remaining:
+                bounded_boundary.append(item)
+                if add_anchor:
+                    bounded_turns.append(anchor)
+                remaining -= cost
         # 证据摘要跨日保留优先级，余量用于最近相关发言；不截断当前证据。
         for item in scored:
             cost = len(json.dumps(item, ensure_ascii=False))
@@ -246,6 +277,8 @@ class AssessmentService:
                 bounded_events.append(item)
                 remaining -= cost
         for item in reversed(turns[-cfg.context_turns :] if cfg.context_turns else []):
+            if any(turn["message_id"] == item["message_id"] for turn in bounded_turns):
+                continue
             cost = len(json.dumps(item, ensure_ascii=False))
             if cost <= remaining:
                 bounded_turns.append(item)
@@ -260,10 +293,12 @@ class AssessmentService:
                     group_id=interaction.group_id,
                     sender_id=interaction.user_id,
                     message_id=interaction.message_id,
+                    observed_at=time.time(),
                     reply=reply,
                 ),
                 recent_turns=list(reversed(bounded_turns)),
                 scored_events=bounded_events,
+                boundary_evidence=bounded_boundary,
             ),
             ensure_ascii=False,
         )

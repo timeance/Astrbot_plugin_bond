@@ -882,6 +882,15 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
   color: var(--xx-ink-3);
   border-color: var(--xx-line);
 }
+.xx-decay-status {
+  gap: 3px;
+  padding-inline: 5px;
+  white-space: nowrap;
+}
+.xx-decay-axis { font-weight: 600; }
+.xx-decay-familiarity { color: var(--xx-sage); }
+.xx-decay-affinity { color: var(--xx-warm); }
+.xx-decay-trust { color: var(--xx-plum); }
 
 .xx-empty {
   text-align: center;

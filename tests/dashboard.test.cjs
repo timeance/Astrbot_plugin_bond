@@ -487,6 +487,60 @@ for(const [key,value] of [['window_sec',0],['window_max_calls',1.5],['per_user_d
  await ui.saveModels();assert.equal(pending.length,0);assert.equal(ui.modelNoticeError.value,true);
 });
 
+test('title controls display the same hard boundaries as the host schema',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ const input=source.match(/<input[^\n]+v-else-if="field.type === 'int'[^\n]+>/)[0];
+ const minimum=input.match(/:min="([^"]+)"/)[1];
+ const maximum=input.match(/:max="([^"]+)"/)[1];
+ const schema=JSON.parse(fs.readFileSync(path.join(__dirname,'../_conf_schema.json'),'utf8'));
+ for(const [key,lo,hi] of [['refresh_cooldown_hours',12,720],['daily_generation_limit',0,30]]){
+  const field={path:'relation_title.'+key};
+  assert.equal(vm.runInNewContext(minimum,{field}),lo);
+  assert.equal(vm.runInNewContext(maximum,{field}),hi);
+  assert.ok(schema.relation_title.items[key].hint.includes(`范围 ${lo}～${hi}`));
+ }
+ assert.match(schema.relation_title.items.daily_generation_limit.hint,/0 暂停/);
+});
+
+test('rejected title settings keep the draft and show the save error',async()=>{
+ const {ui,pending}=harness();
+ const key='relation_title.daily_generation_limit';
+ ui.detailSettings.value={revision:'before',values:{[key]:30},fields:[]};
+ ui.detailValues.value={[key]:31};
+ const save=ui.saveSettings();
+ pending[0].resolve({success:false,error:'称谓每日调用上限应为 0..30'});
+ await save;
+ assert.equal(ui.detailNoticeError.value,true);
+ assert.match(ui.detailNotice.value,/0\.\.30/);
+ assert.equal(ui.detailValues.value[key],31);
+ assert.equal(ui.detailSettings.value.values[key],30);
+ assert.equal(ui.detailSettings.value.revision,'before');
+ assert.equal(ui.detailDirty.value,true);
+ assert.equal(ui.detailLoading.value,false);
+});
+
+test('running baseline summary shows symmetric affinity and trust amplitudes',()=>{
+ const {ui}=harness();
+ ui.detailSettings.value={active_values:{'decay.familiarity_baseline':20,'decay.affinity_baseline':15,'decay.trust_baseline':20}};
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ const expression=source.match(/<td>{{ (cap\.key[^\n]+?) }}{{ activeRuleSummary\.baselines\[cap\.key\] }}<\/td>/)[1];
+ const display=key=>vm.runInNewContext(expression,{cap:{key},activeRuleSummary:ui.activeRuleSummary.value})+ui.activeRuleSummary.value.baselines[key];
+ assert.equal(display('familiarity'),'20');
+ assert.equal(display('affinity'),'±15');
+ assert.equal(display('trust'),'±20');
+ ui.detailSettings.value.active_values['decay.trust_baseline']=7;
+ assert.equal(display('trust'),'±7');
+ ui.detailSettings.value.active_values['decay.trust_baseline']=0;
+ assert.equal(display('trust'),'0');
+ const schema=JSON.parse(fs.readFileSync(path.join(__dirname,'../_conf_schema.json'),'utf8'));
+ const fields=schema.decay.items;
+ assert.equal(fields.trust_baseline.description,'信任度对称基线');
+ for(const key of ['trust_baseline','trust_enabled','trust_half_life']){
+  assert.match(fields[key].hint,/同号基线/);
+  assert.doesNotMatch(fields[key].hint,/恢复至 0|距 0/);
+ }
+});
+
 test('rule and assessment controls keep a single entry and explain saved versus runtime',()=>{
  const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
  assert.doesNotMatch(source,/fillRecommendedRules|填入写实推荐|填入 Galgame 推荐|v-model.number="modelConfig.cooldown_sec"/);
@@ -495,7 +549,7 @@ test('rule and assessment controls keep a single entry and explain saved versus 
  assert.match(source,/activeRuleSummary\[cap.key\]/);
  assert.match(source,/activeRuleSummary.baselines\[cap.key\]/);
  assert.match(source,/field.path.endsWith\('_baseline'\) \? 100 : undefined"/);
- assert.match(source,/历史不再计分/);assert.match(source,/不同互动可分别评分/);
+ assert.match(source,/历史不重复计分/);assert.match(source,/不同互动可分别评分/);
  assert.match(source,/保存并重载|保存后重载/);
  assert.doesNotMatch(source,/<details open|:open="group.group/);
  assert.match(source,/aria-describedby="'eval-hint-' \+ field.key"/);
@@ -1047,4 +1101,61 @@ test('scope changes after confirming a member undo ignore its completion and pre
  pending[1].resolve({success:true});await done;
  assert.equal(ui.selectedLog.value,current);assert.equal(ui.undoPreview.value,null);
  assert.equal(reads.filter(row=>row.endpoint==='logs').length,count);
+});
+
+
+test('decay axes follow the API in FAT order and temporary relations take priority',()=>{
+ const {ui}=harness();
+ const axes=['familiarity','affinity','trust'];
+ for(let mask=0;mask<8;mask++){
+  const selected=axes.filter((_,index)=>mask&(1<<index));
+  const row={decaying_dimensions:[...selected].reverse(),decayed:false,trust:-50};
+  assert.deepEqual(Array.from(ui.decayAxes(row)),selected);
+  assert.deepEqual(Array.from(ui.decayAxes({...row,temporary:{active:true}})),[]);
+  assert.deepEqual(Array.from(ui.decayAxes({...row,temporary:{active:false}})),selected);
+ }
+ assert.deepEqual(Array.from(ui.decayAxes({decaying_dimensions:['trust','trust','unknown','familiarity']})),['familiarity','trust']);
+ for(const decaying_dimensions of [undefined,null,'trust',{}])assert.deepEqual(Array.from(ui.decayAxes({decaying_dimensions,decayed:true,idle_days:20})),[]);
+ assert.deepEqual(Array.from(ui.decayAxes({decaying_dimensions:['trust'],trust:-80})),['trust']);
+});
+
+test('overview decay labels keep idle days, three-axis shorthand and existing theme colors',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ const cell=source.split('<td class="xx-overview-status-cell">')[1].split('</td>')[0];
+ assert.match(cell,/v-if="u\.temporary\?\.active"[^>]*>临时关系/);
+ assert.match(cell,/v-else-if="decayAxes\(u\)\.length"/);
+ assert.match(cell,/v-if="decayAxes\(u\)\.length < 3"/);
+ assert.match(cell,/v-for="axis in decayAxes\(u\)"/);
+ assert.match(cell,/familiarity:'F',affinity:'A',trust:'T'/);
+ assert.match(cell,/<span>衰减中<\/span>/);
+ assert.match(cell,/u\.idle_days != null && u\.idle_days >= 3/);
+ assert.match(cell,/u\.idle_days }}天未动/);
+ assert.match(cell,/>—<\/span>/);
+ assert.doesNotMatch(cell,/u\.decayed|overflow|scroll/);
+ const css=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.css'),'utf8');
+ for(const [axis,color] of [['familiarity','sage'],['affinity','warm'],['trust','plum']])assert.ok(css.includes(`.xx-decay-${axis} { color: var(--xx-${color}); }`));
+ assert.match(css,/\.xx-decay-status\s*\{[^}]*white-space: nowrap;/);
+});
+
+test('title model follows review selection and reports a missing model without changing drafts',()=>{
+ const {ui,pending,reads}=harness();
+ assert.equal(ui.providerPlaceholder('relation_title.provider_id'),'跟随复核模型');
+ assert.equal(ui.providerPlaceholder('judge.provider_id'),'跟随宿主默认模型');
+ assert.equal(ui.providerPlaceholder('assessment.large_provider_id'),'不使用复核模型');
+ ui.detailValues.value={'relation_title.enabled':true,'relation_title.provider_id':'','assessment.large_provider_id':''};
+ const before=JSON.stringify(ui.detailValues.value);
+ assert.equal(ui.titleProviderMissing.value,true);
+ assert.equal(JSON.stringify(ui.detailValues.value),before);
+ ui.detailValues.value['assessment.large_provider_id']='review-model';
+ assert.equal(ui.titleProviderMissing.value,false);
+ ui.detailValues.value['assessment.large_provider_id']='   ';
+ ui.detailValues.value['relation_title.provider_id']='chosen-title-model';
+ assert.equal(ui.titleProviderMissing.value,false);
+ ui.detailValues.value['relation_title.provider_id']='';
+ ui.detailValues.value['relation_title.enabled']=false;
+ assert.equal(ui.titleProviderMissing.value,false);
+ assert.equal(pending.length,0);assert.equal(reads.length,0);
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ assert.match(source,/field\.path === 'relation_title\.provider_id' && titleProviderMissing/);
+ assert.ok(source.includes('请配置复核模型或选择称谓模型。'));
 });

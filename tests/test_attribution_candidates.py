@@ -129,6 +129,7 @@ def test_provider_inputs_responses_and_call_counts_are_unchanged(report):
                     "trusted_metadata",
                     "recent_turns",
                     "scored_events",
+                    "boundary_evidence",
                 }
                 for c in row["provider_transcript"]
             )

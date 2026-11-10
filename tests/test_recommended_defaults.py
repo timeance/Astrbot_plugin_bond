@@ -77,8 +77,9 @@ def test_new_defaults_and_explicit_custom_settings():
             encoding="utf-8"
         )
     )
-    for name in ("assessment", "inject", "diagnostics", "coupling"):
+    for name in ("assessment", "relation_title", "diagnostics", "coupling"):
         assert schema[name]["items"]["enabled"]["default"] is False
+    assert schema["inject"]["items"]["enabled"]["default"] is True
     assert schema["decay"]["items"]["familiarity_enabled"]["default"] is True
     assert schema["decay"]["items"]["familiarity_half_life"]["default"] == 30
     assert schema["decay"]["items"]["half_life_base"]["default"] == 30

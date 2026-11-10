@@ -49,6 +49,7 @@ class EventType(str, Enum):
     VERIFIED_CORRECTION = "verified_correction"
     PROMISE_KEPT = "promise_kept"
     REPAIR_ACTION = "repair_action"
+    BOUNDARY_RESPECTED = "boundary_respected"
     BOUNDARY_VIOLATION = "boundary_violation"
     REPEATED_PRESSURE = "repeated_pressure"
     DELIBERATE_DECEPTION = "deliberate_deception"
@@ -61,6 +62,7 @@ TRUST_EVENTS = frozenset(
         "verified_correction",
         "promise_kept",
         "repair_action",
+        "boundary_respected",
         "boundary_violation",
         "repeated_pressure",
         "deliberate_deception",
@@ -83,6 +85,8 @@ DEFAULT_RULES: dict[str, dict[str, float]] = {
     EventType.VERIFIED_CORRECTION: {"trust": 0.5},
     EventType.PROMISE_KEPT: {"trust": 0.5},
     EventType.REPAIR_ACTION: {"trust": 0.5},
+    # 此值仅在存储事务确认三件未消费证据及冷却后发放。
+    EventType.BOUNDARY_RESPECTED: {"trust": 1.0},
     EventType.BOUNDARY_VIOLATION: {"trust": -1.0},
     EventType.REPEATED_PRESSURE: {"trust": -2.0},
     EventType.DELIBERATE_DECEPTION: {"trust": -4.0},

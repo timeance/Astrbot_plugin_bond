@@ -121,7 +121,7 @@ class FavorService:
             from ..core.relation_lexicon import LEXICON_VERSION
 
             self._diagnostic_config = dict(
-                policy_version="0.6.0",
+                policy_version="0.7.0",
                 lexicon_version=LEXICON_VERSION,
                 config_hash=hashlib.sha256(
                     json.dumps(
@@ -355,7 +355,7 @@ class FavorService:
             grace_days=self._decay_grace_days,
         )
 
-    def _effective_record(self, rec, now=None):
+    def _effective_record(self, rec, now=None, *, decaying=None):
         """同一记录按结算时点和维护截止点读取；读取不移动锚点或托底参考。"""
         now = time.time() if now is None else now
         result = {}
@@ -418,6 +418,10 @@ class FavorService:
             # 数值已在地板上时，分段结算仍须停在同一地板，不能再次向下衰减。
             if floor is not None and value >= floor > target:
                 result[key] = max(result[key], floor)
+            # 状态表示此刻仍在向停止点变化，不依赖显示精度或历史累计差值。
+            stop = floor if floor is not None and value >= floor > target else target
+            if decaying is not None and now > start and result[key] != stop:
+                decaying.append(key)
         return result
 
     def _effective_affinity_raw(self, stored, updated_at, half_life=10.0):
@@ -468,14 +472,18 @@ class FavorService:
             ),
         )
 
-    async def get(self, group_id: str, user_id: str) -> FavorRecord:
+    async def get(self, group_id: str, user_id: str, *, decaying=None) -> FavorRecord:
         """读取记录；无记录时返回默认值（不落库）。返回的是有效好感度（含时间衰减）。"""
         group_id = self.group_key(group_id)
         temporary = await self._storage.override_state(group_id, user_id)
         rec = await self._storage.get(group_id, user_id)
-        return self._snapshot_record(group_id, user_id, rec, temporary, time.time())
+        return self._snapshot_record(
+            group_id, user_id, rec, temporary, time.time(), decaying=decaying
+        )
 
-    def _snapshot_record(self, group_id, user_id, rec, temporary, now):
+    def _snapshot_record(
+        self, group_id, user_id, rec, temporary, now, *, decaying=None
+    ):
         """只投影返回副本；普通查询与消息快照共用默认值、衰减和临时关系语义。"""
         if rec is None:
             rec = FavorRecord(
@@ -485,7 +493,9 @@ class FavorService:
                 updated_at=0.0,
             )
         else:
-            current = self._effective_record(rec, now)
+            current = self._effective_record(
+                rec, now, decaying=decaying if not temporary["active"] else None
+            )
             rec.favor = round1(current["affinity"])
             rec.trust = round1(current["trust"])
             rec.familiarity = round1(current["familiarity"])
@@ -626,6 +636,14 @@ class FavorService:
                 event_id,
             ):
                 raise ValueError("信任事件需要对应成员的已核对证据")
+            if not all(
+                (
+                    trust_evidence.behavior_key,
+                    trust_evidence.current_key,
+                    trust_evidence.fingerprint,
+                )
+            ):
+                raise ValueError("信任事件缺少稳定行为来源")
             # 来源标识用于管理员审计；公开查询不暴露流水证据。
             import hashlib
 
@@ -702,6 +720,7 @@ class FavorService:
             day_start=self._day_start(),
             day_end=self._day_end(),
             origin_group_id=str(group_id),
+            trust_evidence=trust_evidence,
         )
 
         self._diagnose_change(
@@ -879,10 +898,15 @@ class FavorService:
         out: list[dict] = []
         names = await self._storage.member_names()
         for stored in recs:
-            r = await self.get(stored.group_id, stored.user_id)
+            decaying = []
+            r = await self.get(stored.group_id, stored.user_id, decaying=decaying)
             eff = r.favor
             last_maintained = self.last_maintained_at(r)
             idle = self.idle_days(r, now)
+            temporary = await self.temporary_state(r.group_id, r.user_id)
+            decaying = [
+                key for key in ("familiarity", "affinity", "trust") if key in decaying
+            ]
             out.append(
                 {
                     "group_id": r.group_id,
@@ -893,14 +917,9 @@ class FavorService:
                     "trust": r.trust,
                     "relation_title": self._relation_title(r.familiarity, eff, r.trust),
                     "stored_favor": round1(stored.favor),
-                    "decayed": (
-                        round1(stored.favor) != eff
-                        or round1(stored.familiarity) != r.familiarity
-                        or round1(stored.trust) != r.trust
-                    )
-                    and not (await self.temporary_state(r.group_id, r.user_id))[
-                        "active"
-                    ],
+                    "decayed": bool(decaying),
+                    "decaying_dimensions": decaying,
+                    "temporary": temporary,
                     "level": self.level_of(eff).name,
                     "relationship": (
                         self.relationship_label(r.relationship)

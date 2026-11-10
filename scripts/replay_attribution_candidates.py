@@ -208,8 +208,13 @@ async def run_arm(runtime, arm, fixture):
             "trusted_metadata",
             "recent_turns",
             "scored_events",
+            "boundary_evidence",
         }
-        assert not payload["recent_turns"] and not payload["scored_events"]
+        assert (
+            not payload["recent_turns"]
+            and not payload["scored_events"]
+            and not payload["boundary_evidence"]
+        )
         assert payload["trusted_metadata"]["bot_id"] == bot
         assert payload["trusted_metadata"]["sender_id"] == payload["sender"]
         assert prompt == SYSTEM_PROMPT + TRUST_CONTRACT + "\n输入：" + json.dumps(

@@ -36,7 +36,8 @@ def test_defaults_and_hidden_fields_preserve_schema():
     data = snapshot({})
     for field in data["fields"]:
         validate_patch({field["path"]: data["values"][field["path"]]})
-    assert data["values"]["inject.enabled"] is False
+    assert data["values"]["inject.enabled"] is True
+    assert data["values"]["relation_title.enabled"] is False
     assert data["values"]["assessment.enabled"] is False
     assert "judge.enabled" not in data["values"]
 
@@ -118,7 +119,6 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
         "default_scope_mode",
         "master_ids",
         "passive_familiarity",
-        "inject.enabled",
         "relation_mode",
         "ignored_bot_ids",
         "decay.grace_days",
@@ -134,11 +134,14 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
     ):
         assert by_path[path]["special"] == "select_provider"
     assert by_path["inject.memory_count"]["group"] == "memory"
-    assert by_path["passive_familiarity"]["label"] == "眼熟模式"
-    assert (
-        by_path["passive_familiarity"]["hint"]
-        == "根据群员的活跃程度被动提升熟悉度，也就是刷脸。"
+    personal = [f["path"] for f in definitions if f["group"] == "titles"]
+    assert personal[:2] == ["inject.enabled", "relation_title.enabled"]
+    assert "relation_title.mode" not in by_path
+    assert all(
+        f["title"] == "个性化功能" for f in definitions if f["group"] == "titles"
     )
+    assert by_path["passive_familiarity"]["label"] == "眼熟模式"
+    assert by_path["passive_familiarity"]["hint"] == "群员活跃时被动增加熟悉度。"
 
 
 def test_host_visibility_and_webui_wording_agree():
@@ -170,7 +173,7 @@ def test_host_visibility_and_webui_wording_agree():
             not in {"decay.grace_days", "decay.maintenance_strategy", "timezone"}
         )
         or f["path"].startswith("command.")
-        or f["path"].startswith("relation_title.")
+        or f["group"] == "titles"
     }
     for field in definitions:
         node = schema
@@ -430,7 +433,7 @@ def test_concurrent_editors_reject_second_save_after_lock_acquisition():
         revision = runtime.detailed_settings()["revision"]
         async with runtime._lock:
             details = asyncio.create_task(
-                runtime.save_detailed_settings({"inject.enabled": True}, revision)
+                runtime.save_detailed_settings({"inject.enabled": False}, revision)
             )
             models = asyncio.create_task(
                 runtime.save_assessment_settings({"cooldown_sec": 90}, 5, revision)
@@ -440,7 +443,7 @@ def test_concurrent_editors_reject_second_save_after_lock_acquisition():
         result = await asyncio.gather(details, models, return_exceptions=True)
         assert isinstance(result[0], dict)
         assert isinstance(result[1], SettingsRevisionError)
-        assert config == {"inject": {"enabled": True}}
+        assert config == {"inject": {"enabled": False}}
 
     asyncio.run(run())
 
@@ -874,3 +877,276 @@ def test_passive_parameters_save_reload_and_report_pending_runtime_values(member
         assert config == before
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("mode,enabled", [("fixed", False), ("llm", True)])
+@pytest.mark.parametrize("cooldown,limit", [(6, 10), (8, 14), (24, 14), (48, 0)])
+def test_legacy_title_mode_migrates_once_and_preserves_custom_values(
+    mode, enabled, cooldown, limit
+):
+    from astrbot_plugin_bond.core.config_migrations import migrate_saved_defaults
+    from astrbot_plugin_bond.core.relation_titles import TitleConfig
+
+    config = {
+        "trust_config_version": 1,
+        "inject": {"enabled": False},
+        "relation_title": {
+            "mode": mode,
+            "enabled": not enabled,
+            "provider_id": "chosen-title-model",
+            "refresh_cooldown_hours": cooldown,
+            "daily_generation_limit": limit,
+            "generation_timeout_seconds": 45,
+        },
+    }
+    changed = migrate_saved_defaults(config)
+    title = config["relation_title"]
+    assert title["enabled"] is enabled
+    assert title["mode"] == ""
+    assert title["refresh_cooldown_hours"] == max(12, cooldown)
+    assert title["daily_generation_limit"] == (30 if limit == 10 else limit)
+    assert title["provider_id"] == "chosen-title-model"
+    assert title["generation_timeout_seconds"] == 45
+    assert config["inject"]["enabled"] is False
+    assert changed[:2] == ["relation_title.enabled", "relation_title.mode"]
+    assert TitleConfig.from_config(title).enabled is enabled
+    assert migrate_saved_defaults(config) == []
+    title.update(refresh_cooldown_hours=24, daily_generation_limit=10)
+    assert migrate_saved_defaults(config) == []
+    assert title["refresh_cooldown_hours"] == 24
+    assert title["daily_generation_limit"] == 10
+
+
+@pytest.mark.parametrize("mode", [None, ""])
+@pytest.mark.parametrize(
+    "cooldown,limit,expected",
+    [
+        (1, 100, (12, 30)),
+        (6, 10, (12, 10)),
+        (721, -1, (12, 30)),
+        (12, 30, (12, 30)),
+        (24, 14, (24, 14)),
+        (720, 0, (720, 0)),
+    ],
+)
+def test_title_boundaries_migrate_without_legacy_mode_and_report_changes(
+    mode, cooldown, limit, expected
+):
+    from astrbot_plugin_bond.core.config_migrations import migrate_saved_defaults
+
+    title = {
+        "enabled": False,
+        "provider_id": "chosen",
+        "refresh_cooldown_hours": cooldown,
+        "daily_generation_limit": limit,
+    }
+    if mode is not None:
+        title["mode"] = mode
+    config = {"trust_config_version": 1, "relation_title": title}
+    changed = migrate_saved_defaults(config)
+    assert changed == [
+        f"relation_title.{key}"
+        for key, before, after in zip(
+            ("refresh_cooldown_hours", "daily_generation_limit"),
+            (cooldown, limit),
+            expected,
+        )
+        if before != after
+    ]
+    assert title["refresh_cooldown_hours"] == expected[0]
+    assert title["daily_generation_limit"] == expected[1]
+    assert title["enabled"] is False
+    assert title["provider_id"] == "chosen"
+    assert migrate_saved_defaults(config) == []
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_title_migration_failed_save_rolls_back_and_can_retry(tmp_path, legacy):
+    from astrbot_plugin_bond.services.config_upgrade import upgrade_config
+
+    config = Config(
+        trust_config_version=1,
+        inject={"enabled": False},
+        relation_title={
+            "mode": "llm" if legacy else "",
+            "enabled": False,
+            "refresh_cooldown_hours": 6 if legacy else 1,
+            "daily_generation_limit": 10 if legacy else 100,
+        },
+    )
+    before = copy.deepcopy(dict(config))
+    config.fail = True
+    with pytest.raises(OSError):
+        upgrade_config(config, tmp_path)
+    assert config == before
+    config.fail = False
+    changed = upgrade_config(config, tmp_path)
+    assert "relation_title.refresh_cooldown_hours" in changed
+    assert "relation_title.daily_generation_limit" in changed
+    assert config["relation_title"] == {
+        "mode": "",
+        "enabled": legacy,
+        "refresh_cooldown_hours": 12,
+        "daily_generation_limit": 30,
+    }
+    assert config.saved == config
+    assert upgrade_config(config, tmp_path) == []
+
+
+@pytest.mark.parametrize("cooldown,limit", [(12, 30), (24, 10), (720, 0)])
+def test_title_boundary_settings_save_exact_values_and_roll_back(cooldown, limit):
+    async def run():
+        config = Config(relation_title={"mode": "", "enabled": False})
+        runtime = RuntimeService(None, config, None)
+        patch = {
+            "relation_title.refresh_cooldown_hours": cooldown,
+            "relation_title.daily_generation_limit": limit,
+        }
+        before = copy.deepcopy(dict(config))
+        revision = runtime.detailed_settings()["revision"]
+        config.fail = True
+        with pytest.raises(OSError):
+            await runtime.save_detailed_settings(patch, revision)
+        assert config == before
+        assert runtime.detailed_settings()["revision"] == revision
+        config.fail = False
+        saved = await runtime.save_detailed_settings(patch, revision)
+        assert {key: saved["values"][key] for key in patch} == patch
+        assert config["relation_title"]["refresh_cooldown_hours"] == cooldown
+        assert config["relation_title"]["daily_generation_limit"] == limit
+        assert config.saved == config
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"relation_title.refresh_cooldown_hours": 1},
+        {"relation_title.refresh_cooldown_hours": 721},
+        {"relation_title.daily_generation_limit": 31},
+        {"relation_title.daily_generation_limit": -1},
+    ],
+)
+def test_title_out_of_range_save_is_rejected_without_mutation(patch):
+    async def run():
+        config = Config(relation_title={"mode": "", "enabled": False})
+        runtime = RuntimeService(None, config, None)
+        before = copy.deepcopy(dict(config))
+        revision = runtime.detailed_settings()["revision"]
+        with pytest.raises(ValueError, match="范围|上限"):
+            await runtime.save_detailed_settings(
+                {"inject.enabled": False, **patch}, revision
+            )
+        assert config == before
+        assert runtime.detailed_settings()["revision"] == revision
+        assert not hasattr(config, "saved")
+
+    asyncio.run(run())
+
+
+def test_personalization_defaults_have_one_switch_and_share_host_storage():
+    from dataclasses import asdict
+    from astrbot_plugin_bond.core.relation_titles import TitleConfig
+
+    schema = json.loads(
+        (Path(__file__).parents[1] / "_conf_schema.json").read_text(encoding="utf-8")
+    )
+    assert schema["inject"]["description"] == "个性化功能"
+    assert list(schema).index("relation_title") == list(schema).index("inject") + 1
+    title = schema["relation_title"]["items"]
+    assert title["mode"]["invisible"] is True
+    assert title["mode"]["default"] == ""
+    assert "options" not in title["mode"]
+    for key, value in asdict(TitleConfig()).items():
+        assert title[key]["default"] == value
+    assert snapshot({"inject": {"enabled": False}})["values"]["inject.enabled"] is False
+
+    async def run():
+        config = Config(
+            relation_title={"enabled": False, "mode": "", "provider_id": "chosen"}
+        )
+        runtime = RuntimeService(None, config, None)
+        patch = {"inject.enabled": False, "relation_title.enabled": True}
+        revision = runtime.detailed_settings()["revision"]
+        before = copy.deepcopy(dict(config))
+        config.fail = True
+        with pytest.raises(OSError):
+            await runtime.save_detailed_settings(patch, revision)
+        assert config == before
+        assert runtime.detailed_settings()["revision"] == revision
+        config.fail = False
+        saved = await runtime.save_detailed_settings(patch, revision)
+        assert config["inject"]["enabled"] is False
+        assert config["relation_title"] == {
+            "enabled": True,
+            "mode": "",
+            "provider_id": "chosen",
+        }
+        assert saved["active_values"]["relation_title.enabled"] is False
+        assert saved["values"]["relation_title.enabled"] is True
+        assert (
+            RuntimeService(None, config, None).detailed_settings()["active_values"][
+                "relation_title.enabled"
+            ]
+            is True
+        )
+        assert config.saved == config
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"relation_title.mode": "llm"},
+        {"relation_title.mode": ""},
+        {"relation_title.enabled": "false"},
+        {"relation_title.enabled": 0},
+        {"relation_title.refresh_cooldown_hours": 0},
+        {"relation_title.refresh_cooldown_hours": 11.9},
+        {"relation_title.refresh_cooldown_hours": 721},
+        {"relation_title.daily_generation_limit": True},
+        {"relation_title.daily_generation_limit": -1},
+        {"relation_title.daily_generation_limit": 1.5},
+        {"relation_title.daily_generation_limit": 31},
+        {"relation_title.daily_generation_limit": 1001},
+        {"relation_title.generation_timeout_seconds": 0},
+    ],
+)
+def test_invalid_title_settings_are_rejected(patch):
+    with pytest.raises(ValueError):
+        validate_patch(patch)
+
+
+@pytest.mark.parametrize(
+    "inject,enabled",
+    [(None, True), ({}, True), ({"enabled": False}, False), ({"enabled": True}, True)],
+)
+def test_production_assembly_preserves_injection_choice(inject, enabled):
+    import ast
+
+    tree = ast.parse(
+        (Path(__file__).parents[1] / "main.py").read_text(encoding="utf-8")
+    )
+    factory = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_build_deps"
+    )
+    deps = next(
+        node
+        for node in ast.walk(factory)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Deps"
+    )
+    expression = next(
+        item.value for item in deps.keywords if item.arg == "inject_enabled"
+    )
+    actual = eval(
+        compile(ast.Expression(expression), "<production injection config>", "eval"),
+        {"inject_cfg": inject or {}},
+    )
+    assert actual is enabled
+    assert snapshot({"inject": inject})["values"]["inject.enabled"] is enabled

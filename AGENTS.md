@@ -2,7 +2,7 @@
 
 ## 目标与范围
 
-本项目为 `astrbot_plugin_bond`，面向 AstrBot 社区。当前已实现 Bot/作用域隔离、三维关系、分级评估、人格适配与原生管理面板；LivingMemory 集成已按维护者决策移除。使用范围见 `README.md`，验证记录见 `docs/ACCEPTANCE.md`。默认关闭评估、注入及麦麦联动，不宣称可生产使用。
+本项目为 `astrbot_plugin_bond`，面向 AstrBot 社区。当前已实现 Bot/作用域隔离、三维关系、分级评估、人格适配与原生管理面板；LivingMemory 集成已按维护者决策移除。使用范围见 `README.md`，验证记录见 `docs/ACCEPTANCE.md`。新安装默认开启关系注入，默认关闭自动评估、动态称谓及麦麦联动，保留旧配置的明确选择。
 
 用户已授权按 PR0 至 PR7 分阶段开发、测试与创建 PR。后续按可审查阶段交付，不自动合并 PR、不自动部署；正式版本的自动发布按下述已授权工作流执行。
 
