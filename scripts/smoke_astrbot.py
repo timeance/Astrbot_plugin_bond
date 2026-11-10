@@ -67,6 +67,18 @@ async def _check_persona(context, judge) -> None:
                 await impression._persona_ctx("synthetic:group:7001", "aiocqhttp")
                 == expected
             )
+            assert (
+                await judge.resolve_persona("synthetic:group:7001", "aiocqhttp")
+                == expected
+            )
+            with patch.object(judge, "_follow_persona", False):
+                assert (
+                    await judge.resolve_persona("synthetic:group:7001", "aiocqhttp")
+                    == expected
+                )
+                assert await judge._persona_ctx_for(
+                    "synthetic:group:7001", "aiocqhttp"
+                ) == (judge.bot_name, "")
         conversation.persona_id = "[%None]"
         assert (await judge._persona_ctx_for("synthetic:group:7001", "aiocqhttp"))[
             1
@@ -75,6 +87,11 @@ async def _check_persona(context, judge) -> None:
             "当前 Bot",
             "",
         )
+        for follow_persona in (True, False):
+            with patch.object(judge, "_follow_persona", follow_persona):
+                assert await judge.resolve_persona(
+                    "synthetic:group:7001", "aiocqhttp"
+                ) == (judge.bot_name, "")
 
 
 async def _check_dashboard_bridge(context) -> None:
@@ -322,8 +339,9 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         await _check_persona(context, old_deps.judge)
         # 通过真实 main 装配确认新安装默认，而非仅检查配置快照。
         assert config["relation_mode"] == "galgame"
+        assert config["relation_title"]["mode"] == "fixed"
         assert old_deps.favor._relation_caps == dict(
-            familiarity=(10, 0), affinity=(20, 8), trust=(4, 5)
+            familiarity=(10, 0), affinity=(20, 8), trust=(4, 8)
         )
         assert old_deps.favor._relation_policy.positive_multiplier == 2.0
         assert old_deps.favor._relation_policy.deltas("friendly")["affinity"] == 1.6
@@ -1178,7 +1196,7 @@ async def check(plugin_dir: Path, runtime_dir: Path) -> None:
         assert "baseline" not in plugin2._dependency_config["decay"]
         assert deps2.favor._decay is None
         assert deps2.favor._relation_caps == dict(
-            familiarity=(10, 0), affinity=(20, 8), trust=(4, 5)
+            familiarity=(10, 0), affinity=(20, 8), trust=(4, 8)
         )
         assert deps2.favor._relation_policy.deltas("friendly")["affinity"] == 1.6
         # 亲近度显式关闭不隐式关闭另一维的默认衰减。

@@ -54,7 +54,7 @@ async def tool_query_favor(
         return _reply(
             "只能查询你自己的关系称谓。", for_llm=for_llm, status="unavailable"
         )
-    title = await svc.relation_title(group_id, sender)
+    title = await svc.relation_title(group_id, sender, event=event)
     return _reply(
         "你与当前 Bot 的关系：" + title + "。",
         for_llm=for_llm,
@@ -84,7 +84,7 @@ async def ranking_rows(svc: FavorService, event: AstrMessageEvent, limit: int):
     public, self_rank, avatar_ids = [], None, []
     for i, record in enumerate(rows[:count], 1):
         label = " ".join((record.nickname or "").split())[:40] or "未命名成员"
-        title = await svc.relation_title(group_id, record.user_id)
+        title = await svc.relation_title(group_id, record.user_id, event=event)
         public.append({"rank": i, "member": label, "relation_title": title})
         avatar_ids.append(str(record.user_id))
         if str(record.user_id) == str(event.get_sender_id()):

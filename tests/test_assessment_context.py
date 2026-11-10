@@ -561,7 +561,7 @@ def test_cross_day_repeated_thanks_uses_scored_context_and_model_abstention(
     asyncio.run(run())
 
 
-def test_insult_then_apology_does_not_repair_trust(tmp_path):
+def test_insult_then_apology_changes_affinity_without_changing_trust(tmp_path):
     async def run():
         provider = Provider(verdict("你真笨", "insult"))
         store, favor, service, _ = await setup(
@@ -578,7 +578,8 @@ def test_insult_then_apology_does_not_repair_trust(tmp_path):
                 == "accepted"
             )
             before = await favor.get_relation("789", "456")
-            assert before.trust < 0
+            assert before.affinity < 0
+            assert before.trust == 0
             provider.result = verdict("对不起", "apology")
             assert (
                 await service.assess(
@@ -587,6 +588,7 @@ def test_insult_then_apology_does_not_repair_trust(tmp_path):
                 == "accepted"
             )
             after = await favor.get_relation("789", "456")
+            assert after.affinity > before.affinity
             assert after.trust == before.trust
         finally:
             await store.close()

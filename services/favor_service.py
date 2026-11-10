@@ -73,7 +73,7 @@ class FavorService:
         self._relation_policy = relation_policy or RelationPolicy()
         self._relation_resolver = relation_resolver or RelationResolver()
         self._relation_caps = relation_caps or dict(
-            familiarity=(5, 0), affinity=(10, 8), trust=(2, 5)
+            familiarity=(5, 0), affinity=(10, 8), trust=(2, 8)
         )
         if set(self._relation_caps) != {"familiarity", "affinity", "trust"}:
             raise ValueError("三维每日限幅配置不完整")
@@ -121,7 +121,7 @@ class FavorService:
             from ..core.relation_lexicon import LEXICON_VERSION
 
             self._diagnostic_config = dict(
-                policy_version="0.4.5",
+                policy_version="0.6.0",
                 lexicon_version=LEXICON_VERSION,
                 config_hash=hashlib.sha256(
                     json.dumps(
@@ -553,9 +553,34 @@ class FavorService:
     def _relation_title(self, familiarity, affinity, trust):
         return self.describe_relation(familiarity, affinity, trust).title
 
-    async def relation_title(self, group_id, user_id):
-        rec = await self.get(group_id, user_id)
-        return self._relation_title(rec.familiarity, rec.favor, rec.trust)
+    def bind_titles(self, service):
+        self._titles = service
+
+    async def title_context(self, group_id, user_id):
+        state = await self._storage.title_state(
+            self.group_key(group_id), str(user_id), str(group_id)
+        )
+        state["record"] = self._snapshot_record(
+            self.group_key(group_id),
+            str(user_id),
+            state["record"],
+            state["temporary"],
+            state["now"],
+        )
+        return state
+
+    async def read_relation_title(self, group_id, user_id, *, event=None, record=None):
+        rec = record if record is not None else await self.get(group_id, user_id)
+        fixed = self.describe_relation(rec.familiarity, rec.favor, rec.trust)
+        titles = getattr(self, "_titles", None)
+        if titles is not None:
+            return await titles.read(
+                group_id, user_id, event=event, fixed=fixed, record=rec
+            )
+        return dict(title=fixed.title, source="fixed", key=fixed.key)
+
+    async def relation_title(self, group_id, user_id, *, event=None):
+        return (await self.read_relation_title(group_id, user_id, event=event))["title"]
 
     @staticmethod
     def _validate_event_id(event_id):
@@ -579,9 +604,42 @@ class FavorService:
         message="",
         cooldown_sec=120,
         expected_revision=None,
+        trust_evidence=None,
     ):
         """供可信评估服务调用；身份与事件分类在平台边界核验后传入。"""
         self._validate_event_id(event_id)
+        from ..core.assessment import TrustEvidence
+        from ..core.relation_policy import TRUST_EVENTS
+
+        if event_type in TRUST_EVENTS:
+            if not isinstance(trust_evidence, TrustEvidence) or (
+                trust_evidence.bot_id,
+                trust_evidence.group_id,
+                trust_evidence.user_id,
+                trust_evidence.event_type,
+                trust_evidence.event_id,
+            ) != (
+                self._storage.bot_id,
+                str(group_id),
+                str(user_id),
+                event_type,
+                event_id,
+            ):
+                raise ValueError("信任事件需要对应成员的已核对证据")
+            # 来源标识用于管理员审计；公开查询不暴露流水证据。
+            import hashlib
+
+            def short_ref(value):
+                return (
+                    value
+                    if len(value) <= 65
+                    else "sha256:" + hashlib.sha256(value.encode()).hexdigest()[:48]
+                )
+
+            reason = f"{event_type}; current={short_ref(trust_evidence.current_id)}; reference={short_ref(trust_evidence.reference_id)}"
+            message = (
+                f"当前：{message[:75]}；核验：{trust_evidence.reference_excerpt[:110]}"
+            )
         if (
             isinstance(cooldown_sec, bool)
             or not isinstance(cooldown_sec, (int, float))

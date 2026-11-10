@@ -15,11 +15,24 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 from astrbot_plugin_bond.core.level_economy import EconomyConfig
 from astrbot_plugin_bond.core.levels import LevelTable
+from astrbot_plugin_bond.core.relation_policy import RelationPolicy
 from astrbot_plugin_bond.core.settings import snapshot
 from astrbot_plugin_bond.services.favor_service import FavorService
 from astrbot_plugin_bond.storage.sqlite_backend import SQLiteBackend
 
 START = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
+# 本实验只比较历史亲近度参数，事件向量完整冻结于 trust v2 之前。
+HISTORICAL_RULES = {
+    "normal_question": dict(familiarity=0.1, affinity=0.0, trust=0.0),
+    "thanks": dict(familiarity=0.2, affinity=0.5, trust=0.0),
+    "friendly": dict(familiarity=0.3, affinity=0.8, trust=0.0),
+    "joke": dict(familiarity=0.2, affinity=0.5, trust=0.0),
+    "criticism": dict(familiarity=0.1, affinity=0.0, trust=0.0),
+    "insult": dict(familiarity=0.0, affinity=-1.0, trust=-1.5),
+    "manipulation": dict(familiarity=0.0, affinity=-0.5, trust=-2.0),
+    "apology": dict(familiarity=0.1, affinity=0.7, trust=0.0),
+    "uncertain": dict(familiarity=0.0, affinity=0.0, trust=0.0),
+}
 SCENARIOS = {
     "positive_burst": [(0, i * 180, "friendly", 1) for i in range(10)],
     "neutral_3_days": [
@@ -66,6 +79,11 @@ async def replay(runtime: Path):
     result = {
         "method": "preclassified synthetic events, fixed clock, real FavorService/SQLite; not model or human accuracy",
         "provider_calls": 0,
+        "historical_rules": HISTORICAL_RULES,
+        "historical_rules_sha256": hashlib.sha256(
+            json.dumps(HISTORICAL_RULES, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
+        "historical_rules_note": "完整冻结 trust v2 之前的事件向量，仅比较亲近度参数，不代表当前生产信任规则。",
         "arms": {},
     }
     for arm, config in arms.items():
@@ -76,6 +94,7 @@ async def replay(runtime: Path):
             service = FavorService(
                 store,
                 LevelTable.from_config(None),
+                relation_policy=RelationPolicy(rules=HISTORICAL_RULES),
                 **dict(config, economy=EconomyConfig.from_config(config["economy"])),
             )
             rows = []

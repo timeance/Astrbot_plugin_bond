@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -189,6 +189,11 @@ MIGRATIONS: dict[int, list[str]] = {
         "UPDATE favor SET affinity_maintained_at=updated_at,familiarity_maintained_at=familiarity_updated_at,trust_maintained_at=trust_updated_at,affinity_floor_reference=favor",
         "CREATE TABLE maintenance_policy (id INTEGER PRIMARY KEY CHECK(id=1),strategy TEXT NOT NULL,effective_at REAL NOT NULL)",
         "INSERT INTO maintenance_policy VALUES(1,'legacy',0)",
+    ],
+    # 可重建称谓缓存与独立调用预算；不修改成员分数或历史流水。
+    19: [
+        "CREATE TABLE relation_title_cache (group_id TEXT NOT NULL,user_id TEXT NOT NULL,context_id TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',metadata TEXT NOT NULL DEFAULT '{}',attempted_at REAL NOT NULL DEFAULT 0,PRIMARY KEY(group_id,user_id,context_id))",
+        "CREATE TABLE relation_title_calls (day TEXT PRIMARY KEY,calls INTEGER NOT NULL DEFAULT 0)",
     ],
 }
 

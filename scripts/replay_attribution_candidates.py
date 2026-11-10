@@ -20,7 +20,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
 
-from astrbot_plugin_bond.core.assessment import SYSTEM_PROMPT
+from astrbot_plugin_bond.core.assessment import SYSTEM_PROMPT, TRUST_CONTRACT
 from astrbot_plugin_bond.services import assessment_service
 from astrbot_plugin_bond.tests import research_support as replay_support
 from astrbot_plugin_bond.scripts import replay_trust_evidence as shadow
@@ -212,7 +212,7 @@ async def run_arm(runtime, arm, fixture):
         assert not payload["recent_turns"] and not payload["scored_events"]
         assert payload["trusted_metadata"]["bot_id"] == bot
         assert payload["trusted_metadata"]["sender_id"] == payload["sender"]
-        assert prompt == SYSTEM_PROMPT + "\n输入：" + json.dumps(
+        assert prompt == SYSTEM_PROMPT + TRUST_CONTRACT + "\n输入：" + json.dumps(
             payload, ensure_ascii=False
         )
         plan = world.plans[(bot, payload["sender"], payload["text"])]
@@ -473,12 +473,15 @@ async def experiment(runtime):
         357, 381
     )
     assert baseline["metrics"]["trust_false_update_rate"] == replay_support.ratio(
-        2, 1195
+        0, 1195
     )
+    repair = await repair_contracts(runtime / "repair", fixture)
+    protected_after = protected_hashes()
     summary = dict(
         format_version=1,
         base_commit=BASE_COMMIT,
         evaluation="synthetic_scripted_provider_routing_and_real_sqlite_only",
+        trust_rule_note="按当前生产规则回放原始 gold 与预置响应。普通 insult/manipulation 的 T 为零不证明信任证据识别收益。",
         original_fixture_sha256=replay_support.digest(original),
         candidate_fixture_sha256=replay_support.digest(fixture),
         candidate_source_sha256={
@@ -498,14 +501,18 @@ async def experiment(runtime):
             for arm, result in full["new_samples"].items()
         },
         observability=observability_contracts(original),
-        repair=await repair_contracts(runtime / "repair", fixture),
+        repair=repair,
         protected_source_sha256=protected,
-        source_files_unchanged=protected == protected_hashes(),
+        source_files_unchanged=protected == protected_after,
         semantic_accuracy=None,
         production_repair_positive=replay_support.ratio(0, 0),
         production_quote_recommendation="defer_quote_gate_semantics_not_identifiable_from_quote_geometry",
     )
-    assert summary["source_files_unchanged"]
+    assert summary["source_files_unchanged"], "回放期间源码发生变化：" + ", ".join(
+        name
+        for name in protected.keys() | protected_after.keys()
+        if protected.get(name) != protected_after.get(name)
+    )
     for section in ("original", "new_samples"):
         assert all(
             row["provider_transcript_unchanged"] for row in summary[section].values()

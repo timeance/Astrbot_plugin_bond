@@ -9,7 +9,7 @@ from .relation_policy import RELATION_DIMENSIONS, RelationPolicy
 DEFAULT_DAILY_CAPS = {
     "familiarity": (5.0, 0.0),
     "affinity": (10.0, 8.0),
-    "trust": (2.0, 5.0),
+    "trust": (2.0, 8.0),
 }
 
 

@@ -161,7 +161,7 @@ def test_host_visibility_and_webui_wording_agree():
 
     visit(schema)
     definitions = fields()
-    assert visible == [
+    assert set(visible) == {
         f["path"]
         for f in definitions
         if (
@@ -170,7 +170,8 @@ def test_host_visibility_and_webui_wording_agree():
             not in {"decay.grace_days", "decay.maintenance_strategy", "timezone"}
         )
         or f["path"].startswith("command.")
-    ]
+        or f["path"].startswith("relation_title.")
+    }
     for field in definitions:
         node = schema
         for part in field["path"].split("."):
@@ -456,7 +457,7 @@ def test_framework_defaults_custom_values_and_single_assessment_entry():
         "relation_daily_caps.affinity_up": 10,
         "relation_daily_caps.affinity_down": 8,
         "relation_daily_caps.trust_up": 2,
-        "relation_daily_caps.trust_down": 5,
+        "relation_daily_caps.trust_down": 8,
         "decay.familiarity_enabled": True,
         "decay.familiarity_half_life": 30,
         "decay.enabled": True,
@@ -803,7 +804,7 @@ def test_diagnostic_levels_capacity_defaults_and_validation():
 def test_flat_passive_switch_migrates_saved_choice_once(enabled):
     from astrbot_plugin_bond.core.config_migrations import migrate_saved_defaults
 
-    config = {"passive_familiarity": {"enabled": enabled}}
+    config = {"trust_config_version": 1, "passive_familiarity": {"enabled": enabled}}
     assert migrate_saved_defaults(config) == ["passive_familiarity"]
     assert config["passive_familiarity"] is enabled
     assert migrate_saved_defaults(config) == []

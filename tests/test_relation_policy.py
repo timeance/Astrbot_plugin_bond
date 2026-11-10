@@ -63,6 +63,7 @@ def test_default_policy_keeps_neutral_events_out_of_affinity_and_trust() -> None
 
 
 def test_policy_scales_intensity_and_applies_per_dimension_cap() -> None:
+    # 显式合成 T 规则仅验证强度和限幅数学，不代表自动评分证据。
     policy = RelationPolicy(
         rules={"friendly": {"familiarity": 4.0, "affinity": 3.0, "trust": -5.0}},
         event_caps={"friendly": {"familiarity": 0.5, "affinity": 1.0, "trust": 2.0}},
@@ -88,16 +89,16 @@ def test_policy_rejects_invalid_event_and_intensity() -> None:
         policy.deltas("friendly", float("inf"))
 
 
-def test_policy_handles_negative_events_without_total_score() -> None:
+def test_default_ordinary_negative_events_change_affinity_without_trust() -> None:
     policy = RelationPolicy()
 
     insult = policy.deltas("insult")
     manipulation = policy.deltas("manipulation")
     apology = policy.deltas("apology")
 
-    assert insult["affinity"] < 0 and insult["trust"] < 0
-    assert manipulation["trust"] < insult["trust"]
-    assert apology["affinity"] > 0 and apology["trust"] == 0
+    assert insult == dict(familiarity=0, affinity=-1, trust=0)
+    assert manipulation == dict(familiarity=0, affinity=-0.5, trust=0)
+    assert apology == dict(familiarity=0.1, affinity=0.7, trust=0)
     assert set(insult) == {"familiarity", "affinity", "trust"}
 
 
@@ -105,7 +106,7 @@ def test_resolver_keeps_relationship_dimensions_composable() -> None:
     resolver = RelationResolver()
 
     assert resolver.resolve(RelationState()) == "陌生"
-    assert resolver.resolve(RelationState(90, 65, -60)) == "亲近却戒备"
+    assert resolver.resolve(RelationState(90, 65, -60)) == "亲密却戒备"
     assert resolver.resolve(RelationState(90, 65, 60)) == "亲密挚友"
 
 
@@ -140,18 +141,26 @@ def test_large_finite_intensity_still_obeys_cap():
     assert result["affinity"] == 2
 
 
-@pytest.mark.parametrize("event", ["thanks", "friendly", "apology"])
-def test_politeness_has_no_default_trust_evidence_and_custom_rule_wins(event):
+@pytest.mark.parametrize(
+    "event", ["thanks", "friendly", "apology", "insult", "manipulation"]
+)
+def test_default_trust_zero_and_explicit_synthetic_policy_overrides(event):
     assert RelationPolicy().deltas(event)["trust"] == 0
     assert RelationPolicy(rules={event: {"affinity": 0.4}}).deltas(event)["trust"] == 0
+    # 底层显式合成规则保留可定制数学，不作为新版自动信任证据。
     assert RelationPolicy(rules={event: {"trust": 0.7}}).deltas(event)["trust"] == 0.7
     assert RelationPolicy(rules={event: {"trust": 9}}).deltas(event)["trust"] == 2
 
 
 @pytest.mark.parametrize("rounded", [True, False])
-def test_mode_scales_after_base_event_cap_and_never_scales_penalty(rounded):
+def test_synthetic_mode_scales_after_base_event_cap_and_preserves_penalty(rounded):
+    # 合成正负 T 请求用于验证倍率和限幅，不代表普通事件的自动评分规则。
     policy = RelationPolicy(
-        rules={"friendly": {"familiarity": 4, "affinity": 3, "trust": 8}},
+        rules={
+            "friendly": {"familiarity": 4, "affinity": 3, "trust": 8},
+            "insult": {"trust": -1.5},
+            "manipulation": {"trust": -3},
+        },
         event_caps={"friendly": {"familiarity": 0.5, "affinity": 1, "trust": 0.7}},
         positive_multiplier=2,
     )
@@ -179,6 +188,7 @@ def test_raw_mapping_avoids_rounding_before_mode_or_curve():
 
 
 def test_final_cap_follows_curve_and_mode_but_preserves_negative_cap():
+    # 直接传入合成三维向量，仅验证出口限幅数学。
     policy = RelationPolicy(positive_multiplier=2)
     result = policy.limit_deltas(
         "friendly",

@@ -97,7 +97,7 @@ def test_title_returns_exact_body_and_never_resolves_model_or_extra_profile(deps
     service = SelfImpressionService(object(), mode="title")
     assert service.mode == "title"
     assert asyncio.run(service.query(deps.favor, deps.event)) == TITLE
-    deps.favor.relation_title.assert_awaited_once_with("7001", "8001")
+    deps.favor.relation_title.assert_awaited_once_with("7001", "8001", event=deps.event)
     deps.favor.get.assert_not_called()
 
 
@@ -125,7 +125,7 @@ def test_summary_uses_session_persona_and_only_current_speaker_facts(deps):
     service = SelfImpressionService(deps.context, mode="summary")
     assert service.mode == "summary"
     assert asyncio.run(service.query(deps.favor, deps.event)) == SENTENCE
-    deps.favor.relation_title.assert_awaited_once_with("7001", "8001")
+    deps.favor.relation_title.assert_awaited_once_with("7001", "8001", event=deps.event)
     deps.favor.get.assert_awaited_once_with("7001", "8001")
     deps.context.get_using_provider.assert_called_once_with(UMO)
     deps.context.get_config.assert_called_once_with(UMO)
@@ -178,7 +178,7 @@ def test_global_scope_only_sends_shared_title_and_never_reads_profile(deps):
     deps.favor.scope_mode = "global"
     deps.favor.get.side_effect = AssertionError("全局档案含跨群标签与印象")
     assert query(deps) == SENTENCE
-    deps.favor.relation_title.assert_awaited_once_with("7001", "8001")
+    deps.favor.relation_title.assert_awaited_once_with("7001", "8001", event=deps.event)
     deps.favor.get.assert_not_called()
     args = deps.provider.text_chat.await_args.kwargs
     assert json.loads(args["prompt"]) == {"relation_title": TITLE}

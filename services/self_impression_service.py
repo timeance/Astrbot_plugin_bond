@@ -33,7 +33,7 @@ class SelfImpressionService:
         if sender is None or not str(sender).strip():
             return "无法识别当前发言者。"
         sender = str(sender)
-        title = await favor.relation_title(group, sender)
+        title = await favor.relation_title(group, sender, event=event)
         if self.mode == "title":
             return title
         try:

@@ -2360,6 +2360,7 @@ class TestMilestoneInject:
 class TestConfigMigration:
     def _v124_cfg(self):
         return {
+            "trust_config_version": 1,
             "levels": {
                 "mosheng": {
                     "master_guidance": "冷战/别扭期，爱答不理、说话带刺，但心里在等主人先低头"
@@ -2368,7 +2369,7 @@ class TestConfigMigration:
                     "master_guidance": "小别扭还没消，嘴上不饶人，可心里在意主人、盼着主人来哄"
                 },
                 "youhao": {"master_guidance": "和好了，会撒娇耍赖、跟主人要专属待遇"},
-            }
+            },
         }
 
     def test_old_defaults_migrated(self):
@@ -2386,14 +2387,25 @@ class TestConfigMigration:
         assert migrate_saved_defaults(cfg) == []
 
     def test_custom_value_never_touched(self):
-        cfg = {"levels": {"mosheng": {"master_guidance": "主人的自定义指引"}}}
+        cfg = {
+            "trust_config_version": 1,
+            "levels": {"mosheng": {"master_guidance": "主人的自定义指引"}},
+        }
         assert migrate_saved_defaults(cfg) == []
         assert cfg["levels"]["mosheng"]["master_guidance"] == "主人的自定义指引"
 
     def test_missing_or_malformed_levels_noop(self):
-        assert migrate_saved_defaults({}) == []
-        assert migrate_saved_defaults({"levels": "不是字典"}) == []
-        assert migrate_saved_defaults({"levels": {"mosheng": None}}) == []
+        assert migrate_saved_defaults({"trust_config_version": 1}) == []
+        assert (
+            migrate_saved_defaults({"trust_config_version": 1, "levels": "不是字典"})
+            == []
+        )
+        assert (
+            migrate_saved_defaults(
+                {"trust_config_version": 1, "levels": {"mosheng": None}}
+            )
+            == []
+        )
 
     def test_targets_match_current_schema_defaults(self):
         # 防漂移：迁移写入的新值必须与当前 _conf_schema.json 默认值逐字一致

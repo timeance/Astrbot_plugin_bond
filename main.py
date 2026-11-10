@@ -31,7 +31,7 @@ from .api.listeners import (
     on_llm_request,
     on_llm_response,
 )
-from .core.config_migrations import migrate_saved_defaults
+from .services.config_upgrade import upgrade_config
 from .core.passive_familiarity import PassiveFamiliarityConfig
 from .core.identity import parse_master_ids
 from .core.judge_parse import DEFAULT_ATTITUDE_DELTAS
@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.5.12",
+    "0.6.0",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -94,22 +94,20 @@ class BondPlugin(Star):
         super().__init__(context)
         self.config = config
 
-        # 存量配置默认值迁移（仅当存值与已知旧默认逐字一致，见 core/config_migrations.py）
-        migrated = migrate_saved_defaults(config)
-        if migrated:
-            try:
-                config.save_config()
-                logger.info(f"[八千代] 配置默认值迁移：{', '.join(migrated)}")
-            except Exception:
-                # 本次运行已用上内存中的新值；文件未写入则下次加载重试
-                logger.warning("[八千代] 配置默认值迁移后保存失败，将在下次加载时重试")
-
         from copy import deepcopy
+
+        data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
+        try:
+            migrated = upgrade_config(config, data_dir)
+        except Exception as exc:
+            raise RuntimeError(
+                "Bond 设置升级未完成，未启用候选配置；请检查配置与备份文件后重载"
+            ) from exc
+        if migrated:
+            logger.info(f"[Bond] 配置升级：{', '.join(migrated)}")
 
         # 设置保存后统一重载生效，后创建的 Bot/空间也使用本次加载快照。
         self._dependency_config = deepcopy(dict(config))
-
-        data_dir = StarTools.get_data_dir("astrbot_plugin_bond")
 
         self._prompts = PromptService(data_dir / "prompts.json")
         if self._prompts.load_error:
@@ -117,6 +115,9 @@ class BondPlugin(Star):
                 f"[Bond] {self._prompts.load_error}；已暂停关系提示词和自动评估"
             )
         self._registry = TaskRegistry()
+        from .services.title_service import TitleCapacity
+
+        self._title_capacity = TitleCapacity()
         self._diagnostics = DiagnosticRecorder(
             data_dir / "diagnostics",
             self._registry,
@@ -309,10 +310,25 @@ class BondPlugin(Star):
             budget_stores=budget_stores,
             prompts=self._prompts,
         )
+        from .core.relation_titles import TitleConfig
+        from .services.title_service import TitleService
+
+        titles = TitleService(
+            storage,
+            favor,
+            judge,
+            context,
+            self._registry,
+            TitleConfig(**(config.get("relation_title") or {})),
+            self._title_capacity,
+            budget_stores,
+        )
+        favor.bind_titles(titles)
 
         from .services.passive_activity import PassiveActivity
 
         return Deps(
+            titles=titles,
             passive_activity=PassiveActivity(
                 storage.bot_id,
                 enabled=config.get("passive_familiarity", True),

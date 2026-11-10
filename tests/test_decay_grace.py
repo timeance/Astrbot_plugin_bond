@@ -113,7 +113,7 @@ def test_zero_grace_and_each_dimensions_half_life(db):
         assert values(run(svc.get("123", "456"))) == (20, 5, -40)
 
 
-def test_capped_interactions_keep_warm_then_settle_without_recovery_or_backfill(db):
+def test_legacy_capped_interactions_keep_f_a_warm_without_maintaining_trust(db):
     svc = service(db)
     with patch("time.time", return_value=START):
         seed(svc)
@@ -123,15 +123,23 @@ def test_capped_interactions_keep_warm_then_settle_without_recovery_or_backfill(
             assert result["skipped"] is None
             assert result["delta"] == dict.fromkeys(result["delta"], 0)
             assert values(raw(db, svc)) == (80, 80, -80)
-            assert anchors(raw(db, svc)) == (START + day * DAY,) * 3
+            assert anchors(raw(db, svc)) == (
+                START + day * DAY,
+                START + day * DAY,
+                START,
+            )
+            assert raw(db, svc).trust_maintained_at == START
     with patch("time.time", return_value=START + 18 * DAY):
         result = event(svc, "after-decay")
         settled = 80 * 0.5**0.5
+        effective_t = -80 * 0.5**1.3
         assert result["before"] == pytest.approx(
-            dict(familiarity=settled, affinity=settled, trust=-settled)
+            dict(familiarity=settled, affinity=settled, trust=effective_t)
         )
-        assert values(raw(db, svc)) == pytest.approx((settled, settled, -settled))
-        assert anchors(raw(db, svc)) == (START + 18 * DAY,) * 3
+        assert result["after"]["trust"] == pytest.approx(effective_t)
+        assert values(raw(db, svc)) == pytest.approx((settled, settled, -80))
+        assert anchors(raw(db, svc)) == (START + 18 * DAY, START + 18 * DAY, START)
+        assert raw(db, svc).trust_maintained_at == START
         usage = run(db.daily_usage("123", "456", svc._today().isoformat()))
         assert all(pair == (0, 0) for pair in usage.values())
         assert not any(run(svc.query_logs("123", "456"))[0]["relation_delta"].values())
@@ -139,23 +147,28 @@ def test_capped_interactions_keep_warm_then_settle_without_recovery_or_backfill(
     run(db.init())
     svc = service(db)
     with patch("time.time", return_value=START + 23 * DAY):
-        assert values(run(svc.get("123", "456"))) == (56.6, 56.6, -56.6)
+        assert values(run(svc.get("123", "456"))) == (56.6, 56.6, -23)
     with patch("time.time", return_value=START + 28 * DAY):
-        assert values(run(svc.get("123", "456"))) == (40, 40, -40)
+        assert values(run(svc.get("123", "456"))) == (40, 40, -16.2)
+        assert raw(db, svc).trust == -80
+        assert raw(db, svc).trust_updated_at == START
+        assert raw(db, svc).trust_maintained_at == START
 
 
-def test_one_dimension_event_reanchors_all_without_charging_decay(db):
+def test_legacy_f_only_reanchors_f_a_and_preserves_trust_without_charging_decay(db):
     svc = service(
-        db, relation_caps=dict(familiarity=(5, 0), affinity=(10, 8), trust=(2, 5))
+        db, relation_caps=dict(familiarity=(5, 0), affinity=(10, 8), trust=(2, 8))
     )
     with patch("time.time", return_value=START):
         seed(svc)
     with patch("time.time", return_value=START + 15 * DAY):
         result = event(svc, "f-only")
         assert result["before"] == dict(familiarity=40, affinity=40, trust=-40)
-        assert result["delta"]["familiarity"] > 0
+        assert result["delta"]["familiarity"] == pytest.approx(0.08)
         assert result["delta"]["affinity"] == result["delta"]["trust"] == 0
-        assert anchors(raw(db, svc)) == (START + 15 * DAY,) * 3
+        assert values(raw(db, svc)) == pytest.approx((40.08, 40, -80))
+        assert anchors(raw(db, svc)) == (START + 15 * DAY, START + 15 * DAY, START)
+        assert raw(db, svc).trust_maintained_at == START
         usage = run(db.daily_usage("123", "456", svc._today().isoformat()))
         assert usage["familiarity"][0] == result["delta"]["familiarity"]
         assert usage["affinity"] == usage["trust"] == (0, 0)
@@ -192,7 +205,10 @@ def test_duplicates_cooldown_invalid_and_failed_transaction_leave_anchors(db):
         db._c().execute("DROP TRIGGER reject_grace")
         db._c().commit()
         assert event(svc, "failed")["skipped"] is None
-        assert values(raw(db, svc)) == (40, 40, -40)
+        assert values(raw(db, svc)) == (40, 40, -80)
+        assert anchors(raw(db, svc)) == (START + 15 * DAY, START + 15 * DAY, START)
+        assert raw(db, svc).trust_maintained_at == START
+        assert values(run(svc.get("123", "456"))) == (40, 40, -40)
 
 
 def test_profile_nickname_page_reads_do_not_extend_grace(db):
@@ -268,7 +284,10 @@ def test_group_and_global_read_write_use_same_grace_and_isolation(tmp_path, mode
             event(svc, "renew", group="124")
         with patch("time.time", return_value=START + 15 * DAY):
             expected = 52.8 if mode == "global" else 40
-            assert values(run(svc.get("123", "456"))) == (expected, expected, -expected)
+            assert values(run(svc.get("123", "456"))) == (expected, expected, -40)
+            assert raw(db, svc).trust == -80
+            assert raw(db, svc).trust_updated_at == START
+            assert raw(db, svc).trust_maintained_at == START
             other = service(run(router.get("20002", mode)), scope_mode=mode)
             assert values(run(other.get("123", "456"))) == (0, 0, 0)
     finally:

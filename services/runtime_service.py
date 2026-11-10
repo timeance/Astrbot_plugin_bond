@@ -90,6 +90,13 @@ class RuntimeService:
             except BaseException:
                 self._config["bot_scope_modes"] = previous
                 raise
+            for (selected_bot, _), bundle in self._bundles.items():
+                if (
+                    selected_bot == bot_id
+                    and getattr(bundle, "titles", None) is not None
+                ):
+                    bundle.titles.invalidate()
+                    await bundle.titles.storage.clear_title_cache()
 
     async def restore(self, bot_id, mode, backup_name):
         bot_id, mode = account_id(bot_id), scope_mode(mode)
@@ -98,6 +105,8 @@ class RuntimeService:
             bundle = self._bundles.get((bot_id, mode))
             if bundle is not None:
                 bundle.favor.invalidate_cache()
+                if getattr(bundle, "titles", None) is not None:
+                    bundle.titles.invalidate()
 
     def assessment_settings(self):
         from .assessment_service import AssessmentConfig
@@ -160,6 +169,9 @@ class RuntimeService:
             limit = assessment.pop("max_concurrent_assessments", 2)
             AssessmentConfig(**assessment)
             AssessmentCapacity(limit)
+            from ..core.relation_titles import TitleConfig
+
+            TitleConfig(**(candidate.get("relation_title") or {}))
             try:
                 self._config.update(candidate)
                 self._config.save_config()
