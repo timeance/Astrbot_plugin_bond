@@ -4,7 +4,7 @@ import asyncio
 import json
 import sqlite3
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -302,12 +302,16 @@ def test_schema21_keeps_old_data_and_rolls_back_failed_upgrade():
     conn.close()
 
 
+@pytest.mark.parametrize(
+    "mode,group",
+    [("per_group", "7001"), ("global", "7001"), ("global", ""), ("global", None)],
+)
 def test_preview_is_read_only_even_after_override_expiry(
-    tmp_path, page_module, monkeypatch
+    tmp_path, page_module, monkeypatch, mode, group
 ):
     async def run(listener):
         router = BotScopeStorageRouter(tmp_path)
-        deps = await make_deps(listener, router, tmp_path)
+        deps = await make_deps(listener, router, tmp_path, mode=mode)
         await seed(deps.favor._storage, 1)
         await deps.favor.set_temporary(
             "7001",
@@ -329,8 +333,8 @@ def test_preview_is_read_only_even_after_override_expiry(
             AsyncMock(
                 return_value=dict(
                     bot_id="10001",
-                    scope_mode="per_group",
-                    group_id="7001",
+                    scope_mode=mode,
+                    group_id=group,
                     user_id="8001",
                     action="preview",
                 )
@@ -364,6 +368,10 @@ def test_preview_is_read_only_even_after_override_expiry(
         {"group_id": ""},
         {"scope_mode": "other"},
         {"user_id": '{"id":"8002"}'},
+        {"scope_mode": "global", "group_id": "__global__"},
+        {"scope_mode": "global", "group_id": "not-a-group"},
+        {"scope_mode": "global", "group_id": "", "bot_id": ""},
+        {"scope_mode": "global", "group_id": "", "user_id": ""},
     ],
 )
 def test_preview_requires_authenticated_explicit_binding(
@@ -411,6 +419,7 @@ def test_diagnostics_use_frozen_materials_and_never_rebuild_history(tmp_path, le
         req = request()
         await listener.on_llm_request(deps, event, req)
         assert req._bond_injected_snapshot is frozen
+        assert "content" not in json.loads(frozen.materials_json)
         assert frozen.block in req.system_prompt
         exported = await recorder.export("10001", "per_group")
         history = recorder.material_history(exported)
@@ -721,3 +730,156 @@ def test_replacing_impression_cannot_restore_old_points_after_mode_switch(
         await db.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("group", [None, "", "7001", "7002"])
+def test_global_preview_uses_shared_relation_and_explicit_template(
+    tmp_path, page_module, monkeypatch, group
+):
+    async def run(listener):
+        router = BotScopeStorageRouter(tmp_path / "db")
+        deps = await make_deps(listener, router, tmp_path, mode="global")
+        await deps.favor.set_relation(
+            "7001",
+            "8001",
+            familiarity=80,
+            affinity=80,
+            trust=80,
+            reason="不可跨群提供的经历",
+            event_id="global-event",
+        )
+        await deps.favor._storage.set_impression(
+            "__global__",
+            "8001",
+            "不可跨群提供的印象",
+            [],
+        )
+        await deps.favor.set_relation(
+            "7002",
+            "8002",
+            familiarity=0,
+            affinity=0,
+            trust=-80,
+            reason="其他成员的经历",
+            event_id="other-member-event",
+        )
+        deps.prompts.set_template(
+            "behavior",
+            mode="custom",
+            template="全局模板 {relationship} / {impression} / {events}",
+        )
+        deps.prompts.set_template(
+            "behavior",
+            "10001",
+            "7001",
+            mode="custom",
+            template="指定群模板 {relationship} / {impression} / {events}",
+        )
+        deps.prompts.set_template(
+            "behavior",
+            "20002",
+            "7001",
+            mode="custom",
+            template="其他Bot模板 {relationship}",
+        )
+        saved = deps.prompts.path.read_bytes()
+        before = "\n".join(deps.favor._storage._c().iterdump())
+        runtime = SimpleNamespace(
+            known_bot_ids=lambda: ["10001", "20002"],
+            peek=Mock(return_value=deps),
+            select=AsyncMock(side_effect=AssertionError("不能装配空间")),
+        )
+        page = page_module.PageApi(runtime)
+        params = dict(
+            bot_id="10001", scope_mode="global", user_id="8001", action="preview"
+        )
+        if group is not None:
+            params["group_id"] = group
+        monkeypatch.setattr(page, "_params", AsyncMock(return_value=params))
+        monkeypatch.setattr(page_module, "request", SimpleNamespace(method="GET"))
+        payload, status = await page.handle_member()
+        assert status == 200 and payload["preview"]["available"]
+        preview = payload["preview"]
+        assert preview["content"] == dict(
+            relationship=deps.favor.describe_relation(80, 80, 80).text,
+            impression="",
+            events=[],
+        )
+        assert ("指定群模板" if group == "7001" else "全局模板") in preview["block"]
+        assert "其他Bot模板" not in preview["block"]
+        assert "不可跨群" not in json.dumps(preview, ensure_ascii=False)
+        assert "其他成员" not in json.dumps(preview, ensure_ascii=False)
+        identity = json.loads(preview["block"].splitlines()[1].split("：", 1)[1])
+        assert identity == dict(
+            bot_id="10001",
+            scope_mode="global",
+            group_id=group or None,
+            user_id="8001",
+            captured_at=NOW,
+        )
+        assert ("全部群使用全局模板" in preview["note"]) == (not group)
+        runtime.peek.assert_called_once_with("10001", "global")
+        runtime.select.assert_not_called()
+        assert deps.prompts.path.read_bytes() == saved
+        assert before == "\n".join(deps.favor._storage._c().iterdump())
+        assert deps.registry.size == 0
+        await router.close()
+
+    with offline_listener() as (listener, _, _), patch("time.time", return_value=NOW):
+        asyncio.run(run(listener))
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["selected", "omitted", "no_fields", "invalid", "event_budget", "block_budget"],
+)
+def test_preview_content_is_the_same_selected_material_without_prompt_parsing(case):
+    template = "自定义提示 {relationship} / {impression} / {events}"
+    duplicate, revoked = row(), row(2)
+    revoked["reversed"] = True
+    kwargs = dict(
+        relationship="熟悉，但信任仍有保留。\n按当前状态交流。",
+        impression="成员表示愿意帮忙，尚未看到实际行动。",
+        events=[row(), duplicate, revoked],
+    )
+    if case == "omitted":
+        template = "只选经历 {events}"
+    if case == "no_fields":
+        template = "用户自定义的固定提示"
+    if case == "invalid":
+        kwargs["impression_valid"] = False
+    if case == "event_budget":
+        kwargs["budget"] = (
+            len(InjectService.build_relation_block(template, **kwargs)) - 1
+        )
+    if case == "block_budget":
+        kwargs["budget"] = 1
+    ordinary = InjectService.build_relation_materials(template, **kwargs)
+    preview = InjectService.build_relation_materials(
+        template, include_content=True, **kwargs
+    )
+    content = preview.pop("content")
+    assert ordinary == preview  # 预览展示选项不改变注入、预算、选择原因或哈希。
+    assert content["relationship"] == (
+        kwargs["relationship"]
+        if case not in ("omitted", "no_fields", "block_budget")
+        else ""
+    )
+    assert content["impression"] == (
+        kwargs["impression"]
+        if case not in ("omitted", "no_fields", "invalid", "block_budget")
+        else ""
+    )
+    assert len(content["events"]) == (
+        0 if case in ("no_fields", "event_budget", "block_budget") else 1
+    )
+    if content["events"]:
+        item = content["events"][0]
+        assert item["log_id"] == 1 and item["subject"] == "8001"
+        assert item["assessment"] == row()["reason"]
+        assert "不独立确认" in item["certainty"]
+        assert "member_expression" not in item
+        assert json.dumps(content["events"], ensure_ascii=False) in preview["block"]
+    for name in ("relationship", "impression"):
+        if content[name]:
+            assert json.dumps(content[name], ensure_ascii=False) in preview["block"]

@@ -1179,6 +1179,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 完整提示词在折叠区内独立滚动，沿用正文与主题样式。 */
+.xx-material-block {
+  max-height: 18rem;
+  overflow: auto;
+}
 .xx-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1539,7 +1544,7 @@ details.xx-form-card[open] > summary::after {
   font-weight: 600;
   cursor: pointer;
 }
-.xx-member-history[open] summary {
+.xx-member-history[open] > summary {
   color: var(--xx-accent-deep);
   border-bottom: 1px solid var(--xx-line);
   margin-bottom: 8px;

@@ -206,6 +206,7 @@ class InjectService:
         impression_valid=True,
         impression_origin="legacy",
         budget=MATERIAL_BUDGET,
+        include_content: bool = False,
     ) -> dict:
         """整个块共用长度预算；只舍弃完整条目，不截断主语、否定和条件。"""
         import hashlib
@@ -301,7 +302,7 @@ class InjectService:
             for decision in decisions:
                 if decision["reason"] == "selected":
                     decision["reason"] = "length_budget"
-        return dict(
+        result = dict(
             block=block,
             selection=decisions,
             captured_at=captured_at,
@@ -310,6 +311,14 @@ class InjectService:
             budget=budget,
             chars=len(block),
         )
+        if include_content:
+            # 管理预览直接呈现本次选中的内容；消息快照和诊断不另存正文副本。
+            result["content"] = dict(
+                relationship=relationship if block and "relationship" in fields else "",
+                impression=imp if block else "",
+                events=items if block else [],
+            )
+        return result
 
     def inject(self, req, block: str) -> None:
         """把档案块追加到 req.system_prompt（只追加不覆盖）。"""
