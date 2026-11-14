@@ -648,3 +648,49 @@ def test_budget_skipped_injection_records_actual_empty_materials(tmp_path):
 
     with offline_listener() as (listener, components, _):
         asyncio.run(run(listener, components))
+
+
+@pytest.mark.parametrize("replacement", ["manual", "summary", "legacy"])
+def test_replacing_impression_cannot_restore_old_points_after_mode_switch(
+    tmp_path, replacement
+):
+    async def run():
+        db = SQLiteBackend(tmp_path / "modes.db")
+        await db.init()
+        await seed(db, 1)
+        await db.commit_impression(
+            "7001",
+            "8001",
+            "被替代的旧结论",
+            [],
+            [1],
+            points=[dict(point="被替代的旧结论", weight=9)],
+        )
+        if replacement == "manual":
+            await db.mark_reversed(1)
+            await db.set_profile_audited(
+                "7001", "8001", "人工新的限定判断", [], "synthetic-admin"
+            )
+        elif replacement == "summary":
+            await seed(db, 2)
+            assert await db.commit_impression(
+                "7001", "8001", "普通摘要新的限定判断", [], [2]
+            )
+        else:
+            await db.set_impression("7001", "8001", "兼容接口新的限定判断", [])
+        assert (await db.get("7001", "8001")).parsed_points() == []
+        await seed(db, 3)
+        provider = Summary(True)
+        service = ImpressionService(
+            db,
+            registry=TaskRegistry(),
+            summarizer=provider,
+            interval=1,
+            points_mode=True,
+        )
+        assert (await service.refresh_now("7001", "8001"))[0]
+        assert "被替代的旧结论" not in provider.prompts[0]
+        assert "新的限定判断" in provider.prompts[0]
+        await db.close()
+
+    asyncio.run(run())

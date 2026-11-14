@@ -1547,7 +1547,12 @@ class SQLiteBackend(StorageBackend):
         """
         now = time.time()
         if "impression" in cols:
-            cols = dict(cols, impression_origin="legacy", impression_revision=1)
+            cols = {
+                "points": "[]",
+                **cols,
+                "impression_origin": "legacy",
+                "impression_revision": 1,
+            }
         insert_cols = {"favor": self._initial_favor, **cols}
         col_sql = ", ".join(insert_cols)
         ph = ", ".join("?" for _ in insert_cols)
@@ -1714,7 +1719,7 @@ class SQLiteBackend(StorageBackend):
                 value = row[0] if row else self._initial_favor
                 conn.execute(
                     "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,impression,tags,impression_at) VALUES(?,?,?,?,?,?,?,?) "
-                    "ON CONFLICT(group_id,user_id) DO UPDATE SET impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at",
+                    "ON CONFLICT(group_id,user_id) DO UPDATE SET impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,points='[]'",
                     (
                         group_id,
                         user_id,
@@ -1843,7 +1848,7 @@ class SQLiteBackend(StorageBackend):
                     "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points,half_life,favor) "
                     "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
                     "impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,"
-                    "points=COALESCE(?,favor.points)",
+                    "points=excluded.points",
                     (
                         group_id,
                         user_id,
@@ -1858,11 +1863,6 @@ class SQLiteBackend(StorageBackend):
                         ),
                         self._initial_half_life,
                         self._initial_favor,
-                        (
-                            json.dumps(points, ensure_ascii=False)
-                            if points is not None
-                            else None
-                        ),
                     ),
                 )
                 conn.execute(
