@@ -111,6 +111,16 @@ def request_content(req):
         value = getattr(req, key, None)
         if isinstance(value, (str, list, dict)):
             content[key] = value
+    marker = getattr(req, "_bond_injected_snapshot", None)
+    if marker is not None and hasattr(marker, "materials_json"):
+        # 只保存定位与选择元信息；正文复用同一 request.system_prompt，避免双份。
+        start = content.get("system_prompt", "").rfind(marker.block)
+        if start >= 0:
+            content["bond_materials"] = dict(
+                json.loads(marker.materials_json),
+                start=start,
+                end=start + len(marker.block),
+            )
     tools = getattr(req, "func_tool", None)
     if tools is not None:
         try:

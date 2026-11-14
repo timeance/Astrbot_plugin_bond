@@ -8,6 +8,7 @@ on_llm_request：向 system_prompt 注入好感度档案。
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 
 from astrbot.api import logger
@@ -92,6 +93,7 @@ class RelationSnapshot:
     group_id: str
     user_id: str
     captured_at: float
+    materials_json: str = "{}"
 
 
 def _message_identity(event):
@@ -124,6 +126,7 @@ async def _freeze_relation(deps, event):
             snapshot = None
         else:
             group_id, user_id = identity[1:3]
+            selection = []
             rec, events, captured_at = await deps.favor.read_relation_snapshot(
                 group_id,
                 user_id,
@@ -131,19 +134,13 @@ async def _freeze_relation(deps, event):
                 days=deps.memory_days,
                 sig_threshold=deps.memory_sig_threshold,
                 sig_window_mult=deps.memory_sig_window_mult,
+                selection=selection,
             )
             template = deps.prompts.resolve("behavior", deps.bot_id, group_id)
             description = deps.favor.describe_relation(
                 rec.familiarity, rec.favor, rec.trust
             )
-            if deps.titles is not None:
-                from dataclasses import replace
-
-                display = await deps.favor.read_relation_title(
-                    group_id, user_id, event=event, record=rec
-                )
-                description = replace(description, title=display["title"])
-            block = deps.inject.build_relation_block(
+            materials = deps.inject.build_relation_materials(
                 template,
                 relationship=description.text,
                 impression=rec.impression,
@@ -156,7 +153,11 @@ async def _freeze_relation(deps, event):
                     user_id=user_id,
                 ),
                 captured_at=captured_at,
+                selection=selection,
+                impression_valid=rec.impression_valid,
+                impression_origin=rec.impression_origin,
             )
+            block = materials.pop("block")
             snapshot = RelationSnapshot(
                 block,
                 rec.familiarity,
@@ -169,6 +170,7 @@ async def _freeze_relation(deps, event):
                 group_id,
                 user_id,
                 captured_at,
+                json.dumps(materials, ensure_ascii=False),
             )
         future.set_result(snapshot)
         return deps, snapshot
@@ -437,13 +439,14 @@ async def _on_llm_request_inner(
     origin, snapshot = await _freeze_relation(deps, event)
     if snapshot is None:
         return
-    origin.inject.inject(req, snapshot.block)
-    req._bond_injected_snapshot = snapshot
+    if snapshot.block:
+        origin.inject.inject(req, snapshot.block)
+        req._bond_injected_snapshot = snapshot
     origin.favor.record_diagnostic(
         group_id,
         user_id,
         "render",
-        status="injected",
+        status="injected" if snapshot.block else "skipped",
         after=dict(
             familiarity=snapshot.familiarity,
             affinity=snapshot.affinity,
@@ -451,4 +454,6 @@ async def _on_llm_request_inner(
         ),
         bands_after=snapshot.bands or None,
         term_after=snapshot.term,
+        material_hash=json.loads(snapshot.materials_json).get("material_hash"),
+        material_selection=json.loads(snapshot.materials_json).get("selection"),
     )

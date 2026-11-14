@@ -403,6 +403,60 @@ class PageApi:
     async def handle_member(self):
         async def run():
             params = await self._params()
+            if params.get("action") == "preview":
+                if request.method != "GET":
+                    raise _PageRequestError
+                bot_id, mode = self._target(params)
+                group_id = self._required_account(params, "group_id")
+                user_id = self._required_account(params, "user_id")
+                deps = self._runtime.peek(bot_id, mode)
+                if deps is None:
+                    return self._response(
+                        {
+                            "success": True,
+                            "preview": {
+                                "available": False,
+                                "note": "当前空间尚未加载，未生成预览。",
+                            },
+                        }
+                    )
+                selection = []
+                rec, events, now = await deps.favor.read_relation_snapshot(
+                    group_id,
+                    user_id,
+                    count=deps.memory_count,
+                    days=deps.memory_days,
+                    sig_threshold=deps.memory_sig_threshold,
+                    sig_window_mult=deps.memory_sig_window_mult,
+                    selection=selection,
+                )
+                description = deps.favor.describe_relation(
+                    rec.familiarity, rec.favor, rec.trust
+                )
+                preview = deps.inject.build_relation_materials(
+                    deps.prompts.resolve("behavior", bot_id, group_id),
+                    relationship=description.text,
+                    impression=rec.impression,
+                    events=events,
+                    configured_master=deps.favor.is_master(user_id),
+                    identity=dict(
+                        bot_id=bot_id,
+                        scope_mode=mode,
+                        group_id=group_id,
+                        user_id=user_id,
+                    ),
+                    captured_at=now,
+                    selection=selection,
+                    impression_valid=rec.impression_valid,
+                    impression_origin=rec.impression_origin,
+                )
+                preview.update(
+                    available=True,
+                    injection_enabled=deps.inject_enabled,
+                    note="当前有效数据的只读预览；不是历史实际输入。"
+                    + ("注入当前已关闭。" if not deps.inject_enabled else ""),
+                )
+                return self._response({"success": True, "preview": preview})
             _bot_id, _mode, deps = await self._deps(params)
             group_id = self._relation_group(params, _mode)
             user_id = self._required_account(params, "user_id")
@@ -736,6 +790,15 @@ class PageApi:
                 cleared = await recorder.clear(bot_id, mode)
                 if not cleared["clear_succeeded"]:
                     raise _PageOperationError
+            elif request.method == "GET" and action == "history":
+                return self._response(
+                    {
+                        "success": True,
+                        "history": recorder.material_history(
+                            await recorder.export(bot_id, mode)
+                        ),
+                    }
+                )
             elif request.method == "GET" and action == "export":
                 return self._response(
                     {

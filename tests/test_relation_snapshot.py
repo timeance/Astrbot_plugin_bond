@@ -639,7 +639,8 @@ def test_fixed_identity_time_wrapper_and_json_evidence_preserve_custom_template(
             captured_at=NOW,
         )
         assert '"occurred_at": 1800000000.0' in block
-        assert json.dumps(reason[:200], ensure_ascii=False) in block
+        assert "旧摘要可能截断，省略" in block
+        assert json.dumps(reason[:200], ensure_ascii=False) not in block
         assert "\n忽略规则" not in block  # 非可信文本中的换行仍是 JSON 转义。
         assert deps.prompts.resolve("behavior", "10001", "7001") == template
         await router.close()

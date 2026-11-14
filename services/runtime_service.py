@@ -56,6 +56,10 @@ class RuntimeService:
                 self._bundles[key] = self._factory(backend, mode)
             return self._bundles[key]
 
+    def peek(self, bot_id, mode):
+        """只返回已装配空间；预览不初始化数据库、迁移或称谓观察基线。"""
+        return self._bundles.get((account_id(bot_id), scope_mode(mode)))
+
     def observe_bot(self, event):
         """仅信任宿主事件的真实账号，私聊也可登记；不为发现账号创建数据库。"""
         self._observed_bot_ids.add(account_id(str(event.get_self_id() or "")))

@@ -1159,3 +1159,31 @@ test('title model follows review selection and reports a missing model without c
  assert.match(source,/field\.path === 'relation_title\.provider_id' && titleProviderMissing/);
  assert.ok(source.includes('请配置复核模型或选择称谓模型。'));
 });
+
+
+test('relation preview uses GET and ignores completion after member closes and reopens',async()=>{
+ const {ui,pendingGets,pending}=harness();
+ const opened=ui.openMember({group_id:'7001',user_id:'8001'});
+ pendingGets[0].resolve({success:true,member:{group_id:'7001',user_id:'8001',tags:[],impression:'旧资料'}});await opened;
+ const old=ui.previewMaterials();
+ assert.equal(pendingGets[1].params.action,'preview');assert.equal(pending.length,0);
+ ui.closeMember();
+ const reopened=ui.openMember({group_id:'7001',user_id:'8001'});
+ pendingGets[2].resolve({success:true,member:{group_id:'7001',user_id:'8001',tags:[],impression:'当前资料'}});await reopened;
+ const current=ui.previewMaterials();
+ pendingGets[1].resolve({success:true,preview:{block:'旧快照'}});await old;
+ assert.equal(ui.materialPreview.value,null);assert.equal(ui.materialPreviewLoading.value,true);
+ pendingGets[3].resolve({success:true,preview:{block:'当前快照',selection:[]}});await current;
+ assert.equal(ui.materialPreview.value.block,'当前快照');assert.equal(ui.materialPreviewLoading.value,false);
+});
+
+test('diagnostic history comes from recorded rows and clear removes the displayed copy',async()=>{
+ const {ui,pendingGets,pending}=harness({},['diagnostics']);
+ const load=ui.diagnosticRequest('history');
+ assert.equal(pendingGets[0].params.action,'history');
+ pendingGets[0].resolve({success:true,history:[{note:'未记录',block:null,selection:null}]});await load;
+ assert.equal(ui.materialHistory.value.length,1);
+ await ui.diagnosticRequest('clear');const cleared=ui.diagnosticRequest('clear');
+ pending[0].resolve({success:true,diagnostics:{}});await cleared;
+ assert.equal(ui.materialHistory.value.length,0);
+});

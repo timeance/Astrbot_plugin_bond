@@ -23,16 +23,16 @@ async def check(root, runtime):
 
     schema = json.loads((root / "_conf_schema.json").read_text(encoding="utf-8"))
     assert schema["diagnostics"]["items"]["enabled"]["default"] is False
-    assert schema["diagnostics"]["items"]["detail_level"]["default"] == "assessment"
-    # 宿主在装配插件前补全 schema 默认值；升级旧开关不能顺带开启原文采集。
-    for level in (None, "raw", "evaluation", "full"):
+    assert schema["diagnostics"]["items"]["detail_level"]["default"] == "raw"
+    # 宿主补全缺省第二档；所有显式档位保留，总开关不变。
+    for level in (None, "assessment", "raw", "evaluation", "full"):
         old = {"diagnostics": {"enabled": True}}
         if level is not None:
             old["diagnostics"]["detail_level"] = level
         path = runtime / f"legacy-{level or 'missing'}.json"
         path.write_text(json.dumps(old), encoding="utf-8")
         legacy = AstrBotConfig(str(path), schema=schema)
-        expected = level or "assessment"
+        expected = level or "raw"
         assert legacy["diagnostics"]["detail_level"] == expected
         assert (
             json.loads(path.read_text(encoding="utf-8-sig"))["diagnostics"][
@@ -43,17 +43,17 @@ async def check(root, runtime):
         probe = BondPlugin(_context(Context, legacy), legacy)
         try:
             assert probe._diagnostics.detail_level == expected
-            assert probe._diagnostics.wants("chat") == (level is not None)
+            assert probe._diagnostics.wants("chat") == (expected != "assessment")
             assert probe._diagnostics.wants("request") == (level == "full")
         finally:
             await probe.terminate()
         if level is None:
-            # 不经宿主补全的调用同样使用保守默认值。
+            # 不经宿主补全的调用同样使用第二档。
             legacy["diagnostics"].pop("detail_level")
             probe = BondPlugin(_context(Context, legacy), legacy)
             try:
-                assert probe._diagnostics.detail_level == "assessment"
-                assert not probe._diagnostics.wants("chat")
+                assert probe._diagnostics.detail_level == "raw"
+                assert probe._diagnostics.wants("chat")
             finally:
                 await probe.terminate()
     config = AstrBotConfig(str(runtime / "config.json"), schema=schema)

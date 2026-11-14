@@ -27,6 +27,7 @@ class TaskRegistry:
 
     def __init__(self) -> None:
         self._tasks: dict[asyncio.Task, str] = {}
+        self.closed = False
 
     @property
     def size(self) -> int:
@@ -35,6 +36,9 @@ class TaskRegistry:
 
     def spawn(self, coro, name: str = "") -> asyncio.Task:
         """create_task 的唯一入口：强引用 + 具名 + 完成自动移除。"""
+        if self.closed:
+            coro.close()
+            raise RuntimeError("任务注册表已关闭")
         task = (
             asyncio.create_task(coro, name=name) if name else asyncio.create_task(coro)
         )
@@ -59,8 +63,12 @@ class TaskRegistry:
                 f"[八千代] 后台任务 {name} 异常退出", exc_info=task.exception()
             )
 
-    async def cancel_and_wait_all(self, timeout: float = 5.0) -> None:
+    async def cancel_and_wait_all(
+        self, timeout: float = 5.0, *, shutdown: bool = False
+    ) -> None:
         """取消全部在飞任务并等待完结（超时兜底，卸载不挂死）。幂等。"""
+        if shutdown:
+            self.closed = True
         tasks = [t for t in self._tasks if not t.done()]
         self._tasks.clear()
         if not tasks:

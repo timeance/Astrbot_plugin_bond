@@ -236,25 +236,26 @@ def test_replaced_values_near_budget_survive_disk_and_export(tmp_path, replaceme
     asyncio.run(run())
 
 
-def test_default_and_invalid_detail_levels_preserve_assessment_scope(tmp_path):
+def test_default_raw_explicit_levels_and_invalid_level_fallback(tmp_path):
     from astrbot_plugin_bond.core.settings import snapshot
 
     async def run():
         legacy = snapshot({"diagnostics": {"enabled": True}})["values"]
         assert legacy["diagnostics.enabled"] is True
-        assert legacy["diagnostics.detail_level"] == "assessment"
+        assert legacy["diagnostics.detail_level"] == "raw"
         for index, options in enumerate(({}, {"detail_level": "unknown"})):
             r = DiagnosticRecorder(
                 tmp_path / str(index), TaskRegistry(), True, **options
             )
-            assert r.detail_level == "assessment"
+            assert r.detail_level == ("raw" if index == 0 else "assessment")
             for stage in r.STAGES:
-                assert not content(r, stage, content={"text": "must not collect"})
+                allowed = index == 0 and stage in ("chat", "response")
+                assert content(r, stage, content={"text": "synthetic"}) == allowed
             assert r.emit(B, M, G, U, "assessment", status="ok")
             result = await r.export(B, M)
-            assert [row["kind"] for row in result["rows"]] == ["assessment"]
+            assert len(result["rows"]) == (3 if index == 0 else 1)
             await r.close()
-        for level in ("raw", "evaluation", "full"):
+        for level in ("assessment", "raw", "evaluation", "full"):
             saved = snapshot({"diagnostics": {"enabled": True, "detail_level": level}})[
                 "values"
             ]
@@ -381,6 +382,20 @@ def test_empty_nested_containers_consume_budget_and_survive_export(tmp_path):
         r'{"text":"oops, "api\"key":{"value":"synthetic-private"},',
         "[" * 40 + "0" + "]" * 40,
         json.dumps([[]] * 5000),
+    ],
+    ids=[
+        "large-object",
+        "partial-password",
+        "partial-topic",
+        "partial-nested",
+        "partial-secret",
+        "escaped-password",
+        "broken-secret",
+        "broken-escaped",
+        "broken-slash",
+        "broken-quote",
+        "deep-array",
+        "large-array",
     ],
 )
 def test_unparseable_or_oversized_json_is_omitted_and_exportable(tmp_path, serialized):

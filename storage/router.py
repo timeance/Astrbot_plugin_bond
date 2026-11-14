@@ -51,6 +51,9 @@ _REQUIRED_COLUMNS = {
         "impression",
         "tags",
         "impression_at",
+        "impression_revision",
+        "impression_valid",
+        "impression_origin",
         "half_life",
         "points",
         "familiarity",
@@ -95,6 +98,7 @@ _REQUIRED_COLUMNS = {
         "origin_group_id",
         "event_id",
     },
+    "impression_sources": {"group_id", "user_id", "log_id"},
     "impression_progress": {"group_id", "user_id", "log_id"},
     "observed_members": {"group_id", "user_id", "last_seen_at"},
 }
@@ -109,6 +113,7 @@ _TABLE_INFO_SQL = {
     "daily_gain": "PRAGMA table_info(daily_gain)",
     "cooldown": "PRAGMA table_info(cooldown)",
     "favor_log": "PRAGMA table_info(favor_log)",
+    "impression_sources": "PRAGMA table_info(impression_sources)",
     "impression_progress": "PRAGMA table_info(impression_progress)",
     "observed_members": "PRAGMA table_info(observed_members)",
 }

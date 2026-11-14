@@ -10,7 +10,7 @@ import sqlite3
 
 from .pragma_version import set_user_version
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 
 # 版本号 -> 该版本需要执行的 DDL/DML 语句列表
@@ -200,6 +200,24 @@ MIGRATIONS: dict[int, list[str]] = {
         "CREATE TABLE trust_evidence (group_id TEXT NOT NULL,user_id TEXT NOT NULL,origin_group_id TEXT NOT NULL,event_id TEXT NOT NULL,event_type TEXT NOT NULL,current_id TEXT NOT NULL,current_key TEXT NOT NULL,reference_id TEXT NOT NULL,reference_excerpt TEXT NOT NULL,reference_at REAL NOT NULL,behavior_id TEXT NOT NULL,behavior_key TEXT NOT NULL,behavior_excerpt TEXT NOT NULL,fingerprint TEXT NOT NULL,observed_at REAL NOT NULL,source_log_id INTEGER NOT NULL,source_events TEXT NOT NULL DEFAULT '[]',consumed_by TEXT NOT NULL DEFAULT '',invalidated INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(group_id,user_id,event_id))",
         "CREATE INDEX idx_trust_window ON trust_evidence(group_id,user_id,event_type,invalidated,consumed_by,observed_at)",
         "CREATE INDEX idx_trust_source ON trust_evidence(source_log_id)",
+    ],
+    # v21：印象来源依赖与局部版本；旧数据保留未知来源，不重算关系。
+    21: [
+        "ALTER TABLE favor ADD COLUMN impression_revision INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE favor ADD COLUMN impression_valid INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE favor ADD COLUMN impression_origin TEXT NOT NULL DEFAULT 'legacy'",
+        "UPDATE favor SET impression_valid=0 WHERE impression!='' AND impression_at=0 AND EXISTS(SELECT 1 FROM favor_log l WHERE l.group_id=favor.group_id AND l.user_id=favor.user_id AND l.reversed=1)",
+        "CREATE TABLE impression_sources (group_id TEXT NOT NULL,user_id TEXT NOT NULL,log_id INTEGER NOT NULL,PRIMARY KEY(group_id,user_id,log_id))",
+        "CREATE INDEX idx_impression_source ON impression_sources(log_id)",
+        "CREATE TRIGGER impression_changed AFTER UPDATE OF impression ON favor BEGIN "
+        "UPDATE favor SET impression_revision=OLD.impression_revision+1,impression_valid=1,impression_origin=NEW.impression_origin WHERE group_id=NEW.group_id AND user_id=NEW.user_id; "
+        "DELETE FROM impression_sources WHERE group_id=NEW.group_id AND user_id=NEW.user_id; END",
+        "CREATE TRIGGER impression_deleted AFTER DELETE ON favor BEGIN DELETE FROM impression_sources WHERE group_id=OLD.group_id AND user_id=OLD.user_id; END",
+        "CREATE TRIGGER impression_source_revoked AFTER UPDATE OF reversed ON favor_log WHEN OLD.reversed=0 AND NEW.reversed=1 BEGIN "
+        "UPDATE favor SET impression_valid=0,impression_at=0,impression_revision=impression_revision+1 "
+        "WHERE group_id=NEW.group_id AND user_id=NEW.user_id AND "
+        "(EXISTS(SELECT 1 FROM impression_sources s WHERE s.group_id=favor.group_id AND s.user_id=favor.user_id AND s.log_id=NEW.id) "
+        "OR (impression_origin IN ('legacy','legacy_summary') AND impression!='')); END",
     ],
 }
 

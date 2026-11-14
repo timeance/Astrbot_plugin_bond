@@ -9,6 +9,8 @@ import math
 import re
 import unicodedata
 
+from ..core.relation_materials import SOURCE_RULES
+
 
 class SelfImpressionService:
     """按当前会话模型和人格表达印象，失败时仅返回关系称谓。"""
@@ -58,7 +60,8 @@ class SelfImpressionService:
         # 全局档案无法区分资料来源群；连读取标签与印象也省去，避免跨群外发。
         if favor.scope_mode != "global":
             rec = await favor.get(group, sender)
-            facts.update(tags=rec.parsed_tags(), impression=rec.impression)
+            if rec.impression_valid:
+                facts.update(tags=rec.parsed_tags(), impression=rec.impression)
         system_prompt = (
             f"当前人格名称：{name}\n当前人格设定：\n{persona_prompt}\n\n"
             "任务：以当前 Bot 的口吻，用一句话回答对当前平台事件发言者的印象。"
@@ -68,7 +71,8 @@ class SelfImpressionService:
             "只描述当前 Bot 对当前发言者的印象，不推测其他成员或其他群资料，"
             "不编造经历，不披露或推测具体分值，不复述私密证据。"
             "资料缺失时仅依据关系称谓表达。"
-            "只输出一句正常纯文本，最多 200 字；不输出 Markdown、JSON、"
+            + SOURCE_RULES
+            + "只输出一句正常纯文本，最多 200 字；不输出 Markdown、JSON、"
             "代码、思考过程或工具调用。"
         )
         response = await provider.text_chat(

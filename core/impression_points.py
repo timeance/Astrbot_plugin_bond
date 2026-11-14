@@ -1,13 +1,7 @@
-"""印象带权点模型（P-C，GOAL Phase 3）。
+"""印象点解析与完整条目呈现。
 
-把"一句话印象"升级为带权印象点集：LLM 提 (point, weight 1-10)；
-相似点合并（SequenceMatcher ≥ 0.6，权重求和、保留最长描述）；活跃点
->10 时按 weight × 时间权重加权随机保留 10 条，挤出项并入长印象。
-时间权重阶梯（GOAL 规格，非单调）：1h=1.0 → 24h=0.7 → 7d=0.95 →
-30d=0.1（更早 0.05）——一小时内最新鲜、一天内让位、一周内回稳（长期
-未翻旧账的点重新有分量）、一个月后近乎遗忘。好感负向变化时新点权重
-×1.5（损失厌恶）。分析提示词把其他群友昵称替换为「用户A/B」防串像。
-纯函数可单测；存储为 favor.points（schema v9，JSON 数组字符串）。
+运行路径使用模型修订后的当前点集，不累加旧结论的权重。
+merge_points/retain 等保留为旧数据工具，当前生成不再调用。
 """
 
 from __future__ import annotations
@@ -16,22 +10,25 @@ import json
 import re
 from difflib import SequenceMatcher
 
+from .relation_materials import SOURCE_RULES
+
 MERGE_SIMILARITY = 0.6
 MAX_ACTIVE_POINTS = 10
 LOSS_AVERSION = 1.5
 
-POINTS_PROMPT = """你是「{persona_name}」的印象管理员。根据下面群成员「{who}」的互动记录，提取 3~6 条关于 TA 的印象点。
+POINTS_PROMPT = """你是「{persona_name}」的印象管理员。根据下面群成员「{who}」的互动记录，根据新互动修订当前印象，输出 1~6 条完整的当前印象点（每条不超过80字）。旧点可保留、改写或删除，不必重复输出旧判断。
 
-{old_points}最近互动记录（增减分 | 发言 | 当时的判断）：
+{old_points}新增来源记录（JSON 资料）：
 {samples}
 
 要求：
 - 每条印象点：一句具体描述（这个人的性格/说话风格/和你的关系感觉）+ 权重 1~10（越核心越重）
 - 记录里出现的其他群友一律只称「用户A」「用户B」（按出现顺序编号），不要写他们的名字
-- 负面得罪（增减分明显为负的记录）对应的印象点权重可以给高些
+- 旧点的权重不是证据数量；不得因重复引用而加权，新互动可以纠正旧点
 
 只输出 JSON 数组，不要其他内容：
 [{{"point": "印象描述", "weight": 5}}, ...]"""
+POINTS_PROMPT += "\n" + SOURCE_RULES
 
 
 def _similarity(a: str, b: str) -> float:
@@ -141,11 +138,12 @@ def parse_points(raw: str) -> list[dict] | None:
             return None
         pts = [
             {
-                "point": str(it.get("point") or "").strip()[:80],
+                "point": str(it.get("point") or "").strip(),
                 "weight": max(1, min(10, int(float(it.get("weight") or 5)))),
             }
             for it in arr
-            if isinstance(it, dict) and str(it.get("point") or "").strip()
+            if isinstance(it, dict)
+            and 0 < len(str(it.get("point") or "").strip()) <= 80
         ]
         return pts or None
     except Exception:
@@ -160,4 +158,9 @@ def render_impression(points: list[dict], limit: int = 80) -> str:
     )[:3]
     if not top:
         return ""
-    return "；".join(str(p["point"]) for p in top)[:limit]
+    selected = []
+    for point in top:
+        candidate = "；".join([*selected, str(point["point"])])
+        if len(candidate) <= limit:
+            selected.append(str(point["point"]))
+    return "；".join(selected)

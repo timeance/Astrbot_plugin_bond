@@ -10,7 +10,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
+from ..core.relation_materials import summary_samples
 from ..core.impression import build_summary_prompt, parse_summary, stats_tags
 from ..storage.base import StorageBackend
 from ..core.scope import group_key
@@ -123,7 +125,10 @@ class ImpressionService:
             return False, "印象正在刷新，请稍后再试"
         self._pending.add(key)
         try:
-            return await self._refresh_inner(group_id, user_id, umo)
+            return await self._registry.spawn(
+                self._refresh_inner(group_id, user_id, umo),
+                name=f"impression:manual:{group_id}/{user_id}",
+            )
         finally:
             self._pending.discard(key)
 
@@ -155,7 +160,10 @@ class ImpressionService:
             nickname = (
                 names.get((group_id, user_id)) or names.get(("", user_id)) or user_id
             )
-            old_impression = (rec.impression if rec else "") or ""
+            old_impression = (
+                rec.impression if rec and rec.impression_valid else ""
+            ) or ""
+            impression_revision = rec.impression_revision if rec else 0
             logs = await self._storage.impression_logs(
                 group_id, user_id, self._interval
             )
@@ -169,10 +177,7 @@ class ImpressionService:
             ]
             if not judged:
                 return False, "暂无可用的评估记录，暂时无法生成印象。"
-            samples = [
-                f"{float(r.get('delta') or 0):+} {r.get('message') or ''} —— {r.get('reason') or ''}"
-                for r in reversed(judged)  # 时间正序（query_logs 是倒序）
-            ]
+            samples = summary_samples(judged)
             # 人格名与 provider 走 JudgeService 公共方法（解析当前会话人格，
             # 失败回落 bot_name），与评审链路同源
             persona_name = await self._summarizer.resolve_display_name(umo)
@@ -191,6 +196,7 @@ class ImpressionService:
                     provider,
                     logger,
                     temporary["revision"],
+                    impression_revision,
                 )
             prompt = build_summary_prompt(
                 nickname, old_impression, samples, persona_name
@@ -204,6 +210,8 @@ class ImpressionService:
             # LLM 标签优先，确定性统计标签补充（去重、上限内）
             extra = [t for t in stats_tags(logs) if t not in llm_tags]
             tags = (llm_tags + extra)[:3]
+            if self._registry.closed:
+                return False, "插件已卸载，本次印象已丢弃。"
             if not await self._storage.commit_impression(
                 group_id,
                 user_id,
@@ -211,6 +219,7 @@ class ImpressionService:
                 tags,
                 [r["id"] for r in judged],
                 expected_revision=temporary["revision"],
+                expected_impression_revision=impression_revision,
             ):
                 return False, "本次评估记录已不可用，已保留原来的印象。"
             logger.info(f"[八千代] {group_id}/{user_id} 印象已刷新: {impression}")
@@ -235,25 +244,25 @@ class ImpressionService:
         provider,
         logger,
         expected_revision,
+        impression_revision,
     ) -> tuple[bool, str]:
-        """P-C 带权点模式：LLM 提点 → 损失厌恶加权 → 相似合并 → 限量保留。"""
+        """点模式：用新证据修订旧点集，完整替换而非累加旧结论。"""
         import time as _time
         from ..core.impression_points import (
             POINTS_PROMPT,
             anonymize,
-            loss_aversion_multiplier,
-            merge_points,
             parse_points,
             render_impression,
-            retain,
         )
 
         try:
             now = _time.time()
             rec = await self._storage.get(group_id, user_id)
             names = await self._storage.member_names()
-            existing = rec.parsed_points() if rec else []
-            # 分析提示词里其他群友昵称匿名化（防串像）；最近负向变化 ×1.5 损失厌恶
+            if (rec.impression_revision if rec else 0) != impression_revision:
+                return False, "印象已发生变化，本次刷新已取消。"
+            existing = rec.parsed_points() if rec and rec.impression_valid else []
+            # 分析提示词里其他群友昵称匿名化；身份与来源仍以流水元信息为准。
             others = []
             try:
                 rows = await self._storage.list_favor(group_id, limit=200)
@@ -264,10 +273,16 @@ class ImpressionService:
                 ]
             except Exception:
                 pass
-            anon_samples = "\n".join(anonymize(x, others) for x in samples)
+            anonymous = []
+            for sample in samples:
+                material = json.loads(sample)
+                for field in ("assessment", "member_expression"):
+                    material[field] = anonymize(material.get(field, ""), others)
+                anonymous.append(json.dumps(material, ensure_ascii=False))
+            anon_samples = "\n".join(anonymous)
             old_line = (
                 (
-                    f"既有印象点（权重 1~10）：\n"
+                    f"旧印象点（上一轮主观结论，不是新增证据；可修正或删除）：\n"
                     + "\n".join(
                         f"- {p.get('point')}（{p.get('weight')}）"
                         for p in existing[:10]
@@ -275,9 +290,12 @@ class ImpressionService:
                     + "\n"
                 )
                 if existing
-                else ""
+                else (
+                    f"旧印象（上一轮主观结论，不是新增证据；可修正或删除）：{old_impression}\n"
+                    if old_impression
+                    else ""
+                )
             )
-            recent_delta = float(judged[0].get("delta") or 0) if judged else 0.0
             prompt = POINTS_PROMPT.format(
                 persona_name=persona_name,
                 who=nickname or user_id,
@@ -289,20 +307,17 @@ class ImpressionService:
             new_pts = parse_points(content)
             if not new_pts:
                 return False, "这次没能生成有效的印象点，已保留原来的内容。"
-            mult = loss_aversion_multiplier(recent_delta)
-            for p in new_pts:
-                p["weight"] = max(1, min(15, int(round(p["weight"] * mult))))
-                p["ts"] = now
-            merged = merge_points(existing, new_pts)
-            kept, dropped = retain(merged, now)
+            # 输出代表修订后的当前点集，不与旧结论相加，避免自我强化与旧标签复活。
+            kept = new_pts[:10]
+            for point in kept:
+                point["ts"] = now
             impression = render_impression(kept)
-            if dropped:
-                # 挤出项并入长印象（Sourcery：不得以旧印象为空为由丢弃挤出点）
-                prefix = (old_impression + "；") if old_impression else ""
-                tail = "；较早印象：" + "；".join(d["point"] for d in dropped)
-                impression = (prefix + impression + tail)[:200]
+            if not impression:
+                return False, "完整印象点超出预算，已保留原来的内容。"
             # 原子档案更新：点集/印象/标签一次写入（失败即整体不生效，可安全重试）
-            old_tags = rec.parsed_tags() if rec else []
+            old_tags = stats_tags(judged)
+            if self._registry.closed:
+                return False, "插件已卸载，本次印象已丢弃。"
             if not await self._storage.commit_impression(
                 group_id,
                 user_id,
@@ -311,12 +326,10 @@ class ImpressionService:
                 [r["id"] for r in judged],
                 kept,
                 expected_revision=expected_revision,
+                expected_impression_revision=impression_revision,
             ):
                 return False, "本次评估记录已不可用，已保留原来的印象。"
-            logger.info(
-                f"[八千代] {group_id}/{user_id} 印象点已刷新: "
-                f"{len(kept)} 点（挤出 {len(dropped)}）"
-            )
+            logger.info(f"[八千代] {group_id}/{user_id} 印象点已刷新: {len(kept)} 点")
             return True, f"已生成印象：{impression}"
         except Exception as e:
             logger.warning(f"[八千代] 印象点刷新失败（静默）: {e}")
@@ -325,10 +338,6 @@ class ImpressionService:
     async def set_tags(self, group_id: str, user_id: str, tags: list[str]) -> None:
         """手动设置标签（指令入口）；印象本体由 AI 维护，这里只改标签。"""
         group_id = self.group_key(group_id)
-        rec = await self._storage.get(group_id, user_id)
-        await self._storage.set_impression(
-            group_id,
-            user_id,
-            (rec.impression if rec else ""),
-            [t.strip()[:6] for t in tags if t.strip()][:3],
+        await self._storage.set_tags(
+            group_id, user_id, [t.strip() for t in tags if 0 < len(t.strip()) <= 6][:3]
         )

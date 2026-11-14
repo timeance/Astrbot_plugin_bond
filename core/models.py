@@ -43,6 +43,10 @@ class FavorRecord:
     trust_maintained_at: float | None = None
     affinity_floor_reference: float | None = None
 
+    impression_revision: int = 0
+    impression_valid: bool = True
+    impression_origin: str = "legacy"
+
     @property
     def affinity(self) -> float:
         """亲近度沿用 favor 存储，避免维护两份数值。"""

@@ -133,6 +133,7 @@ createApp({
     const diagnosticLoading = ref(false);
     const diagnosticNotice = ref("");
     const diagnosticDownload = ref("");
+    const materialHistory = ref([]);
     const diagnosticConfirm = ref(false);
     const diagnosticSize = (bytes) => typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 0
       ? `${(bytes / 1000000).toFixed(2)} MB` : "未知";
@@ -159,13 +160,17 @@ createApp({
         if (!isCurrentScope(snapshot, revision)) return;
         if (!data.success) throw new Error(data.error || "诊断操作失败");
         if (action !== "status") releaseDiagnosticDownload();
-        if (action === "export") {
+        if (action === "history") {
+          materialHistory.value = data.history || [];
+          diagnosticNotice.value = materialHistory.value.length ? "仅展示已保存的最近20条注入记录。" : "未记录关系资料历史。";
+        } else if (action === "export") {
           diagnosticDownload.value = URL.createObjectURL(new Blob(
             [JSON.stringify(data.diagnostics, null, 2)], {type:"application/json"}));
           diagnosticNotice.value = "诊断记录已准备好，可以下载查看。";
           diagnosticStats.value = data.status || diagnosticStats.value;
         } else {
           diagnosticStats.value = data.diagnostics;
+          if (action === "clear") materialHistory.value = [];
           if (!quiet) diagnosticNotice.value = action === "clear" ? "诊断记录已清除。" : "";
         }
       } catch (error) {
@@ -362,7 +367,10 @@ createApp({
       snapshot.scope_mode === selectedMode.value;
     const clearScopeState = () => {
       clearExpiryTimer();
-      releaseDiagnosticDownload(); diagnosticStats.value = null; diagnosticLoading.value = false;
+      releaseDiagnosticDownload();
+      materialHistory.value = [];
+      diagnosticStats.value = null;
+      diagnosticLoading.value = false;
       diagnosticNotice.value = ""; diagnosticConfirm.value = false;
       scopeRevision.value += 1;
       todayRequestId += 1;
@@ -392,6 +400,8 @@ createApp({
       selectedLogGroup.value = null;
       undoRequestId += 1;
       memberDetail.value = null;
+      materialPreview.value = null;
+      materialPreviewLoading.value = false;
       undoPreview.value = null;
       restorePreview.value = null;
       latestBackup.value = "";
@@ -637,6 +647,40 @@ createApp({
     };
 
     // 成员详情弹窗（印象/标签/近期评审）
+    const materialPreview = ref(null);
+    const materialPreviewLoading = ref(false);
+    const materialReason = (reason) => ({
+      selected: "选用", missing: "缺少资料", invalidated: "印象已失效",
+      revoked: "记录已撤销", passive: "被动熟悉度不作为经历",
+      duplicate_source: "同一来源，仅采用一份", outside_window: "超出召回窗口",
+      count_limit: "超出条目数量", length_budget: "超出长度预算",
+      scope_hidden: "此作用域不披露经历", template_omitted: "自定义模板未使用此类资料",
+    })[reason] || reason;
+    const materialKind = (kind) => ({
+      relationship: "当前关系释义", impression: "当前成员印象",
+      event: "具体经历", events: "经历资料",
+    })[kind] || kind;
+    const previewMaterials = async () => {
+      const snapshot = scopeSnapshot();
+      const revision = scopeRevision.value;
+      const target = memberRequestTarget.value;
+      const member = memberDetail.value;
+      if (!snapshot || !member || !target || materialPreviewLoading.value) return;
+      materialPreviewLoading.value = true;
+      materialPreview.value = null;
+      try {
+        const data = await scopedGet("member", {
+          action: "preview", group_id: member.group_id, user_id: member.user_id,
+        }, snapshot);
+        if (!isCurrentMemberRequest(target, revision)) return;
+        if (!data.success) throw new Error(data.error || "预览失败");
+        materialPreview.value = data.preview;
+      } catch (error) {
+        if (isCurrentMemberRequest(target, revision)) setMemberNotice(String(error), true);
+      } finally {
+        if (isCurrentMemberRequest(target, revision)) materialPreviewLoading.value = false;
+      }
+    };
     const memberDetail = ref(null);
     const memberLoading = ref(false);
     let expiryTimer;
@@ -704,6 +748,8 @@ createApp({
       errorMsg.value = "";
       clearExpiryTimer();
       memberDetail.value = null;
+      materialPreview.value = null;
+      materialPreviewLoading.value = false;
       memberSaveLoading.value = false;
       memberLoading.value = true;
       memberSession += 1;
@@ -722,6 +768,8 @@ createApp({
       memberSession += 1;
       memberRequestTarget.value = null;
       memberDetail.value = null;
+      materialPreview.value = null;
+      materialPreviewLoading.value = false;
       memberLoading.value = false;
       memberSaveLoading.value = false;
       setMemberNotice("");
@@ -1352,6 +1400,7 @@ createApp({
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, selectedLogGroup, showDetail, showLogMember, backToLogGroup, closeDetail,
       isPassiveLog, isPassiveGroup, passiveLogMembers, passiveLogPreview, passiveLogDelta, logGroupLabel, isLogReversed,
+      materialPreview, materialPreviewLoading, previewMaterials, materialReason, materialKind, materialHistory,
       memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
       relationEditMode, temporaryMinutes, endTemporary, relationForm, profileForm, openMember, closeMember, refreshNames, saveRelation, saveProfile, refreshImpression,
       fetchBots, selectBot, applyMode, backupScope, prepareRestore,
@@ -1828,8 +1877,17 @@ createApp({
               <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('status')" :disabled="diagnosticLoading">刷新记录状态</button>
               <button class="xx-btn xx-btn-mini" @click="diagnosticRequest('export')" :disabled="diagnosticLoading">准备导出</button>
               <button class="xx-btn" :class="diagnosticConfirm ? 'xx-btn-danger' : 'xx-btn-mini'" @click="diagnosticRequest('clear')" :disabled="diagnosticLoading">{{ diagnosticConfirm ? "确认清除此空间的诊断记录" : "清除诊断记录" }}</button>
+              <button class="xx-btn" @click="diagnosticRequest('history')" :disabled="diagnosticLoading">查看历史关系资料</button>
               <a v-if="diagnosticDownload" :href="diagnosticDownload" download="bond-diagnostics.json" class="xx-btn xx-btn-primary">下载诊断记录</a>
             </div>
+            <details v-for="(item,i) in materialHistory" :key="i" class="xx-member-history">
+              <summary>{{ fmtTime(item.ts) }} · 历史关系资料</summary>
+              <p class="xx-help">{{ item.note }}</p>
+              <p v-if="!item.selection" class="xx-help">筛选说明未记录</p>
+              <p v-for="(entry,j) in (item.selection || [])" :key="j" class="xx-help">{{ materialKind(entry.kind) }}<span v-if="entry.log_id"> #{{ entry.log_id }}</span>：{{ materialReason(entry.reason) }}</p>
+              <pre v-if="item.block" class="xx-modal-text" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ item.block }}</pre>
+            </details>
+
             <p class="xx-help">诊断记录占用：当前空间 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.disk_bytes : null) }} · 全部 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.total_disk_bytes : null) }} / {{ diagnosticSize(diagnosticStats?.max_bytes) }}</p>
             <p v-if="diagnosticStats?.size_available && diagnosticStats.total_disk_bytes >= diagnosticStats.max_bytes * 0.9" class="xx-help">接近容量上限，旧记录将自动清理。</p>
             <p v-if="diagnosticNotice" class="xx-help" role="status">{{ diagnosticNotice }}</p>
@@ -1973,6 +2031,16 @@ createApp({
           </section>
           </div>
           <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length" class="xx-member-history"><summary>临时关系操作记录（{{ memberDetail.temporary_audit.length }}）</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i" class="xx-help">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }}<span v-if="item.details.values"> · 熟悉度 {{ item.details.values.familiarity }}，亲近度 {{ item.details.values.affinity }}，信任度 {{ item.details.values.trust }} · 截至 {{ fmtTime(item.details.expires_at) }} · {{ item.details.reason }}</span></p></details>
+          <details class="xx-member-history">
+            <summary>当前关系资料预览</summary>
+            <p class="xx-help">按当前有效资料模拟选择，不调用模型。请先选择真实群；历史输入在诊断中查看。</p>
+            <button class="xx-btn xx-btn-mini" @click="previewMaterials" :disabled="materialPreviewLoading || !memberDetail.group_id">{{ materialPreviewLoading ? "读取中…" : "只读预览" }}</button>
+            <template v-if="materialPreview">
+              <p class="xx-help">{{ materialPreview.note }}</p>
+              <p v-for="(entry,i) in (materialPreview.selection || [])" :key="i" class="xx-help">{{ materialKind(entry.kind) }}<span v-if="entry.log_id"> #{{ entry.log_id }}</span>：{{ materialReason(entry.reason) }}</p>
+              <pre class="xx-modal-text" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ materialPreview.block }}</pre>
+            </template>
+          </details>
           <details class="xx-member-history">
             <summary>近期评审（{{ memberDetail.recent_judges ? memberDetail.recent_judges.length : 0 }}）</summary>
             <p v-if="!memberDetail.recent_judges || !memberDetail.recent_judges.length" class="xx-modal-text xx-muted-text">暂无评估记录</p>

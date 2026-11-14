@@ -336,7 +336,7 @@ class SQLiteBackend(StorageBackend):
             row = (
                 self._c()
                 .execute(
-                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at, affinity_maintained_at, familiarity_maintained_at, trust_maintained_at, affinity_floor_reference "
+                    "SELECT favor, updated_at, relationship, nickname, impression, tags, impression_at, half_life, points, familiarity, trust, trust_updated_at, familiarity_updated_at, affinity_maintained_at, familiarity_maintained_at, trust_maintained_at, affinity_floor_reference, impression_revision, impression_valid, impression_origin "
                     "FROM favor WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
                 )
@@ -364,6 +364,9 @@ class SQLiteBackend(StorageBackend):
             familiarity_maintained_at=row[14],
             trust_maintained_at=row[15],
             affinity_floor_reference=row[16],
+            impression_revision=row[17],
+            impression_valid=bool(row[18]),
+            impression_origin=row[19],
         )
 
     async def read_relation_snapshot(self, group_id, user_id, *, log_limit=0):
@@ -431,7 +434,10 @@ class SQLiteBackend(StorageBackend):
         # 全局聚合印象不能跨群披露；撤销后须重新刷新/确认印象才能引用。
         impression = (
             record.impression
-            if record and group_id != GLOBAL_GROUP and record.impression_at > 0
+            if record
+            and group_id != GLOBAL_GROUP
+            and record.impression_valid
+            and record.impression_at > 0
             else ""
         )
         return dict(
@@ -1540,6 +1546,13 @@ class SQLiteBackend(StorageBackend):
         好感变动，不重置）。列名来自本类固定调用点，无用户输入。
         """
         now = time.time()
+        if "impression" in cols:
+            cols = {
+                "points": "[]",
+                **cols,
+                "impression_origin": "legacy",
+                "impression_revision": 1,
+            }
         insert_cols = {"favor": self._initial_favor, **cols}
         col_sql = ", ".join(insert_cols)
         ph = ", ".join("?" for _ in insert_cols)
@@ -1673,6 +1686,12 @@ class SQLiteBackend(StorageBackend):
                 },
             )
 
+    async def set_tags(self, group_id, user_id, tags):
+        with self._lock:
+            self._upsert(
+                group_id, user_id, {"tags": json.dumps(tags, ensure_ascii=False)}
+            )
+
     async def set_impression(
         self, group_id: str, user_id: str, impression: str, tags: list[str]
     ) -> None:
@@ -1700,7 +1719,7 @@ class SQLiteBackend(StorageBackend):
                 value = row[0] if row else self._initial_favor
                 conn.execute(
                     "INSERT INTO favor(group_id,user_id,favor,updated_at,half_life,impression,tags,impression_at) VALUES(?,?,?,?,?,?,?,?) "
-                    "ON CONFLICT(group_id,user_id) DO UPDATE SET impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at",
+                    "ON CONFLICT(group_id,user_id) DO UPDATE SET impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,points='[]'",
                     (
                         group_id,
                         user_id,
@@ -1711,6 +1730,10 @@ class SQLiteBackend(StorageBackend):
                         json.dumps(tags, ensure_ascii=False),
                         now,
                     ),
+                )
+                conn.execute(
+                    "UPDATE favor SET impression_origin='manual',impression_revision=MAX(1,impression_revision) WHERE group_id=? AND user_id=?",
+                    (group_id, user_id),
                 )
                 conn.execute(
                     "INSERT INTO favor_log(group_id,user_id,delta,favor_before,favor_after,reason,source,ts) VALUES(?,?,0,?,?,?,'admin_profile',?)",
@@ -1741,7 +1764,7 @@ class SQLiteBackend(StorageBackend):
             rows = (
                 self._c()
                 .execute(
-                    "SELECT id, delta, message, reason, source, ts, reversed FROM favor_log "
+                    "SELECT id, delta, message, reason, source, ts, reversed, event_id, group_id, user_id, origin_group_id FROM favor_log "
                     "WHERE group_id=? AND user_id=? AND source='judge' AND reversed=0 "
                     "AND id>? ORDER BY id ASC LIMIT ?",
                     (group_id, user_id, cursor[0] if cursor else 0, limit),
@@ -1759,6 +1782,10 @@ class SQLiteBackend(StorageBackend):
                             "source",
                             "ts",
                             "reversed",
+                            "event_id",
+                            "group_id",
+                            "user_id",
+                            "origin_group_id",
                         ),
                         r,
                     )
@@ -1775,6 +1802,7 @@ class SQLiteBackend(StorageBackend):
         log_ids,
         points=None,
         expected_revision=None,
+        expected_impression_revision=None,
     ):
         if not log_ids:
             return False
@@ -1783,6 +1811,22 @@ class SQLiteBackend(StorageBackend):
             try:
                 conn.execute("BEGIN")
                 self._guard_relation_write(group_id, user_id, expected_revision)
+                current = self._get_sync(group_id, user_id)
+                if (
+                    expected_impression_revision is not None
+                    and expected_impression_revision
+                    != (current.impression_revision if current else 0)
+                ):
+                    conn.rollback()
+                    return False
+                inherited = (
+                    conn.execute(
+                        "SELECT log_id FROM impression_sources WHERE group_id=? AND user_id=?",
+                        (group_id, user_id),
+                    ).fetchall()
+                    if current and current.impression_valid
+                    else []
+                )
                 progress = conn.execute(
                     "SELECT log_id FROM impression_progress WHERE group_id=? AND user_id=?",
                     (group_id, user_id),
@@ -1804,7 +1848,7 @@ class SQLiteBackend(StorageBackend):
                     "INSERT INTO favor(group_id,user_id,updated_at,impression,tags,impression_at,points,half_life,favor) "
                     "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET "
                     "impression=excluded.impression,tags=excluded.tags,impression_at=excluded.impression_at,"
-                    "points=COALESCE(?,favor.points)",
+                    "points=excluded.points",
                     (
                         group_id,
                         user_id,
@@ -1819,12 +1863,30 @@ class SQLiteBackend(StorageBackend):
                         ),
                         self._initial_half_life,
                         self._initial_favor,
-                        (
-                            json.dumps(points, ensure_ascii=False)
-                            if points is not None
-                            else None
-                        ),
                     ),
+                )
+                conn.execute(
+                    "UPDATE favor SET impression_valid=1,impression_origin=?,impression_revision=MAX(1,impression_revision) WHERE group_id=? AND user_id=?",
+                    (
+                        (
+                            "legacy_summary"
+                            if current
+                            and current.impression_valid
+                            and current.impression
+                            and current.impression_origin
+                            in ("legacy", "legacy_summary")
+                            else "summary"
+                        ),
+                        group_id,
+                        user_id,
+                    ),
+                )
+                conn.executemany(
+                    "INSERT OR IGNORE INTO impression_sources VALUES(?,?,?)",
+                    [
+                        (group_id, user_id, value)
+                        for value in set(log_ids) | {r[0] for r in inherited}
+                    ],
                 )
                 conn.execute(
                     "INSERT INTO impression_progress VALUES(?,?,?) ON CONFLICT(group_id,user_id) "
@@ -2379,12 +2441,6 @@ class SQLiteBackend(StorageBackend):
         with self._lock, self._c() as conn:
             # 此低层接口保持只标记契约；数值撤销统一经 apply_undo。
             self._invalidate_trust_source(conn, log_id, reverse_rewards=False)
-            # 保留原文供人工核对，清除有效刷新标记；新印象生成后可正常复用。
-            conn.execute(
-                "UPDATE favor SET impression_at=0 WHERE (group_id,user_id) IN "
-                "(SELECT group_id,user_id FROM favor_log WHERE id=? AND reversed=0)",
-                (int(log_id),),
-            )
             conn.execute("UPDATE favor_log SET reversed=1 WHERE id=?", (int(log_id),))
 
     async def apply_undo(
@@ -2520,10 +2576,6 @@ class SQLiteBackend(StorageBackend):
                     )
                 conn.execute(
                     "UPDATE favor_log SET reversed=1 WHERE id=?", (int(log_id),)
-                )
-                conn.execute(
-                    "UPDATE favor SET impression_at=0 WHERE group_id=? AND user_id=?",
-                    (group_id, user_id),
                 )
                 conn.commit()
             except BaseException:

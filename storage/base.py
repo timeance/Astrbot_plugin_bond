@@ -224,6 +224,10 @@ class StorageBackend(ABC):
         """人工印象与标签修改须同事务留下审计流水。"""
         raise NotImplementedError
 
+    async def set_tags(self, group_id, user_id, tags):
+        """只修改标签；不得把失效印象重新确认为有效。"""
+        raise NotImplementedError
+
     @abstractmethod
     async def impression_logs(
         self, group_id: str, user_id: str, limit: int
@@ -239,6 +243,8 @@ class StorageBackend(ABC):
         tags: list[str],
         log_ids: list[int],
         points=None,
+        expected_revision=None,
+        expected_impression_revision=None,
     ) -> bool:
         """校验证据仍有效，原子保存档案和处理进度；证据失效时不写入。"""
 
