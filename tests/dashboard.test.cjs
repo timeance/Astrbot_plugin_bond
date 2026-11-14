@@ -1187,3 +1187,53 @@ test('diagnostic history comes from recorded rows and clear removes the displaye
  pending[0].resolve({success:true,diagnostics:{}});await cleared;
  assert.equal(ui.materialHistory.value.length,0);
 });
+
+
+for(const group of ['', '7001']) test(`global preview binds the selected member and group ${group || 'all'}`,async()=>{
+ const {ui,pendingGets,pending}=harness();
+ ui.selectedMode.value='global';ui.filterGroup.value=group;
+ ui.groups.value=[{group_id:'7001'},{group_id:'7002'}];
+ assert.equal(ui.canPreviewMaterials.value,false);
+ const opened=ui.openMember({group_id:'7002',user_id:'8001'});
+ pendingGets[0].resolve({success:true,member:{group_id:group,user_id:'8001',tags:[],impression:''}});await opened;
+ assert.equal(ui.canPreviewMaterials.value,true);
+ const preview=ui.previewMaterials();
+ const params=pendingGets[1].params;
+ assert.equal(params.bot_id,'10001');assert.equal(params.scope_mode,'global');
+ assert.equal(params.group_id,group);assert.equal(params.user_id,'8001');assert.equal(params.action,'preview');
+ await ui.previewMaterials();assert.equal(pendingGets.length,2);assert.equal(pending.length,0);
+ const content={relationship:'熟悉，但信任仍有保留。',impression:'',events:[]};
+ pendingGets[1].resolve({success:true,preview:{available:true,content,block:'完整提示词',selection:[]}});await preview;
+ assert.equal(ui.materialPreview.value.content,content);
+ assert.equal(ui.materialPreviewLoading.value,false);
+ ui.selectedMode.value='per_group';
+ assert.equal(ui.canPreviewMaterials.value,false);
+ await ui.previewMaterials();assert.equal(pendingGets.length,2);
+ ui.closeMember();assert.equal(ui.canPreviewMaterials.value,false);
+});
+
+test('per-group preview still requires a real group and ignores an old scope result',async()=>{
+ const {ui,pendingGets}=harness();
+ await ui.openMember({group_id:'',user_id:'8001'});
+ assert.equal(ui.canPreviewMaterials.value,false);assert.equal(pendingGets.length,0);
+ await ui.previewMaterials();assert.equal(pendingGets.length,0);
+ const opened=ui.openMember({group_id:'7001',user_id:'8001'});
+ pendingGets[0].resolve({success:true,member:{group_id:'7001',user_id:'8001',tags:[]}});await opened;
+ const preview=ui.previewMaterials();
+ ui.selectedBot.value='20002';await ui.selectBot();
+ pendingGets[1].resolve({success:true,preview:{block:'旧Bot资料'}});await preview;
+ assert.equal(ui.materialPreview.value,null);assert.equal(ui.materialPreviewLoading.value,false);
+});
+
+test('preview presents selected content as text and keeps full prompts collapsed',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../pages/dashboard/app.js'),'utf8');
+ const section=source.slice(source.indexOf('<summary>当前关系资料预览</summary>'),source.indexOf('<summary>近期评审'));
+ assert.match(section,/:disabled="materialPreviewLoading \|\| !canPreviewMaterials"/);
+ assert.ok(section.includes('{{ materialPreview.content.relationship }}'));
+ assert.ok(section.includes('{{ materialPreview.content.impression }}'));
+ assert.ok(section.includes('materialPreview.content.events'));
+ assert.doesNotMatch(section,/v-html|<details[^>]*\sopen(?:\s|>|=)/);
+ assert.match(section,/<details v-if="materialPreview.block"[^>]*>\s*<summary>完整注入文本（含提示词）<\/summary>\s*<pre[^>]*>{{ materialPreview.block }}<\/pre>\s*<\/details>/);
+ assert.match(source,/<details v-if="item.block"[^>]*>\s*<summary>完整注入文本（含提示词）<\/summary>/);
+ assert.ok(!section.includes('请先选择真实群'));
+});

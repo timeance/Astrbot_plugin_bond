@@ -664,13 +664,12 @@ createApp({
       const snapshot = scopeSnapshot();
       const revision = scopeRevision.value;
       const target = memberRequestTarget.value;
-      const member = memberDetail.value;
-      if (!snapshot || !member || !target || materialPreviewLoading.value) return;
+      if (!canPreviewMaterials.value || materialPreviewLoading.value) return;
       materialPreviewLoading.value = true;
       materialPreview.value = null;
       try {
         const data = await scopedGet("member", {
-          action: "preview", group_id: member.group_id, user_id: member.user_id,
+          action: "preview", group_id: target.group_id, user_id: target.user_id,
         }, snapshot);
         if (!isCurrentMemberRequest(target, revision)) return;
         if (!data.success) throw new Error(data.error || "预览失败");
@@ -682,6 +681,12 @@ createApp({
       }
     };
     const memberDetail = ref(null);
+    const canPreviewMaterials = computed(() => {
+      const target = memberRequestTarget.value;
+      return !!memberDetail.value && isCurrentMemberRequest(target, scopeRevision.value)
+        && isRealAccount(target.user_id)
+        && (isRealAccount(target.group_id) || (target.scope_mode === "global" && !target.group_id));
+    });
     const memberLoading = ref(false);
     let expiryTimer;
     const clearExpiryTimer = () => { clearTimeout(expiryTimer); expiryTimer = undefined; };
@@ -1400,7 +1405,7 @@ createApp({
       undoPreview, openUndo, closeUndo, confirmUndo,
       selectedLog, selectedLogGroup, showDetail, showLogMember, backToLogGroup, closeDetail,
       isPassiveLog, isPassiveGroup, passiveLogMembers, passiveLogPreview, passiveLogDelta, logGroupLabel, isLogReversed,
-      materialPreview, materialPreviewLoading, previewMaterials, materialReason, materialKind, materialHistory,
+      materialPreview, materialPreviewLoading, canPreviewMaterials, previewMaterials, materialReason, materialKind, materialHistory,
       memberDetail, memberLoading, memberNotice, memberNoticeError, memberSaveLoading,
       relationEditMode, temporaryMinutes, endTemporary, relationForm, profileForm, openMember, closeMember, refreshNames, saveRelation, saveProfile, refreshImpression,
       fetchBots, selectBot, applyMode, backupScope, prepareRestore,
@@ -1885,7 +1890,10 @@ createApp({
               <p class="xx-help">{{ item.note }}</p>
               <p v-if="!item.selection" class="xx-help">筛选说明未记录</p>
               <p v-for="(entry,j) in (item.selection || [])" :key="j" class="xx-help">{{ materialKind(entry.kind) }}<span v-if="entry.log_id"> #{{ entry.log_id }}</span>：{{ materialReason(entry.reason) }}</p>
-              <pre v-if="item.block" class="xx-modal-text" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ item.block }}</pre>
+              <details v-if="item.block" class="xx-member-history">
+                <summary>完整注入文本（含提示词）</summary>
+                <pre class="xx-modal-text xx-material-block">{{ item.block }}</pre>
+              </details>
             </details>
 
             <p class="xx-help">诊断记录占用：当前空间 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.disk_bytes : null) }} · 全部 {{ diagnosticSize(diagnosticStats?.size_available ? diagnosticStats.total_disk_bytes : null) }} / {{ diagnosticSize(diagnosticStats?.max_bytes) }}</p>
@@ -2033,12 +2041,35 @@ createApp({
           <details v-if="memberDetail.temporary_audit && memberDetail.temporary_audit.length" class="xx-member-history"><summary>临时关系操作记录（{{ memberDetail.temporary_audit.length }}）</summary><p v-for="(item,i) in memberDetail.temporary_audit" :key="i" class="xx-help">{{ fmtTime(item.ts) }} · {{ item.actor }} · {{ ({created:'创建',updated:'修改',cancelled:'结束',expired:'到期'})[item.action] || item.action }}<span v-if="item.details.values"> · 熟悉度 {{ item.details.values.familiarity }}，亲近度 {{ item.details.values.affinity }}，信任度 {{ item.details.values.trust }} · 截至 {{ fmtTime(item.details.expires_at) }} · {{ item.details.reason }}</span></p></details>
           <details class="xx-member-history">
             <summary>当前关系资料预览</summary>
-            <p class="xx-help">按当前有效资料模拟选择，不调用模型。请先选择真实群；历史输入在诊断中查看。</p>
-            <button class="xx-btn xx-btn-mini" @click="previewMaterials" :disabled="materialPreviewLoading || !memberDetail.group_id">{{ materialPreviewLoading ? "读取中…" : "只读预览" }}</button>
+            <p class="xx-help">查看当前会选用的资料，不调用模型、不改变关系。历史输入在系统诊断中查看。</p>
+            <button class="xx-btn xx-btn-mini" @click="previewMaterials" :disabled="materialPreviewLoading || !canPreviewMaterials">{{ materialPreviewLoading ? "读取中…" : "只读预览" }}</button>
             <template v-if="materialPreview">
-              <p class="xx-help">{{ materialPreview.note }}</p>
-              <p v-for="(entry,i) in (materialPreview.selection || [])" :key="i" class="xx-help">{{ materialKind(entry.kind) }}<span v-if="entry.log_id"> #{{ entry.log_id }}</span>：{{ materialReason(entry.reason) }}</p>
-              <pre class="xx-modal-text" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ materialPreview.block }}</pre>
+              <p class="xx-help" role="status">{{ materialPreview.note }}</p>
+              <section v-if="materialPreview.content?.relationship" class="xx-modal-section">
+                <h4>当前关系释义</h4>
+                <p class="xx-modal-text">{{ materialPreview.content.relationship }}</p>
+              </section>
+              <section v-if="materialPreview.content?.impression" class="xx-modal-section">
+                <h4>成员印象（主观判断）</h4>
+                <p class="xx-modal-text">{{ materialPreview.content.impression }}</p>
+              </section>
+              <section v-if="materialPreview.content?.events.length" class="xx-modal-section">
+                <h4>近期经历（{{ materialPreview.content.events.length }}）</h4>
+                <div v-for="(entry,i) in materialPreview.content.events" :key="i">
+                  <p class="xx-help">{{ entry.assessment_kind }} · QQ {{ entry.subject || '未知' }} · {{ fmtTime(entry.occurred_at) }}</p>
+                  <p class="xx-modal-text">{{ entry.assessment || '未记录摘要' }}</p>
+                  <p class="xx-help">{{ entry.certainty }}</p>
+                </div>
+              </section>
+              <p v-if="materialPreview.content && !materialPreview.content.relationship && !materialPreview.content.impression && !materialPreview.content.events.length" class="xx-help">当前未选用关系资料，原因见筛选说明。</p>
+              <details v-if="materialPreview.selection?.length" class="xx-member-history">
+                <summary>筛选说明</summary>
+                <p v-for="(entry,i) in materialPreview.selection" :key="i" class="xx-help">{{ materialKind(entry.kind) }}<span v-if="entry.log_id"> #{{ entry.log_id }}</span>：{{ materialReason(entry.reason) }}</p>
+              </details>
+              <details v-if="materialPreview.block" class="xx-member-history">
+                <summary>完整注入文本（含提示词）</summary>
+                <pre class="xx-modal-text xx-material-block">{{ materialPreview.block }}</pre>
+              </details>
             </template>
           </details>
           <details class="xx-member-history">

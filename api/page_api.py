@@ -407,7 +407,7 @@ class PageApi:
                 if request.method != "GET":
                     raise _PageRequestError
                 bot_id, mode = self._target(params)
-                group_id = self._required_account(params, "group_id")
+                group_id = self._relation_group(params, mode)
                 user_id = self._required_account(params, "user_id")
                 deps = self._runtime.peek(bot_id, mode)
                 if deps is None:
@@ -433,8 +433,15 @@ class PageApi:
                 description = deps.favor.describe_relation(
                     rec.familiarity, rec.favor, rec.trust
                 )
+                # 全局聚合关系不绑定真实群，沿用全局模板，不猜测群级覆盖。
+                preview_group = None if group_id == GLOBAL_GROUP else group_id
+                template = (
+                    deps.prompts.resolve("behavior")
+                    if preview_group is None
+                    else deps.prompts.resolve("behavior", bot_id, preview_group)
+                )
                 preview = deps.inject.build_relation_materials(
-                    deps.prompts.resolve("behavior", bot_id, group_id),
+                    template,
                     relationship=description.text,
                     impression=rec.impression,
                     events=events,
@@ -442,18 +449,25 @@ class PageApi:
                     identity=dict(
                         bot_id=bot_id,
                         scope_mode=mode,
-                        group_id=group_id,
+                        group_id=preview_group,
                         user_id=user_id,
                     ),
                     captured_at=now,
                     selection=selection,
                     impression_valid=rec.impression_valid,
                     impression_origin=rec.impression_origin,
+                    include_content=True,
                 )
                 preview.update(
                     available=True,
                     injection_enabled=deps.inject_enabled,
-                    note="当前有效数据的只读预览；不是历史实际输入。"
+                    note="当前有效资料的只读预览。"
+                    + ("全局空间仅提供关系释义。" if mode == "global" else "")
+                    + (
+                        "全部群使用全局模板；选择具体群可预览该群模板。"
+                        if preview_group is None
+                        else ""
+                    )
                     + ("注入当前已关闭。" if not deps.inject_enabled else ""),
                 )
                 return self._response({"success": True, "preview": preview})
