@@ -580,14 +580,18 @@ def test_points_anonymization_preserves_trusted_source_fields(tmp_path):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("points", [False, True])
-def test_late_summary_after_shutdown_cannot_write_even_if_provider_ignores_cancel(
-    tmp_path, points
+@pytest.mark.parametrize("points", [False, True], ids=["summary", "points"])
+@pytest.mark.parametrize("timeout_sec", [0, 60], ids=["direct", "timed"])
+@pytest.mark.parametrize("ignore_cancel", [False, True], ids=["cancel", "late"])
+def test_summary_shutdown_preserves_cancellation_and_discards_late_results(
+    tmp_path, points, timeout_sec, ignore_cancel
 ):
     async def run():
         db = SQLiteBackend(tmp_path / "late.db")
         await db.init()
         await seed(db, 1)
+        db.commit_impression = AsyncMock(wraps=db.commit_impression)
+        cancelled, returned = asyncio.Event(), asyncio.Event()
 
         class LateSummary(Summary):
             async def text_chat(self, *, prompt):
@@ -596,22 +600,45 @@ def test_late_summary_after_shutdown_cannot_write_even_if_provider_ignores_cance
                 try:
                     await self.release.wait()
                 except asyncio.CancelledError:
+                    cancelled.set()
+                    if not ignore_cancel:
+                        raise
                     await self.release.wait()
+                returned.set()
                 return SimpleNamespace(completion_text=self.result)
 
         provider = LateSummary(points)
         provider.release = asyncio.Event()
         registry = TaskRegistry()
         service = ImpressionService(
-            db, registry=registry, summarizer=provider, interval=1, points_mode=points
+            db,
+            registry=registry,
+            summarizer=provider,
+            interval=1,
+            points_mode=points,
+            timeout_sec=timeout_sec,
         )
         task = asyncio.create_task(service.refresh_now("7001", "8001"))
-        await provider.entered.wait()
+        await asyncio.wait_for(provider.entered.wait(), 2)
         before = "\n".join(db._c().iterdump())
         await registry.cancel_and_wait_all(timeout=0, shutdown=True)
+        # 明确等到 Provider 收到取消，再放行晚结果，避免靠事件循环调度碰巧通过。
+        await asyncio.wait_for(cancelled.wait(), 2)
         provider.release.set()
-        ok, reason = await asyncio.wait_for(task, 2)
-        assert not ok and "卸载" in reason
+        result = (
+            await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 2)
+        )[0]
+        if not ignore_cancel:
+            # 正常响应取消的 Provider 必须将取消传播给宿主调用方。
+            assert isinstance(result, asyncio.CancelledError)
+        elif timeout_sec == 0 or not isinstance(result, asyncio.CancelledError):
+            # 直接调用确保真正走到提交前的卸载检查；3.10 的 wait_for 会在
+            # 子任务忽略取消并结束后继续传播取消，较新版本则可返回子任务结果。
+            ok, reason = result
+            assert not ok and "卸载" in reason
+        assert returned.is_set() == ignore_cancel
+        assert task.done() and not service._pending and registry.size == 0
+        db.commit_impression.assert_not_awaited()
         assert before == "\n".join(db._c().iterdump())
         assert len(provider.prompts) == 1
         with pytest.raises(RuntimeError, match="已关闭"):
