@@ -514,6 +514,7 @@ class FavorService:
         days=7,
         sig_threshold=0.0,
         sig_window_mult=1.0,
+        selection=None,
     ):
         """一次一致读取；全局作用域不召回其他群的印象或流水。"""
         key = self.group_key(group_id)
@@ -532,12 +533,17 @@ class FavorService:
                 sig_window_mult=sig_window_mult,
                 logs=logs,
                 now=now,
+                selection=selection,
             )
             if local
             else []
         )
         if not local:
             rec.impression = ""
+            if selection is not None:
+                selection.append(
+                    dict(kind="events", log_id=None, reason="scope_hidden")
+                )
         return rec, events, now
 
     async def get_relation(self, group_id, user_id):
@@ -1108,6 +1114,7 @@ class FavorService:
         sig_window_mult: float = 1.0,
         logs: list[dict] | None = None,
         now: float | None = None,
+        selection=None,
     ) -> list[dict]:
         """最近 count 条变动流水（倒序），供注入「近期印象」。
 
@@ -1125,26 +1132,19 @@ class FavorService:
                 group_id, user_id, limit=max(count * 5, count)
             )
         )
-        rows = [
-            r
-            for r in rows
-            if not r.get("reversed") and r.get("source") != "passive_familiarity"
-        ]
-        if days and days > 0:
-            now = time.time() if now is None else now
-            normal_cutoff = now - days * 86400
-            sig_cutoff = now - days * 86400 * max(1.0, sig_window_mult)
+        from ..core.relation_materials import select_events
 
-            def _in_window(r: dict) -> bool:
-                if (
-                    sig_threshold > 0
-                    and abs(float(r.get("delta") or 0)) >= sig_threshold
-                ):
-                    return r.get("ts", 0) >= sig_cutoff
-                return r.get("ts", 0) >= normal_cutoff
-
-            rows = [r for r in rows if _in_window(r)]
-        return rows[:count]
+        chosen, reasons = select_events(
+            rows,
+            count=count,
+            days=days,
+            now=time.time() if now is None else now,
+            sig_threshold=sig_threshold,
+            sig_window_mult=sig_window_mult,
+        )
+        if selection is not None:
+            selection.extend(reasons)
+        return chosen
 
     def recent_milestone(
         self,

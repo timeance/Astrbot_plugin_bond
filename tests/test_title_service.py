@@ -576,6 +576,7 @@ def test_hard_invalidations_immediately_use_fixed(tmp_path, change_kind):
         "restore",
         "clear",
         "impression",
+        "shutdown",
         "mode",
     ],
 )
@@ -608,6 +609,9 @@ def test_inflight_generation_cannot_commit_after_state_changes(tmp_path, kind):
             await db.clear_title_cache()
         elif kind == "impression":
             await db.set_impression("789", "456", "新的本群印象", [])
+        elif kind == "shutdown":
+            # 模拟卸载取消超时后，Provider 仍返回结果。
+            service.registry.closed = True
         else:
             service.config = replace(service.config, enabled=False)
             await display(favor)

@@ -32,6 +32,7 @@ SUPPORTED_VERSIONS = (
     18,
     19,
     20,
+    21,
 )
 
 
@@ -78,5 +79,7 @@ def set_user_version(conn: sqlite3.Connection, version: int) -> None:
         conn.execute("PRAGMA user_version(19)")
     elif v == 20:
         conn.execute("PRAGMA user_version(20)")
+    elif v == 21:
+        conn.execute("PRAGMA user_version(21)")
     else:
         raise ValueError(f"不支持的 schema 版本: {v}")

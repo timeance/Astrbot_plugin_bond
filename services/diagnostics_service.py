@@ -50,13 +50,14 @@ class DiagnosticRecorder:
         "policy_version": r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}",
         "lexicon_version": r"[0-9]{1,6}",
         "config_hash": r"[0-9a-f]{64}",
+        "material_hash": r"[0-9a-f]{64}",
     }
     DIMENSIONS = frozenset(("affinity", "familiarity", "trust"))
     FIELDS = (
         tuple(ENUMS)
         + tuple(PATTERNS)
         + tuple(
-            "elapsed_ms tokens confidence before after delta bands_before bands_after temporary intent adjusted allowed maintenance_at maintenance_policy_at maintenance_before maintenance_after maintenance_qualified maintenance_applied maintenance_reason".split()
+            "material_selection elapsed_ms tokens confidence before after delta bands_before bands_after temporary intent adjusted allowed maintenance_at maintenance_policy_at maintenance_before maintenance_after maintenance_qualified maintenance_applied maintenance_reason".split()
         )
     )
     CODES = tuple(
@@ -77,7 +78,7 @@ class DiagnosticRecorder:
         enabled=False,
         *,
         max_bytes=100_000_000,
-        detail_level="assessment",
+        detail_level="raw",
         retention_days=7,
         clock=time.time,
         queue_limit=256,
@@ -194,6 +195,37 @@ class DiagnosticRecorder:
                     type(value) in (list, tuple)
                     and len(value) == 3
                     and all(type(v) is int and 0 <= v <= 4 for v in value)
+                )
+            elif key == "material_selection":
+                valid = (
+                    type(value) is list
+                    and len(value) <= 128
+                    and all(
+                        type(item) is dict
+                        and set(item) == {"kind", "log_id", "reason"}
+                        and item["kind"]
+                        in ("relationship", "impression", "event", "events")
+                        and (
+                            item["log_id"] is None
+                            or type(item["log_id"]) is int
+                            and item["log_id"] >= 0
+                        )
+                        and item["reason"]
+                        in (
+                            "selected",
+                            "missing",
+                            "invalidated",
+                            "revoked",
+                            "passive",
+                            "duplicate_source",
+                            "outside_window",
+                            "count_limit",
+                            "length_budget",
+                            "scope_hidden",
+                            "template_omitted",
+                        )
+                        for item in value
+                    )
                 )
             elif key == "temporary":
                 valid = type(value) is bool
@@ -533,6 +565,68 @@ class DiagnosticRecorder:
         except Exception:
             self.note_failure(bot_id, mode)
             return False
+
+    @staticmethod
+    def material_history(exported):
+        """只解释已有历史，不调用当前关系服务；校验正文定位避免脱敏后冒充原文。"""
+        rows = exported.get("rows", [])
+        requests = {}
+        for row in rows:
+            content = row.get("content", {})
+            if content.get("stage") == "request":
+                requests.setdefault(row.get("fields", {}).get("trace_id"), []).append(
+                    content
+                )
+        result = []
+        for row in rows:
+            if row.get("kind") != "render":
+                continue
+            fields = row.get("fields", {})
+            item = dict(
+                ts=row.get("ts"),
+                member=row.get("member"),
+                selection=fields.get("material_selection"),
+                block=None,
+                note="未记录关系资料正文（仅完整上下文档可保存；历史不回填）。",
+            )
+            if (
+                fields.get("status") == "skipped"
+                and fields.get("material_hash") == hashlib.sha256(b"").hexdigest()
+            ):
+                item.update(
+                    block="",
+                    note="本轮关系资料超出预算，未注入；筛选理由来自当时冻结结果。",
+                )
+            for content in requests.get(fields.get("trace_id"), []):
+                data = content.get("data") or {}
+                material = data.get("bond_materials") or {}
+                if not material or material.get("material_hash") != fields.get(
+                    "material_hash"
+                ):
+                    continue
+                text, start, end = (
+                    data.get("system_prompt"),
+                    material.get("start"),
+                    material.get("end"),
+                )
+                if (
+                    isinstance(text, str)
+                    and type(start) is int
+                    and type(end) is int
+                    and 0 <= start <= end <= len(text)
+                ):
+                    block = text[start:end]
+                    if hashlib.sha256(block.encode()).hexdigest() == material.get(
+                        "material_hash"
+                    ):
+                        item.update(
+                            block=block,
+                            note="Bond 处理边界实际提供的关系资料；不代表后续插件处理后的最终网络请求。",
+                        )
+                        break
+                item["note"] = "记录已脱敏、裁剪或缺失，无法还原完整关系资料。"
+            result.append(item)
+        return result[-20:][::-1]
 
     async def start(self):
         """启动保留期限清理；关闭采集时仍清理已有诊断。"""

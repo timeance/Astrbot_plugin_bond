@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 import time
 
+from .relation_materials import SOURCE_RULES
+
 IMPRESSION_MAX = 80  # 印象正文长度上限
 TAG_MAX = 3  # 标签数量上限
 TAG_LEN_MAX = 6  # 单个标签长度上限
@@ -55,17 +57,19 @@ def build_summary_prompt(
 ) -> str:
     """构造印象汇总提示词（走一次廉价 LLM 调用）。
 
-    samples: 最近评审记录摘要行（如「+0.8 你好可爱啊 —— 夸我可爱」），时间正序。
+    samples: 带存储来源、成员表达和模型判断的 JSON 资料行，时间正序。
     """
     who = (nickname or "").strip() or "该成员"
     old = (old_impression or "").strip()
-    old_line = f"旧印象（可延续可推翻）：{old}\n" if old else ""
+    old_line = f"旧印象（上一轮结论，不是新证据，可延续可推翻）：{old}\n" if old else ""
     body = "\n".join(samples) or "（暂无记录）"
     return (
         f"你是「{persona_name}」的印象管理员。根据下面的互动记录，"
         f"用{persona_name}的视角给群成员「{who}」写一句印象侧写，并给几个标签。\n\n"
-        f"{old_line}最近互动记录（增减分 | 发言 | 当时的判断）：\n{body}\n\n"
-        "要求：\n"
+        f"{old_line}新增来源记录（JSON 资料）：\n{body}\n\n"
+        + SOURCE_RULES
+        + "\n"
+        + "要求：\n"
         f"- 印象一句话、不超过{IMPRESSION_MAX}字，写这个人的性格/说话风格/和你的关系感觉，"
         "要有具体感（如「嘴硬心软，爱用外号逗人」），不要空话\n"
         "- 如果这个人前后有了变化，用「以前觉得……，最近……」的双段式写清来龙去脉，"
@@ -81,22 +85,22 @@ def build_summary_prompt(
 def parse_summary(content: str) -> tuple[str, list[str]] | None:
     """解析 LLM 汇总输出「印象:…\n标签:a,b,c」。
 
-    印象截断到 IMPRESSION_MAX 字；标签最多 TAG_MAX 个、单个截断到
-    TAG_LEN_MAX 字、去掉空项与重复；解析失败返回 None（调用方静默跳过）。
+    印象超过 IMPRESSION_MAX 字则拒收，避免截断限定；标签最多 TAG_MAX 个、超过
+    TAG_LEN_MAX 字的条目省略、去掉空项与重复；解析失败返回 None（调用方静默跳过）。
     """
     text = content or ""
     m = _SUMMARY_RE.search(text)
     t = _TAGS_RE.search(text)
     if not m:
         return None
-    impression = m.group(1).strip()[:IMPRESSION_MAX]
-    if not impression:
+    impression = m.group(1).strip()
+    if not impression or len(impression) > IMPRESSION_MAX:
         return None
     raw_tags = (t.group(1).strip() if t else "").replace("，", ",")
     tags: list[str] = []
     for part in raw_tags.split(","):
-        p = part.strip()[:TAG_LEN_MAX]
-        if p and p != "无" and p not in tags:
+        p = part.strip()
+        if len(p) <= TAG_LEN_MAX and p and p != "无" and p not in tags:
             tags.append(p)
         if len(tags) >= TAG_MAX:
             break

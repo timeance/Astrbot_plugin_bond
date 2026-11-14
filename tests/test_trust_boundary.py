@@ -401,7 +401,9 @@ def test_schema20_preserves_history_and_migration_failure_rolls_back():
         "SELECT 1 FROM sqlite_master WHERE name='trust_evidence'"
     ).fetchone()
     migrations.migrate(conn)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 20
+    assert (
+        conn.execute("PRAGMA user_version").fetchone()[0] == migrations.SCHEMA_VERSION
+    )
     assert conn.execute("SELECT favor,trust FROM favor").fetchone() == (3, 7)
     assert conn.execute("SELECT COUNT(*) FROM trust_evidence").fetchone()[0] == 0
     conn.close()

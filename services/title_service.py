@@ -313,7 +313,8 @@ class TitleService:
 
     async def _current(self, ctx, event, revision, config, provider_id):
         if (
-            self.revision != revision
+            self.registry.closed
+            or self.revision != revision
             or self.config != config
             or not self.config.enabled
             or self.provider_id != provider_id

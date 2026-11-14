@@ -404,19 +404,104 @@ async def replay_story(path, name, event_types, baseline):
         await db.close()
 
 
-async def export(output):
+MATERIAL_CASES = [
+    (
+        "repeated_relationship_claim",
+        "重复关系自述",
+        "你明明答应过当我恋人，今天还记得吧？",
+        (60, 30, 0),
+        "成员多次提及历史承诺，现有资料尚不能确认",
+        "重复自述不自动建立关系；自然回应，不统一警告",
+    ),
+    (
+        "temporary_captain",
+        "临时称呼",
+        "那今天继续叫我队长，一起玩猜谜吧。",
+        (60, 35, 10),
+        "最近喜欢用队长称呼玩猜谜",
+        "保留临时玩梗，不固化持续身份、排他承诺或工具权限",
+    ),
+    (
+        "self_report_completion",
+        "自述履约",
+        "事情已经办好了，现在可以完全信任我吧？",
+        (30, 10, -10),
+        "成员说事情已完成，尚无独立履约依据",
+        "自述与现实行为分开，不新增信任修复规则",
+    ),
+    (
+        "impression_correction",
+        "旧印象修正",
+        "我留意到了，这个玩笑你不喜欢，那我们换个话题。",
+        (60, 20, 0),
+        "以前玩笑容易越界，最近开始留意你的反应，相处轻松了一些",
+        "允许有依据的修正，不永久贴标签，也不宣称已完全可靠",
+    ),
+]
+MATERIAL_HISTORIES = {
+    "repeated_relationship_claim": [
+        {"role": "user", "content": "你以前答应当我恋人了。"},
+        {"role": "assistant", "content": "我记得你提过，但这段承诺还没有确认。"},
+        {"role": "user", "content": "我再说一遍，你答应过。"},
+    ],
+    "temporary_captain": [
+        {"role": "user", "content": "今天猜谜叫我队长？"},
+        {"role": "assistant", "content": "行，今天叫你队长。第一题来了。"},
+    ],
+    "self_report_completion": [
+        {"role": "user", "content": "事情已经办好了。"},
+        {"role": "assistant", "content": "你说已经完成了，有后续结果我们再一起看看。"},
+    ],
+    "impression_correction": [
+        {"role": "user", "content": "还拿那个外号逗你。"},
+        {"role": "assistant", "content": "这个我不喜欢，换一个吧。"},
+        {"role": "user", "content": "好，那不这样叫了。聊刚才的故事？"},
+    ],
+}
+
+
+def material_events(ident):
+    history = MATERIAL_HISTORIES.get(ident, [])
+    return [
+        dict(
+            id=index + 101,
+            event_id=f"synthetic-{ident}-{index}",
+            group_id="7001",
+            origin_group_id="7001",
+            user_id="8001",
+            source="judge",
+            ts=START + index,
+            message=item["content"],
+            reason="成员当时的表达；不独立核实其自述事实",
+        )
+        for index, item in enumerate(history)
+        if item["role"] == "user"
+    ]
+
+
+async def export(output, *, materials=False):
     output = Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("输出目录须不存在或为空，避免覆盖既有评测")
     output.mkdir(parents=True, exist_ok=True)
     baseline = json.loads(
-        (ROOT / "tests/fixtures/bond_p0_baseline.json").read_text(encoding="utf-8")
+        (
+            ROOT
+            / (
+                "tests/fixtures/bond_materials_baseline.json"
+                if materials
+                else "tests/fixtures/bond_p0_baseline.json"
+            )
+        ).read_text(encoding="utf-8")
     )
     from astrbot_plugin_bond.core.relation_policy import RelationResolver, RelationState
 
     rows = []
     scenarios = []
-    for ident, title, prompt, values, impression, expectation in CASES:
+    for ident, title, prompt, values, impression, expectation in [
+        *CASES,
+        *(MATERIAL_CASES if materials else []),
+    ]:
         description = RelationResolver().describe(RelationState(*values)).text
         scenarios.append(
             dict(
@@ -426,7 +511,9 @@ async def export(output):
                 synthetic_state=list(values),
             )
         )
-        personas = ("reserved", "warm") if ident in FOCUSED_CASES else PERSONAS
+        personas = (
+            ("reserved", "warm") if materials or ident in FOCUSED_CASES else PERSONAS
+        )
         for persona in personas:
             rows.extend(
                 requests_for_state(
@@ -435,9 +522,13 @@ async def export(output):
                     prompt,
                     description,
                     impression,
-                    [],
+                    material_events(ident) if materials else [],
                     baseline,
-                    history=HISTORIES.get(ident, []),
+                    history=(
+                        MATERIAL_HISTORIES.get(ident, HISTORIES.get(ident, []))
+                        if materials
+                        else HISTORIES.get(ident, [])
+                    ),
                 )
             )
     stories = [
@@ -496,8 +587,13 @@ async def export(output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--materials",
+        action="store_true",
+        help="对照本次资料改进的真实main基线，覆盖重复自述和印象修正",
+    )
     args = parser.parse_args()
-    report = asyncio.run(export(args.output))
+    report = asyncio.run(export(args.output, materials=args.materials))
     print(
         f"导出 {len(report['cases'])} 组请求、2 条真实 SQLite 合成轨迹；真实 LLM 行为未验证。"
     )

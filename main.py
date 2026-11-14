@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.7.0",
+    "0.7.1",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -122,9 +122,7 @@ class BondPlugin(Star):
             data_dir / "diagnostics",
             self._registry,
             enabled=(config.get("diagnostics") or {}).get("enabled", False),
-            detail_level=(config.get("diagnostics") or {}).get(
-                "detail_level", "assessment"
-            ),
+            detail_level=(config.get("diagnostics") or {}).get("detail_level", "raw"),
             max_bytes=(config.get("diagnostics") or {}).get("max_size_mb", 100)
             * 1_000_000,
         )
@@ -364,7 +362,7 @@ class BondPlugin(Star):
 
     async def terminate(self) -> None:
         # X10：先取消并等待在飞任务（评审/印象刷新/延迟清理），再关存储
-        await self._registry.cancel_and_wait_all(timeout=5.0)
+        await self._registry.cancel_and_wait_all(timeout=5.0, shutdown=True)
         await self._diagnostics.close()
         await self._storage.close()
         logger.info("[八千代] 好感度插件已卸载")

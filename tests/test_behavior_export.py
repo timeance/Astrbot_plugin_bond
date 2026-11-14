@@ -130,3 +130,28 @@ def test_behavior_export_is_reproducible_without_network(tmp_path):
     one = asyncio.run(export(tmp_path / "one"))
     two = asyncio.run(export(tmp_path / "two"))
     assert one == two
+
+
+def test_materials_export_uses_current_task_baseline_and_two_personas(tmp_path):
+    report = asyncio.run(export(tmp_path / "materials", materials=True))
+    assert report["baseline_commit"] == "1f209a058132fb921a5807b5783c538ec303713d"
+    groups = grouped_cases(report["cases"])
+    for case in (
+        "repeated_relationship_claim",
+        "temporary_captain",
+        "self_report_completion",
+        "impression_correction",
+    ):
+        for persona in ("warm", "reserved"):
+            group = groups[(case, persona)]
+            assert (
+                group["old_prompt"]["messages"][1:]
+                == group["new_prompt"]["messages"][1:]
+            )
+            assert "assessment_kind" in group["new_prompt"]["messages"][0]["content"]
+            assert all(
+                row["response"] is None
+                and all(value is None for value in row["scores"].values())
+                for row in group.values()
+            )
+    assert report["real_llm_tested"] is False

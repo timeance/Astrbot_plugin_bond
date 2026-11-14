@@ -469,3 +469,5 @@ Bond 基于 [yiwuerxin/astrbot_plugin_xinxian](https://github.com/yiwuerxin/astr
 
 
 注入位置的取舍见 [注入方式评估](docs/research/INJECTION_REVIEW.md)；大量成员的计算开销与实测范围见 [页面合成负载记录](docs/research/DASHBOARD_LOAD.md)。
+
+关系资料的只读预览、历史诊断、来源限定与升级回退见 [关系资料说明](docs/RELATION_MATERIALS.md)。

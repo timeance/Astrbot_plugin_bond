@@ -1526,9 +1526,10 @@ class TestImpression:
         r = self.parse_summary("印象:嘴硬心软，爱用外号逗人\n标签:毒舌,夜猫子")
         assert r == ("嘴硬心软，爱用外号逗人", ["毒舌", "夜猫子"])
 
-    def test_parse_summary_truncates_and_caps(self):
+    def test_parse_summary_rejects_truncated_meaning(self):
         r = self.parse_summary("印象:" + "长" * 200 + "\n标签:a,b,c,d,e，,f")
-        assert len(r[0]) == 80 and len(r[1]) == 3
+        assert r is None
+        assert self.parse_summary("印象:完整句子\n标签:a,b,c,d")[1] == ["a", "b", "c"]
 
     def test_parse_summary_no_tag_line(self):
         r = self.parse_summary("印象:只是个路过的人")
@@ -1546,7 +1547,7 @@ class TestImpression:
         p = self.build_prompt("阿狸", "旧印象", ["+0.8 喜欢你 —— 直白好感"], "小千")
         assert "阿狸" in p and "旧印象" in p and "+0.8" in p and "小千" in p
         p2 = self.build_prompt("阿狸", "", [], "小千")
-        assert "旧印象" not in p2 and "暂无记录" in p2
+        assert "旧印象（上一轮结论" not in p2 and "暂无记录" in p2
 
     def test_build_prompt_bitemporal_guidance(self):
         # 双时态引导：提示"以前觉得…，最近…"的演进式写法（v1.28）
@@ -1555,11 +1556,11 @@ class TestImpression:
         p2 = self.build_prompt("阿狸", "", [], "小千")
         assert "以前觉得" in p2  # 首次印象也给出演进写法说明
 
-    def test_parse_bitemporal_impression_truncated(self):
-        # 双段式印象可能更长：解析层 80 字截断仍然生效
+    def test_parse_bitemporal_impression_not_partially_accepted(self):
+        # 双段式印象超长时保留旧结果，不截掉后半句的修正
         long_bi = "以前觉得" + "吵" * 60 + "，最近" + "静" * 60
         r = self.parse_summary(f"印象:{long_bi}\n标签:毒舌")
-        assert len(r[0]) == 80
+        assert r is None
 
 
 # ---------------- user_version 白名单写入 ----------------

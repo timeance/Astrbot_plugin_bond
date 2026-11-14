@@ -1,3 +1,5 @@
+> 当前版本：0.7.1 缺省为第二档「原文+评估」，显式设置与总开关不变。以下关于第一档缺省值的内容保留为旧版设计与验收记录；使用方式见 [关系资料说明](../RELATION_MATERIALS.md)。
+
 # 0.5.1 分级诊断
 
 诊断仍默认关闭，启用后的详细程度默认「评估记录」。旧配置只开启总开关而缺失 detail_level 时，AstrBot 按 schema 补全为 assessment；直接装配时也使用 assessment。已保存的 raw、evaluation、full 选择保留。等级依次为：

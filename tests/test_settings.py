@@ -790,7 +790,7 @@ def test_diagnostic_levels_capacity_defaults_and_validation():
         f["title"] == "系统诊断" for f in data["fields"] if f["group"] == "diagnostics"
     )
     assert values["diagnostics.enabled"] is False
-    assert values["diagnostics.detail_level"] == "assessment"
+    assert values["diagnostics.detail_level"] == "raw"
     assert values["diagnostics.max_size_mb"] == 100
     for level in ("assessment", "raw", "evaluation", "full"):
         validate_patch({"diagnostics.detail_level": level})
