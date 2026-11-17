@@ -541,8 +541,9 @@ class FavorService:
         if not local:
             rec.impression = ""
             if selection is not None:
-                selection.append(
-                    dict(kind="events", log_id=None, reason="scope_hidden")
+                selection.extend(
+                    dict(kind=kind, log_id=None, reason="scope_hidden")
+                    for kind in ("events", "impression")
                 )
         return rec, events, now
 

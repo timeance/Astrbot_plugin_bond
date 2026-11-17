@@ -89,6 +89,14 @@ class PromptService:
                 return ASSESSMENT_OUTPUT_CONTRACT
             return template
 
+    def behavior_override(self, bot_id=None, group_id=None) -> str | None:
+        """None 表示内置版式；显式自定义模板始终保留原排版。"""
+        self._require_available()
+        bot_id, group_id = self._validate_optional_scope(bot_id, group_id)
+        with self._lock:
+            record, source = self._effective_record("behavior", bot_id, group_id)
+            return None if source == "builtin" else record["template"]
+
     def get_settings(
         self,
         kind: str | None = None,

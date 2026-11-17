@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.7.2",
+    "0.7.3",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -529,8 +529,17 @@ class BondPlugin(Star):
 
     @filter.command("好感重置")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def _cmd_reset(self, event: AstrMessageEvent, target: str = ""):
-        """重置好感度（管理员）。用法：/好感重置 [QQ号]，不带参数清空整群"""
+    async def _cmd_reset(
+        self, event: AstrMessageEvent, target: str = "", extra: str = ""
+    ):
+        """重置好感度（管理员）。用法：/好感重置 QQ号 或 /好感重置 全群。"""
+        target = (target or "").strip()
+        # 宿主会丢弃未声明的参数；全群必须是唯一参数。
+        if not target or (target == "全群" and extra):
+            group_id = _group_entry_id(event)
+            if group_id is not None and self._runtime.group_enabled(group_id):
+                yield event.plain_result(cmd.RESET_USAGE)
+            return
         deps = await self._runtime.for_event(event)
         if deps is None:
             return

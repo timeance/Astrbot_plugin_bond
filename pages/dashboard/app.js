@@ -654,7 +654,7 @@ createApp({
       revoked: "记录已撤销", passive: "被动熟悉度不作为经历",
       duplicate_source: "同一来源，仅采用一份", outside_window: "超出召回窗口",
       count_limit: "超出条目数量", length_budget: "超出长度预算",
-      scope_hidden: "此作用域不披露经历", template_omitted: "自定义模板未使用此类资料",
+      scope_hidden: "全局空间不展示此类资料", template_omitted: "自定义模板未使用此类资料",
     })[reason] || reason;
     const materialKind = (kind) => ({
       relationship: "当前关系释义", impression: "当前成员印象",

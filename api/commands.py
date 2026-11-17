@@ -39,22 +39,25 @@ async def handle_set(
     return f"已将 QQ {target} 在{space}的好感度设置为 {fmt(rec.favor)}。"
 
 
+RESET_USAGE = "用法：/好感重置 QQ号；按群空间可用 /好感重置 全群。"
+
+
 async def handle_reset(
     svc: FavorService, event: AstrMessageEvent, target: str = ""
 ) -> str:
-    """/好感重置 [QQ号]（管理员）。不带参数清空整群。"""
+    """重置当前空间的指定成员；仅按群空间允许显式重置全群。"""
     group_id = event.get_group_id()
     target = (target or "").strip()
-    if target:
-        if not is_account_id(target):
-            return "用法：/好感重置 [QQ号]"
-        await svc.reset(group_id, target)
-        space = "此 Bot 的全局空间" if svc.scope_mode == "global" else "本群"
-        return f"已重置 QQ {target} 在{space}的好感度。"
-    if svc.scope_mode == "global":
-        return "当前使用全局关系空间，群内无法清空全部共享关系。请在管理面板确认要操作的数据空间。"
-    await svc.reset(group_id, None)
-    return "已重置本群全部好感度数据。"
+    if target == "全群":
+        if svc.scope_mode != "per_group":
+            return "当前使用全局关系空间，群内无法清空全部共享关系。请在管理面板确认要操作的数据空间。"
+        await svc.reset(group_id, None)
+        return "已重置本群全部好感度数据。"
+    if not is_account_id(target):
+        return RESET_USAGE
+    await svc.reset(group_id, target)
+    space = "此 Bot 的全局空间" if svc.scope_mode == "global" else "本群"
+    return f"已重置 QQ {target} 在{space}的好感度。"
 
 
 async def handle_set_relationship(
