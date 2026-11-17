@@ -436,9 +436,9 @@ class PageApi:
                 # 全局聚合关系不绑定真实群，沿用全局模板，不猜测群级覆盖。
                 preview_group = None if group_id == GLOBAL_GROUP else group_id
                 template = (
-                    deps.prompts.resolve("behavior")
+                    deps.prompts.behavior_override()
                     if preview_group is None
-                    else deps.prompts.resolve("behavior", bot_id, preview_group)
+                    else deps.prompts.behavior_override(bot_id, preview_group)
                 )
                 preview = deps.inject.build_relation_materials(
                     template,

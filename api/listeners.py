@@ -136,7 +136,7 @@ async def _freeze_relation(deps, event):
                 sig_window_mult=deps.memory_sig_window_mult,
                 selection=selection,
             )
-            template = deps.prompts.resolve("behavior", deps.bot_id, group_id)
+            template = deps.prompts.behavior_override(deps.bot_id, group_id)
             description = deps.favor.describe_relation(
                 rec.familiarity, rec.favor, rec.trust
             )

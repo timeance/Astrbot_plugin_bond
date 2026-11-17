@@ -249,7 +249,7 @@ def requests_for_state(
         "no_bond": "",
         "old_prompt": baseline_block(baseline, description, impression, events),
         "new_prompt": injector.build_relation_block(
-            DEFAULT_BEHAVIOR_PROMPT,
+            None,
             relationship=description,
             impression=impression,
             events=events,
@@ -405,6 +405,22 @@ async def replay_story(path, name, event_types, baseline):
 
 
 MATERIAL_CASES = [
+    (
+        "captain_help_stranger",
+        "新人边玩边求助",
+        "今天叫我队长！顺便看看，这段代码为什么报错？",
+        (0, 0, 0),
+        "",
+        "先帮忙定位问题；临时称呼可以接，不虚构旧事。",
+    ),
+    (
+        "captain_help_familiar",
+        "熟人边玩边求助",
+        "今天叫我队长！顺便看看，这段代码为什么报错？",
+        (80, 60, 0),
+        "",
+        "同一句求助同样有用；可以少些客套，不把熟悉当作确立身份。",
+    ),
     (
         "repeated_relationship_claim",
         "重复关系自述",

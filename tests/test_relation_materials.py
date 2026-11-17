@@ -522,6 +522,42 @@ def test_history_without_metadata_or_with_redacted_block_is_not_reconstructed():
     assert history[0]["block"] is None and "无法还原" in history[0]["note"]
 
 
+def test_same_member_and_material_have_stable_builtin_text_across_read_times():
+    identity = dict(
+        bot_id="10001", group_id="7001", user_id="8001", scope_mode="per_group"
+    )
+
+    def at(ts):
+        return InjectService.build_relation_materials(
+            None, relationship="熟悉", captured_at=ts, identity=identity
+        )
+
+    first, later = at(NOW), at(NOW + 10)
+    assert first["captured_at"] != later["captured_at"]
+    assert first["block"] == later["block"] and '"user_id": "8001"' in later["block"]
+
+
+def test_only_builtin_omits_empty_material_lines_even_if_custom_text_matches(tmp_path):
+    from astrbot_plugin_bond.services.prompt_service import (
+        DEFAULT_BEHAVIOR_PROMPT,
+        PromptService,
+    )
+
+    prompts = PromptService(tmp_path / "prompts.json")
+
+    def render():
+        return InjectService.build_relation_block(
+            prompts.behavior_override("10001", "7001"), relationship="初次见面"
+        )
+
+    assert "成员印象：" not in render() and "近期互动：" not in render()
+    prompts.set_template(
+        "behavior", "10001", "7001", mode="custom", template=DEFAULT_BEHAVIOR_PROMPT
+    )
+    assert '成员印象：""' in render() and "近期互动：[]" in render()
+    assert prompts.behavior_override("10001", "7002") is None
+
+
 def test_custom_template_decisions_describe_only_rendered_materials():
     result = InjectService.build_relation_materials(
         "只有关系 {relationship}",
@@ -807,6 +843,12 @@ def test_global_preview_uses_shared_relation_and_explicit_template(
         )
         assert ("指定群模板" if group == "7001" else "全局模板") in preview["block"]
         assert "其他Bot模板" not in preview["block"]
+        reasons = [(d["kind"], d["reason"]) for d in preview["selection"]]
+        assert [d for d in reasons if d[0] == "impression"] == [
+            ("impression", "scope_hidden")
+        ]
+        assert ("events", "scope_hidden") in reasons
+        assert preview["impression_origin"] == "unknown"
         assert "不可跨群" not in json.dumps(preview, ensure_ascii=False)
         assert "其他成员" not in json.dumps(preview, ensure_ascii=False)
         identity = json.loads(preview["block"].splitlines()[1].split("：", 1)[1])
