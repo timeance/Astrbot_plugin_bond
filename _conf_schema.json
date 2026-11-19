@@ -1,4 +1,17 @@
 {
+  "external_assessment_enabled": {
+    "description": "允许其他插件提交群聊互动评估",
+    "type": "bool",
+    "default": false,
+    "hint": "须同时开启自动评估。评估可能调用已配置的模型。"
+  },
+  "antipromptinjector_trust_enabled": {
+    "description": "根据反注入复核结果调整信任度",
+    "type": "bool",
+    "default": false,
+    "invisible": true,
+    "hint": "仅用于 OneBot 群聊，同时开启 AntiPromptInjector 的群聊防护报告后生效。"
+  },
   "assessment": {
     "type": "object",
     "description": "自动评估",

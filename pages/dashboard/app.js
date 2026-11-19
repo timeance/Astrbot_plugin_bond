@@ -559,7 +559,7 @@ createApp({
       }
       return `${out} (${id})`;
     };
-    const SOURCE_LABEL = { rule: "规则", judge: "评估", passive_familiarity: "群聊活跃", admin: "管理员", admin_profile: "管理员资料", tool: "工具", api: "API", set: "设定", undo: "撤销" };
+    const SOURCE_LABEL = { rule: "规则", judge: "评估", passive_familiarity: "群聊活跃", anti_injection: "反注入复核", admin: "管理员", admin_profile: "管理员资料", tool: "工具", api: "API", set: "设定", undo: "撤销" };
     const sourceLabel = (s) => SOURCE_LABEL[s] || s || "-";
 
     const isPassiveLog = (row) => row.source === "passive_familiarity";

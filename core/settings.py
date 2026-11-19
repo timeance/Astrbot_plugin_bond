@@ -21,6 +21,7 @@ SECTIONS = {
         "基础设置",
         [
             "assessment.enabled",
+            "external_assessment_enabled",
             "assessment.small_provider_id",
             "assessment.large_provider_id",
             "assessment.assessment_mode",
@@ -65,6 +66,7 @@ SECTIONS = {
     "trust": (
         "信任度变化",
         [
+            "antipromptinjector_trust_enabled",
             "relation_daily_caps.trust_up",
             "relation_daily_caps.trust_down",
             "decay.trust_enabled",

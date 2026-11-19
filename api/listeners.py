@@ -15,7 +15,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.provider import ProviderRequest
 
-from ..core.assessment import Interaction
+from ..core.assessment import Interaction, locally_relevant
 from ..core.taskregistry import TaskRegistry
 from ..services.diagnostic_capture import CURRENT, event_capture, request_content
 from ..services.favor_service import FavorService
@@ -226,6 +226,62 @@ def _reply_metadata(event):
     )
 
 
+async def submit_group_candidate(runtime, event):
+    # Platform notices can have adapter-generated IDs; only ordinary messages qualify.
+    raw = getattr(event.message_obj, "raw_message", None)
+    read = getattr(raw, "get", None)
+    if (
+        not callable(read)
+        or read("post_type") != "message"
+        or read("message_type") != "group"
+    ):
+        return "invalid"
+    bot, group, member, platform, message_id = _message_identity(event)
+    if (
+        message_id in ("", "0")
+        or len(message_id) > 200
+        or any(
+            str(read(k)) != v
+            for k, v in (
+                ("self_id", bot),
+                ("group_id", group),
+                ("user_id", member),
+                ("message_id", message_id),
+            )
+        )
+    ):
+        return "invalid"
+    text = event.message_str
+    if (
+        type(text) is not str
+        or len(text) > 2000
+        or text != event.message_obj.message_str
+        or not locally_relevant(text, any(_chain_flags(event)))
+    ):
+        return "filtered"
+    interaction = Interaction(
+        bot, group, member, platform, message_id, text, **_reply_metadata(event)
+    )
+    deps = await runtime.select(bot)
+    if (
+        not deps.assessment
+        or not deps.assessment.config.enabled
+        or deps.registry.closed
+    ):
+        return "disabled"
+    # Share the native listener's pre-assessment snapshot and persistent claim ID.
+    deps, _ = await _freeze_relation(deps, event)
+    if deps.registry.closed:
+        return "disabled"
+    state = await deps.favor.temporary_state(group, member)
+    if state["active"]:
+        return "temporary"
+    return await deps.registry.spawn(
+        deps.assessment.assess(interaction, directed=True, admission_state=state),
+        name=f"external-assessment:{group}/{member}",
+    )
+
+
 async def on_llm_response(deps: Deps, event: AstrMessageEvent, response) -> None:
     """使用入场时冻结的服务与身份，不按回复完成时的配置重新选择空间。"""
     capture = event_capture(deps, event)
@@ -325,8 +381,6 @@ async def on_group_message(
         and (has_at_bot or is_reply_bot)
         and not admission_state["active"]
     ):
-        from ..core.assessment import locally_relevant
-
         if locally_relevant(text, True):
             try:
                 admitted_interaction = Interaction(

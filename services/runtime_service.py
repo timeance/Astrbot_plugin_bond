@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 
-from ..core.scope import account_id, scope_mode
+from ..core.scope import account_id, group_key, is_account_id, scope_mode
 from ..core.settings import SettingsRevisionError
 
 
@@ -28,6 +29,13 @@ class RuntimeService:
         self._names_lock = asyncio.Lock()
         self._names_refreshed = {}
         self._default_mode = scope_mode(config.get("default_scope_mode", "per_group"))
+        self._protection_enabled = (
+            config.get("antipromptinjector_trust_enabled") is True
+        )
+        self.external_assessment_enabled = (
+            config.get("external_assessment_enabled") is True
+            and (config.get("assessment") or {}).get("enabled") is True
+        )
         whitelist = config.get("group_whitelist", [])
         if not isinstance(whitelist, list):
             raise ValueError("群白名单必须是群号列表")
@@ -50,11 +58,65 @@ class RuntimeService:
         bot_id = account_id(bot_id)
         mode = scope_mode(mode or self.current_mode(bot_id))
         async with self._lock:
-            key = (bot_id, mode)
-            if key not in self._bundles:
-                backend = await self.storage.get(bot_id, mode)
-                self._bundles[key] = self._factory(backend, mode)
-            return self._bundles[key]
+            return await self._select_locked(bot_id, mode)
+
+    async def _select_locked(self, bot_id, mode):
+        key = (bot_id, mode)
+        if key not in self._bundles:
+            backend = await self.storage.get(bot_id, mode)
+            self._bundles[key] = self._factory(backend, mode)
+        return self._bundles[key]
+
+    async def receive_protection_fact(self, fact):
+        if not self._protection_enabled:
+            return "disabled"
+        fields = {
+            "event_id",
+            "platform",
+            "instance_id",
+            "bot_id",
+            "group_id",
+            "user_id",
+            "source",
+            "attributable",
+            "action",
+            "evidence",
+        }
+        if (
+            type(fact) is not dict
+            or fact.keys() != fields
+            or any(type(fact[key]) is not str for key in fields - {"attributable"})
+            or type(fact["attributable"]) is not bool
+            or fact["platform"] != "aiocqhttp"
+            or not 0 < len(fact["instance_id"]) <= 200
+            or not re.fullmatch(r"api:v1:[0-9a-f]{64}", fact["event_id"])
+            or not all(
+                is_account_id(fact[k]) for k in ("bot_id", "group_id", "user_id")
+            )
+            or fact["action"] not in ("harden", "replace", "block")
+            or fact["source"] not in ("prompt", "extra_user_content_parts", "mixed")
+            or fact["evidence"] not in ("rule", "confirmed")
+        ):
+            return "invalid"
+        bot, group, user = fact["bot_id"], fact["group_id"], fact["user_id"]
+        if (
+            fact["evidence"] != "confirmed"
+            or not fact["attributable"]
+            or fact["source"] != "prompt"
+            or not self.allows_member(bot, group, user)
+        ):
+            return "ignored"
+        # Mode switches and duplicate deliveries share the same critical section.
+        async with self._lock:
+            mode = self.current_mode(bot)
+            other = "global" if mode == "per_group" else "per_group"
+            backend = await self.storage.get(bot, other)
+            if await backend.has_relation_event(
+                group_key(other, group), user, fact["event_id"]
+            ):
+                return "duplicate"
+            deps = await self._select_locked(bot, mode)
+            return await deps.favor.apply_protection_fact(group, user, fact["event_id"])
 
     def peek(self, bot_id, mode):
         """只返回已装配空间；预览不初始化数据库、迁移或称谓观察基线。"""
@@ -67,6 +129,14 @@ class RuntimeService:
     def group_enabled(self, group_id):
         group_id = account_id(group_id)
         return not self._group_whitelist or group_id in self._group_whitelist
+
+    def allows_member(self, bot, group, user):
+        return (
+            self.group_enabled(group)
+            and user != bot
+            and user not in self.known_bot_ids()
+            and user not in {str(x) for x in self._config.get("ignored_bot_ids") or []}
+        )
 
     async def for_event(self, event):
         self.observe_bot(event)
