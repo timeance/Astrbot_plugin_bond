@@ -740,6 +740,32 @@ class FavorService:
         )
         return result
 
+    async def apply_protection_fact(self, group_id, user_id, event_id):
+        state = await self.temporary_state(group_id, user_id)
+        if state["active"]:
+            return "temporary"
+        now = time.time()
+        result = await self._storage.apply_relation_change(
+            self.group_key(group_id),
+            user_id,
+            dict(familiarity=0.0, affinity=0.0, trust=-1.0),
+            event_id=event_id,
+            source="anti_injection",
+            reason="反注入模型确认本轮消息存在注入",
+            caps=self._relation_caps,
+            cooldown_sec=0,
+            expected_revision=state["revision"],
+            effective=self._effective_affinity_raw,
+            effective_trust=self._effective_trust,
+            effective_familiarity=self._effective_familiarity,
+            default_favor=self.default_favor,
+            day=self._today(now).isoformat(),
+            day_start=self._day_start(now),
+            day_end=self._day_end(now),
+            origin_group_id=group_id,
+        )
+        return result.get("skipped") or "processed"
+
     async def apply_passive_familiarity(
         self, group_id, user_id, *, trigger_id, observed_at=None, triggered_at=None
     ):

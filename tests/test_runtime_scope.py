@@ -29,6 +29,80 @@ def factory(storage, mode):
     )
 
 
+def test_protection_policy_limits_and_retry_after_scope_change(tmp_path):
+    async def run():
+        config = Config(antipromptinjector_trust_enabled=True, group_whitelist=["333"])
+        storage = BotScopeStorageRouter(tmp_path)
+        runtime = RuntimeService(storage, config, factory)
+        fact = dict(
+            event_id="api:v1:" + "2" * 64,
+            platform="aiocqhttp",
+            instance_id="adapter",
+            bot_id="111",
+            group_id="333",
+            user_id="222",
+            source="prompt",
+            attributable=True,
+            action="block",
+            evidence="confirmed",
+        )
+        assert (
+            await RuntimeService(storage, {}, factory).receive_protection_fact(fact)
+            == "disabled"
+        )
+        for change in (
+            dict(evidence="rule"),
+            dict(attributable=False),
+            dict(source="mixed"),
+            dict(group_id="444"),
+            dict(user_id="111"),
+        ):
+            assert (
+                await runtime.receive_protection_fact(dict(fact, **change)) == "ignored"
+            )
+        for change in (
+            dict(group_id=""),
+            dict(score=-10),
+            dict(attributable="true"),
+            dict(event_id=""),
+        ):
+            assert (
+                await runtime.receive_protection_fact(dict(fact, **change)) == "invalid"
+            )
+        assert not storage.known_bot_ids()
+        outcomes = await asyncio.gather(
+            *(runtime.receive_protection_fact(fact) for _ in range(3))
+        )
+        assert sorted(outcomes) == ["duplicate", "duplicate", "processed"]
+        deps = await runtime.select("111")
+        rec = await deps.favor.get_relation("333", "222")
+        assert (rec.familiarity, rec.affinity, rec.trust) == (0, 0, -1)
+        for n in range(1, 12):
+            await runtime.receive_protection_fact(
+                dict(fact, event_id=f"api:v1:{n:064x}")
+            )
+        assert (await deps.favor.get_relation("333", "222")).trust == -8
+        await runtime.switch_mode("111", "global")
+        await storage.close()
+        storage = BotScopeStorageRouter(tmp_path)
+        runtime = RuntimeService(storage, config, factory)
+        try:
+            assert await runtime.receive_protection_fact(fact) == "duplicate"
+            current = await runtime.select("111")
+            assert (await current.favor.get_relation("333", "222")).trust == 0
+            assert (
+                await runtime.receive_protection_fact(
+                    dict(fact, event_id="api:v1:" + "f" * 64)
+                )
+                == "processed"
+            )
+            assert (await current.favor.get_relation("444", "222")).trust == -1
+        finally:
+            await storage.close()
+
+    asyncio.run(run())
+
+
 def test_switch_keeps_old_task_target_and_restarts(tmp_path):
     async def run():
         config = Config()

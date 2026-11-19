@@ -112,6 +112,7 @@ def test_quickstart_field_order_unique_groups_and_provider_metadata():
     definitions = fields()
     assert [f["path"] for f in definitions if f["group"] == "basic"] == [
         "assessment.enabled",
+        "external_assessment_enabled",
         "assessment.small_provider_id",
         "assessment.large_provider_id",
         "assessment.assessment_mode",
@@ -226,6 +227,7 @@ def test_relation_fields_split_dimensions_and_keep_shared_settings_in_basic():
     ):
         collect(key, schema[key])
     expected -= {"economy.preset", "decay.grace_days", "decay.maintenance_strategy"}
+    expected.add("antipromptinjector_trust_enabled")
     assert set(paths) == expected
     assert groups["familiarity"][:7] == [
         "relation_daily_caps.familiarity_up",

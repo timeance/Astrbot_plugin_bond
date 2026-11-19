@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.7.3",
+    "0.8.0",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -163,7 +163,7 @@ class BondPlugin(Star):
         self._render_rows = int(render_cfg.get("rows_per_col", 12))
 
         # 跨插件 API：context.get_registered_star("astrbot_plugin_bond").star_cls.api
-        self.api = BondFacade(self._runtime)
+        self.api = BondFacade(self._runtime, context)
 
         # 原生 dashboard 页面 API（框架支持时注册，内嵌于主面板，无独立端口/鉴权）
         from .api.page_api import PageApi

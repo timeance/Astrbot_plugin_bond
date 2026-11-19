@@ -1072,6 +1072,18 @@ class SQLiteBackend(StorageBackend):
             for row in rows
         ]
 
+    async def has_relation_event(self, group_id, user_id, event_id):
+        with self._lock:
+            return (
+                self._c()
+                .execute(
+                    "SELECT 1 FROM favor_log WHERE group_id=? AND user_id=? AND event_id=?",
+                    (group_id, user_id, event_id),
+                )
+                .fetchone()
+                is not None
+            )
+
     async def apply_relation_change(
         self,
         group_id,
@@ -1271,7 +1283,9 @@ class SQLiteBackend(StorageBackend):
                     )
                 maintained = (
                     {"familiarity", "affinity"} | (qualified & {"trust"})
-                    if self._maintenance_strategy == "legacy" and values is None
+                    if self._maintenance_strategy == "legacy"
+                    and values is None
+                    and source != "anti_injection"
                     else qualified
                 )
                 # 无关维度保留原始数值、结算锚、托底参考和巩固状态。
@@ -1296,6 +1310,7 @@ class SQLiteBackend(StorageBackend):
                     add_usage(
                         conn, group_id, user_id, day, real, judge=source == "judge"
                     )
+                if values is None and source != "anti_injection":
                     conn.execute(
                         "INSERT INTO cooldown(group_id,user_id,key,last_ts) VALUES(?,?,'relation',?) "
                         "ON CONFLICT(group_id,user_id,key) DO UPDATE SET last_ts=excluded.last_ts",
