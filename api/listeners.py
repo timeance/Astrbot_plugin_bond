@@ -443,16 +443,31 @@ async def on_group_message(
     deps.registry.spawn(_bg(), name=f"judge:{group_id}/{user_id}")
 
 
-def clear_relation_injection(req):
+def clear_relation_injection(req, *, event=None):
     """清除本插件上次完整注入的块，即使本轮不注入也不能遗留其他成员资料。"""
     marker = getattr(req, "_bond_injected_snapshot", None)
     if not isinstance(marker, RelationSnapshot):
+        # 同事件重建请求可能只复制文本；仅用已冻结的可信快照识别完整块。
+        binding = getattr(event, "_bond_relation_binding", None)
+        if (
+            isinstance(binding, tuple)
+            and len(binding) == 3
+            and isinstance(binding[2], asyncio.Future)
+            and binding[2].done()
+            and not binding[2].cancelled()
+        ):
+            try:
+                if binding[0] == _message_identity(event):
+                    marker = binding[2].result()
+            except Exception:
+                pass
+    if not isinstance(marker, RelationSnapshot) or not marker.block:
         return
     current = getattr(req, "system_prompt", "") or ""
-    previous = current.rfind(marker.block)
-    if previous >= 0:
+    while (previous := current.rfind(marker.block)) >= 0:
         prefix = current[:previous].removesuffix("\n\n")
-        req.system_prompt = prefix + current[previous + len(marker.block) :]
+        current = prefix + current[previous + len(marker.block) :]
+    req.system_prompt = current
     req._bond_injected_snapshot = None
 
 
@@ -467,7 +482,7 @@ async def on_llm_request(
     diagnostic_token = CURRENT.set(capture)
     try:
         # 必须在身份读取和快照尝试之前清理；失败、私聊与关闭注入也适用。
-        clear_relation_injection(req)
+        clear_relation_injection(req, event=event)
         await _on_llm_request_inner(deps, event, req)
     except Exception:
         logger.warning(
@@ -494,6 +509,7 @@ async def _on_llm_request_inner(
     if snapshot is None:
         return
     if snapshot.block:
+        clear_relation_injection(req, event=event)
         origin.inject.inject(req, snapshot.block)
         req._bond_injected_snapshot = snapshot
     origin.favor.record_diagnostic(

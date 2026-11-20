@@ -134,6 +134,76 @@ def test_background_order_never_changes_current_request(tmp_path, background_fir
         asyncio.run(run(listener, components))
 
 
+@pytest.mark.parametrize("rewrite", ["copied", "duplicated", "replaced", "wrapped"])
+def test_same_event_request_rewrite_preserves_plugins_and_one_frozen_block(
+    tmp_path, rewrite
+):
+    async def run(listener, components):
+        router = BotScopeStorageRouter(tmp_path)
+        deps = await make_deps(listener, router, tmp_path)
+        await set_state(deps, "8001", False, "重试前关系证据")
+        event = message(components)
+        current = request()
+        original = current.system_prompt
+        await listener.on_llm_request(deps, event, current)
+        frozen = current._bond_injected_snapshot.block
+        suffix = "\n\n其他插件：本轮补充资料。"
+        if rewrite == "copied":
+            current = request()
+            current.system_prompt = original + "\n\n" + frozen + suffix
+            assert not hasattr(current, "_bond_injected_snapshot")
+            expected = original + suffix
+        elif rewrite == "duplicated":
+            current.system_prompt += "\n\n" + frozen + suffix
+            expected = original + suffix
+        elif rewrite == "replaced":
+            current.system_prompt = expected = "其他插件重新提供的人格和系统规则。"
+        else:
+            current.system_prompt = (
+                "前置插件资料。\n\n" + current.system_prompt + suffix
+            )
+            expected = "前置插件资料。\n\n" + original + suffix
+        current.prompt = "其他插件改写的当前消息"
+        current.contexts = [{"role": "user", "content": "其他插件选择的历史"}]
+        await set_state(deps, "8001", True, "重试期间新关系证据")
+        await listener.on_llm_request(deps, event, current)
+        assert current.system_prompt == expected + "\n\n" + frozen
+        assert current.system_prompt.count("[Bond 当前发言者的关系资料]") == 1
+        assert "重试期间新关系证据" not in current.system_prompt
+        assert current.prompt == "其他插件改写的当前消息"
+        assert current.contexts == [{"role": "user", "content": "其他插件选择的历史"}]
+        await router.close()
+
+    with (
+        offline_listener() as (listener, components, _),
+        patch("time.time", return_value=NOW),
+    ):
+        asyncio.run(run(listener, components))
+
+
+def test_retry_does_not_remove_other_plugin_text_that_only_looks_like_bond(tmp_path):
+    async def run(listener, components):
+        router = BotScopeStorageRouter(tmp_path)
+        deps = await make_deps(listener, router, tmp_path)
+        event = message(components)
+        current = request()
+        current.system_prompt += (
+            "\n\n其他插件的引用示例：\n[Bond 当前发言者的关系资料]\n"
+            '关系资料所属的平台身份：{"user_id": "8002"}\n示例结束。'
+        )
+        original = current.system_prompt
+        await listener.on_llm_request(deps, event, current)
+        frozen = current._bond_injected_snapshot.block
+        copied = request()
+        copied.system_prompt = current.system_prompt
+        await listener.on_llm_request(deps, event, copied)
+        assert copied.system_prompt == original + "\n\n" + frozen
+        await router.close()
+
+    with offline_listener() as (listener, components, _):
+        asyncio.run(run(listener, components))
+
+
 def test_snapshot_binds_sender_scope_and_custom_template(tmp_path):
     async def run(listener, components):
         router = BotScopeStorageRouter(tmp_path)
@@ -371,8 +441,9 @@ def test_reused_request_clears_prior_member_when_next_injection_is_skipped(
 
 
 @pytest.mark.parametrize("route_failure", [False, True])
+@pytest.mark.parametrize("copied", [False, True])
 def test_actual_request_hook_cleans_reused_request_before_route_exit(
-    tmp_path, route_failure
+    tmp_path, route_failure, copied
 ):
     import ast
     from pathlib import Path
@@ -384,9 +455,14 @@ def test_actual_request_hook_cleans_reused_request_before_route_exit(
         await set_state(deps, "8001", True, "不得流入私聊的群关系")
         result = request()
         original = result.system_prompt
-        await listener.on_llm_request(deps, message(components), result)
+        captured_event = message(components)
+        await listener.on_llm_request(deps, captured_event, result)
         suffix = "\n\n后置插件资料"
         result.system_prompt += suffix
+        if copied:
+            result = SimpleNamespace(
+                system_prompt=result.system_prompt, prompt=result.prompt, contexts=[]
+            )
         tree = ast.parse(
             (Path(__file__).parents[1] / "main.py").read_text(encoding="utf-8")
         )
@@ -421,17 +497,17 @@ def test_actual_request_hook_cleans_reused_request_before_route_exit(
         )
 
         async def route(event):
-            assert event.group == ""
+            assert event.group == ("7001" if copied else "")
             if route_failure:
                 raise ValueError("合成路由故障")
             return None
 
         plugin = SimpleNamespace(_runtime=SimpleNamespace(for_event=route))
-        event = message(components, "private", group="")
+        event = captured_event if copied else message(components, "private", group="")
         await namespace["_on_llm_req"](plugin, event, result)
         assert result.system_prompt == original + suffix
         assert result._bond_injected_snapshot is None
-        assert not hasattr(event, "_bond_relation_binding")
+        assert hasattr(event, "_bond_relation_binding") is copied
         await router.close()
 
     with (

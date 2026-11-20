@@ -6,7 +6,9 @@ from collections import defaultdict
 
 import pytest
 
+from astrbot_plugin_bond.core.relation_policy import RelationResolver, RelationState
 from astrbot_plugin_bond.scripts.export_behavior_cases import export
+from astrbot_plugin_bond.services.inject_service import InjectService
 
 
 @pytest.fixture
@@ -23,6 +25,7 @@ def grouped_cases(rows):
 
 def test_behavior_export_has_three_arms_and_real_persisted_stories(material, tmp_path):
     assert material["real_llm_tested"] is False
+    assert len(material["cases"]) == 156
     for group in grouped_cases(material["cases"]).values():
         assert set(group) == {"no_bond", "old_prompt", "new_prompt"}
     for story in material["persisted_stories"]:
@@ -108,6 +111,7 @@ def test_unexecuted_metadata_scores_and_pair_reviews_stay_empty(material):
         assert comparison["repeat_index"] is None
     assert len(material["pair_comparisons"]) == 2 * len(groups)
     rows = list(material["cases"])
+    rows.extend(material["relationship_matrix"]["requests"])
     for story in material["persisted_stories"]:
         rows.extend(story["final_requests"])
         for step in story["steps"]:
@@ -124,6 +128,49 @@ def test_unexecuted_metadata_scores_and_pair_reviews_stay_empty(material):
         assert lengths["total_content_chars"] == sum(map(len, contents))
         assert lengths["total_content_utf8_bytes"] > lengths["total_content_chars"]
         assert lengths["tokens"] is None and lengths["tokenizer"] is None
+
+
+def test_relationship_matrix_changes_only_the_relation_block(material):
+    matrix = material["relationship_matrix"]
+    assert matrix["real_llm_tested"] is False
+    expected_bands = {
+        "neutral_stranger": (0, 2, 2),
+        "neutral_familiar": (3, 2, 2),
+        "high_affinity_high_trust": (3, 4, 4),
+        "high_affinity_low_trust": (3, 4, 0),
+        "low_affinity_high_trust": (3, 0, 4),
+    }
+    groups = defaultdict(list)
+    resolver = RelationResolver()
+    for row in matrix["requests"]:
+        groups[row["case_id"], row["persona_id"]].append(row)
+        state = RelationState(**row["synthetic_state"])
+        description = resolver.describe(state)
+        assert description.bands == expected_bands[row["state_id"]]
+        assert not any(char.isdecimal() for char in description.text)
+        block = InjectService.build_relation_block(None, relationship=description.text)
+        assert row["messages"][0] == {
+            "role": "system",
+            "content": material["personas"][row["persona_id"]] + "\n\n" + block,
+        }
+        assert row["state_name"] and row["verdict"] is None
+
+    assert set(groups) == {
+        (case_id, persona_id)
+        for case_id in ("greeting", "good_news", "comfort")
+        for persona_id in ("reserved", "playful", "formal")
+    }
+    for group in groups.values():
+        assert len(group) == len(expected_bands)
+        assert {row["state_id"] for row in group} == expected_bands.keys()
+        assert len({row["messages"][0]["content"] for row in group}) == len(group)
+        fixed_turns = group[0]["messages"][1:]
+        assert [message["role"] for message in fixed_turns] == [
+            "user",
+            "assistant",
+            "user",
+        ]
+        assert all(row["messages"][1:] == fixed_turns for row in group)
 
 
 def test_behavior_export_is_reproducible_without_network(tmp_path):

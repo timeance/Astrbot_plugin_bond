@@ -222,13 +222,16 @@ async def check(runtime_dir: Path) -> None:
                 )
             if mode == "retry":
                 assert provider.requests[0].contexts == provider.requests[1].contexts
-            # 后台已写入，但同事件的新 ProviderRequest 仍使用冻结资料。
-            retry = ProviderRequest(
-                prompt=current.message_str,
-                system_prompt="人格：克制、可靠。其他插件：保留原有策略。",
-            )
-            await BondPlugin._on_llm_req(plugin, current, retry)
-            assert retry.system_prompt == frozen
+            # 新请求可能从原系统提示或已经注入的文本重建，两者均只保留一份快照。
+            for system_prompt in (
+                "人格：克制、可靠。其他插件：保留原有策略。",
+                frozen,
+            ):
+                retry = ProviderRequest(
+                    prompt=current.message_str, system_prompt=system_prompt
+                )
+                await BondPlugin._on_llm_req(plugin, current, retry)
+                assert retry.system_prompt == frozen
             next_req = ProviderRequest(prompt="独立下一轮")
             await BondPlugin._on_llm_req(plugin, event(mode + "-next"), next_req)
             assert "后台新印象" in next_req.system_prompt

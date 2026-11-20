@@ -1,4 +1,4 @@
-"""导出三组主回复模型输入与两条持久化互动脚本；不调用模型、不伪造回复。"""
+"""离线导出主回复提示对照、关系差异矩阵与两条持久化互动脚本。"""
 
 from __future__ import annotations
 
@@ -197,6 +197,31 @@ RUBRIC = (
     "internal_mechanism_leak",
 )
 PAIR_VERDICTS = ("win", "tie", "loss", "uncertain")
+MATRIX_PERSONAS = ("reserved", "playful", "formal")
+MATRIX_SCENARIOS = (
+    (
+        "greeting",
+        "早啊，今天过得怎么样？",
+        ("今早出门有点冷。", "风挺大的，出门可以多带一件外套。"),
+    ),
+    (
+        "good_news",
+        "我的报名通过了，刚收到通知！",
+        ("我报名参加了一个手作市集。", "准备摊位的事可以一件件来。"),
+    ),
+    (
+        "comfort",
+        "我还是挺难受的，能陪我说两句吗？",
+        ("今天的汇报没讲好。", "临场卡住确实不容易。"),
+    ),
+)
+MATRIX_STATES = (
+    ("neutral_stranger", "中性陌生", (0, 0, 0)),
+    ("neutral_familiar", "熟悉中性", (60, 0, 0)),
+    ("high_affinity_high_trust", "高亲近高信任", (60, 60, 60)),
+    ("high_affinity_low_trust", "高亲近低信任", (60, 60, -60)),
+    ("low_affinity_high_trust", "低亲近高信任", (60, -60, 60)),
+)
 
 
 def baseline_block(baseline, relationship, impression, events):
@@ -213,6 +238,36 @@ def baseline_block(baseline, relationship, impression, events):
         baseline["prefix"]
         + baseline["behavior_template"].format(**values)
         + baseline["suffix"]
+    )
+
+
+def request_row(case_id, persona_id, request, history, **metadata):
+    messages = [
+        {"role": "system", "content": request.system_prompt},
+        *[dict(message) for message in history],
+        {"role": "user", "content": request.prompt},
+    ]
+    return dict(
+        case_id=case_id,
+        persona_id=persona_id,
+        **metadata,
+        messages=messages,
+        request_lengths={
+            "system_chars": len(request.system_prompt),
+            "history_chars": sum(len(message["content"]) for message in history),
+            "prompt_chars": len(request.prompt),
+            "total_content_chars": sum(len(message["content"]) for message in messages),
+            "total_content_utf8_bytes": sum(
+                len(message["content"].encode("utf-8")) for message in messages
+            ),
+            "tokens": None,
+            "tokenizer": None,
+        },
+        repeat_index=None,
+        response=None,
+        response_lengths={"chars": None, "utf8_bytes": None, "tokens": None},
+        scores={key: None for key in RUBRIC},
+        notes="",
     )
 
 
@@ -260,40 +315,54 @@ def requests_for_state(
         request = SimpleNamespace(system_prompt=system_prompt, prompt=prompt)
         if block:
             injector.inject(request, block)
-        messages = [
-            {"role": "system", "content": request.system_prompt},
-            *[dict(message) for message in history],
-            {"role": "user", "content": request.prompt},
-        ]
-        rows.append(
-            dict(
-                case_id=case_id,
-                persona_id=persona_id,
-                arm=arm,
-                messages=messages,
-                request_lengths={
-                    "system_chars": len(request.system_prompt),
-                    "history_chars": sum(
-                        len(message["content"]) for message in history
-                    ),
-                    "prompt_chars": len(request.prompt),
-                    "total_content_chars": sum(
-                        len(message["content"]) for message in messages
-                    ),
-                    "total_content_utf8_bytes": sum(
-                        len(message["content"].encode("utf-8")) for message in messages
-                    ),
-                    "tokens": None,
-                    "tokenizer": None,
-                },
-                repeat_index=None,
-                response=None,
-                response_lengths={"chars": None, "utf8_bytes": None, "tokens": None},
-                scores={key: None for key in RUBRIC},
-                notes="",
-            )
-        )
+        rows.append(request_row(case_id, persona_id, request, history, arm=arm))
     return rows
+
+
+async def relationship_matrix():
+    """同一场景和人格共用前文，只替换按当前策略生成的关系块。"""
+    levels = LevelTable.from_config(None)
+    injector = InjectService(levels, "")
+    db = SQLiteBackend(Path(":memory:"))
+    await db.init()
+    try:
+        favor = FavorService(db, levels)
+        blocks = {
+            state_id: injector.build_relation_block(
+                None, relationship=favor.describe_relation(*values).text
+            )
+            for state_id, _, values in MATRIX_STATES
+        }
+    finally:
+        await db.close()
+
+    rows = []
+    for case_id, prompt, (user_turn, bot_turn) in MATRIX_SCENARIOS:
+        history = [
+            {"role": "user", "content": user_turn},
+            {"role": "assistant", "content": bot_turn},
+        ]
+        for persona_id in MATRIX_PERSONAS:
+            for state_id, state_name, (familiarity, affinity, trust) in MATRIX_STATES:
+                request = SimpleNamespace(
+                    system_prompt=PERSONAS[persona_id], prompt=prompt
+                )
+                injector.inject(request, blocks[state_id])
+                rows.append(
+                    request_row(
+                        case_id,
+                        persona_id,
+                        request,
+                        history,
+                        state_id=state_id,
+                        state_name=state_name,
+                        synthetic_state=dict(
+                            familiarity=familiarity, affinity=affinity, trust=trust
+                        ),
+                        verdict=None,
+                    )
+                )
+    return dict(real_llm_tested=False, requests=rows)
 
 
 def comparison_templates(rows):
@@ -592,6 +661,7 @@ async def export(output, *, materials=False):
         pair_verdicts=list(PAIR_VERDICTS),
         pair_comparisons=comparison_templates(rows),
         cases=rows,
+        relationship_matrix=await relationship_matrix(),
         persisted_stories=stories,
     )
     (output / "cases.json").write_text(
@@ -611,7 +681,9 @@ def main():
     args = parser.parse_args()
     report = asyncio.run(export(args.output, materials=args.materials))
     print(
-        f"导出 {len(report['cases'])} 组请求、2 条真实 SQLite 合成轨迹；真实 LLM 行为未验证。"
+        f"导出 {len(report['cases'])} 条提示对照请求、"
+        f"{len(report['relationship_matrix']['requests'])} 条关系矩阵请求、"
+        "2 条真实 SQLite 合成轨迹。未调用真实模型。"
     )
 
 

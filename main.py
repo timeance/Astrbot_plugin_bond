@@ -84,7 +84,7 @@ def _group_entry_id(event) -> str | None:
     "astrbot_plugin_bond",
     "yiwuerxin, Timeance",
     "Bond 关系好感系统：三维关系与成员印象",
-    "0.8.0",
+    "0.8.1",
     "https://github.com/timeance/Astrbot_plugin_bond",
 )
 class BondPlugin(Star):
@@ -428,7 +428,7 @@ class BondPlugin(Star):
     @filter.on_llm_request(priority=-100)
     async def _on_llm_req(self, event: AstrMessageEvent, req: ProviderRequest):
         try:
-            clear_relation_injection(req)
+            clear_relation_injection(req, event=event)
             deps = await self._runtime.for_event(event)
             if deps is None:
                 return
